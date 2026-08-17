@@ -1,0 +1,16 @@
+{
+  "explorer.compactFolders": true,
+  "explorer.fileNesting.enabled": true,
+  "explorer.fileNesting.patterns": {
+    "package.json": "pnpm-lock.yaml, pnpm-workspace.yaml",
+    "*.js": "$(capture).js.map, $(capture).d.ts, $(capture).d.ts.map, $(capture).cjs",
+    "*.cjs": "$(capture).cjs.map, $(capture).d.cts, $(capture).d.cts.map"
+  },
+  "editor.insertSpaces": true,
+  "editor.tabSize": 2,
+  "[typescript]": {
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "oxc.oxc-vscode",
+    "js/ts.preferences.importModuleSpecifierEnding": "js"
+  }
+}
