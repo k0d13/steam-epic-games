@@ -21,6 +21,7 @@ SignIn = RPC.SignIn
 SignOut = RPC.SignOut
 GetLibrary = RPC.GetLibrary
 GetLaunchCommand = RPC.GetLaunchCommand
+GetGameSize = RPC.GetGameSize
 PlaceIcon = RPC.PlaceIcon
 
 local function on_load()

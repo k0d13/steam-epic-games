@@ -35,6 +35,14 @@ export interface EpicGame {
   artHero?: string;
 }
 
+/** How much room a game takes, in bytes. */
+export interface GameSize {
+  /** On disk once installed - what Steam labels "Space Required". */
+  disk: number;
+  /** Actually transferred, which is smaller: Epic ships its content compressed. */
+  download: number;
+}
+
 /** What Steam needs to create a shortcut that launches a game through legendary. */
 export interface LaunchCommand {
   exe: string;
@@ -169,6 +177,25 @@ export class RPC {
 
     if (!raw.ok || !raw.exe) return undefined;
     return { exe: raw.exe, arguments: raw.arguments ?? "", startDir: raw.start_dir ?? "" };
+  }
+
+  /**
+   * How much room one game needs on disk. Slow the first time it's asked for a
+   * given game - it fetches that game's manifest from Epic - and cached in the
+   * backend from then on.
+   */
+  async GetGameSize(appName: string, refresh = false): Promise<GameSize | undefined> {
+    const raw = await call<{ ok: boolean; disk?: number; download?: number; error?: string }>(
+      "RPC.GetGameSize",
+      { app_name: appName, refresh },
+    );
+
+    if (!raw.ok || raw.disk === undefined) {
+      logger.debug("Could not size the game", { appName, error: raw.error });
+      return undefined;
+    }
+
+    return { disk: raw.disk, download: raw.download ?? raw.disk };
   }
 
   /**

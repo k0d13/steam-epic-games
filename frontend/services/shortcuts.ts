@@ -2,6 +2,7 @@ import { NON_STEAM_APP_APPID_MASK, Steam } from "steambrew-utils";
 import { logger } from "../index";
 import rpc, { type EpicGame } from "../rpc";
 import * as appIds from "../state/app-ids";
+import * as library from "../state/library";
 import * as artwork from "./artwork";
 
 // Every Epic game becomes a real non-Steam shortcut. That's what buys us
@@ -9,8 +10,6 @@ import * as artwork from "./artwork";
 // virtual entry injected into appStore would have none of it and would evaporate
 // on restart. They go through SteamClient.Apps rather than shortcuts.vdf so that
 // Steam allocates the appid and we never touch binary VDF.
-
-let syncing = false;
 
 export interface SyncResult {
   added: number;
@@ -21,7 +20,39 @@ export interface SyncResult {
   total: number;
 }
 
-export type SyncProgress = (done: number, total: number) => void;
+export interface SyncState {
+  active: boolean;
+  done: number;
+  total: number;
+  /** What the last finished sync did, kept so a panel opened later can say so. */
+  lastResult?: SyncResult;
+}
+
+// A sync outlives the panel that started it: it takes minutes over a few hundred
+// games, and the plugin panel is a dialog the user closes. Holding its progress
+// in the panel's own state meant closing it lost the bar and the busy flag, and
+// reopening showed an idle panel with a sync still running behind it. So the
+// state lives here, and the panel is one of its subscribers.
+
+let state: SyncState = { active: false, done: 0, total: 0 };
+
+const listeners = new Set<() => void>();
+
+function setState(next: Partial<SyncState>) {
+  state = { ...state, ...next };
+  for (const listener of listeners) listener();
+}
+
+export function getSyncState(): SyncState {
+  return state;
+}
+
+export function subscribeToSync(listener: () => void) {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
 
 /**
  * How many shortcuts to create before yielding back to the event loop. Each one
@@ -82,7 +113,7 @@ function removeShortcut(appName: string, appId: number) {
  * Reconcile the Epic library against Steam's shortcuts. Only touches what
  * differs, so running it again once everything is in place is cheap.
  */
-export async function sync(games: EpicGame[], onProgress?: SyncProgress): Promise<SyncResult> {
+export async function sync(games: EpicGame[]): Promise<SyncResult> {
   const result: SyncResult = {
     added: 0,
     removed: 0,
@@ -91,12 +122,12 @@ export async function sync(games: EpicGame[], onProgress?: SyncProgress): Promis
     total: games.length,
   };
 
-  if (syncing) {
+  if (state.active) {
     logger.debug("A sync is already in progress, skipping this one");
     return result;
   }
 
-  syncing = true;
+  setState({ active: true, done: 0, total: games.length, lastResult: undefined });
 
   try {
     // Shortcuts the user deleted by hand would otherwise look synced forever.
@@ -115,6 +146,7 @@ export async function sync(games: EpicGame[], onProgress?: SyncProgress): Promis
 
     let sinceYield = 0;
     let done = 0;
+    let addedSinceReindex = 0;
 
     for (const game of games) {
       const existing = appIds.getAppId(game.appName);
@@ -123,7 +155,10 @@ export async function sync(games: EpicGame[], onProgress?: SyncProgress): Promis
       if (appId === undefined) {
         result.failed++;
       } else {
-        if (existing === undefined) result.added++;
+        if (existing === undefined) {
+          result.added++;
+          addedSinceReindex++;
+        }
 
         // Also covers shortcuts made by a sync that was interrupted partway.
         if (!artwork.isDone(game.appName)) {
@@ -131,10 +166,21 @@ export async function sync(games: EpicGame[], onProgress?: SyncProgress): Promis
         }
       }
 
-      onProgress?.(++done, games.length);
+      setState({ done: ++done });
 
       if (++sinceYield >= BATCH_SIZE) {
         sinceYield = 0;
+
+        // A shortcut Steam knows about but the library doesn't have an appid for
+        // yet is, by Steam's reckoning, installed - so everything added during a
+        // sync sat in the grid claiming to be until the whole run finished. Once
+        // a batch rather than once a run keeps that window to a few games, and
+        // costs nothing on the passes that added nothing.
+        if (addedSinceReindex > 0) {
+          addedSinceReindex = 0;
+          library.reindexAppIds();
+        }
+
         await yieldToUi();
       }
     }
@@ -142,7 +188,10 @@ export async function sync(games: EpicGame[], onProgress?: SyncProgress): Promis
     logger.info("Shortcut sync complete", result);
     return result;
   } finally {
-    syncing = false;
+    // Not conditional on anything above having succeeded: the appid map has been
+    // written to either way, and the library is what every patch reads.
+    library.reindexAppIds();
+    setState({ active: false, done: 0, total: 0, lastResult: result });
   }
 }
 

@@ -2,6 +2,7 @@ local grid = require("grid")
 local json = require("json")
 local legendary = require("legendary")
 local library = require("library")
+local sizes = require("sizes")
 
 ---@return fun(payload: string): string
 local function rpcmethod(func)
@@ -107,6 +108,23 @@ function RPC.GetLaunchCommand(payload)
       arguments = 'launch "' .. data.app_name .. '"',
       start_dir = binary:match("^(.*)[\\/]") or "",
     }
+  end)
+  return wrapped_func(payload)
+end
+
+---How much room one game needs on disk, for the "Space Required" Steam shows
+---beside the Install button.
+---
+---Not part of GetLibrary: reading it costs a manifest fetch from Epic per game,
+---and it's only ever displayed one game at a time. Cached in the backend, so
+---this is slow once per game and instant after that.
+---@param payload string
+---@return string
+function RPC.GetGameSize(payload)
+  local wrapped_func = rpcmethod(function(data)
+    local size, err = sizes.get(data.app_name, data.refresh == true)
+    if not size then return { ok = false, error = err } end
+    return { ok = true, disk = size.disk, download = size.download }
   end)
   return wrapped_func(payload)
 end

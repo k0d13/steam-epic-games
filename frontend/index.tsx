@@ -3,6 +3,7 @@ import { useCallback, useState } from "react";
 import { Logger } from "steambrew-utils/logger";
 import { AuthPanel } from "./components/auth-panel";
 import { LibraryPanel } from "./components/library-panel";
+import * as appDetails from "./patches/app-details";
 import * as installState from "./patches/install-state";
 import { type EpicStatus } from "./rpc";
 import * as library from "./state/library";
@@ -39,20 +40,28 @@ export default definePlugin(async () => {
   // Before the library loads, so overviews Steam builds meanwhile go through the
   // patch. Guarded because Steam's stores move between client builds, and a
   // patch that no longer applies should cost its own feature, not the plugin.
-  let unpatch: (() => void) | undefined;
-  try {
-    unpatch = installState.register();
-  } catch (e) {
-    logger.info("Could not register the install state patch", e);
+  const unpatches: (() => void)[] = [];
+  for (const [name, patch] of [
+    ["install state", installState.register],
+    ["app details", appDetails.register],
+  ] as const) {
+    try {
+      unpatches.push(patch());
+    } catch (e) {
+      logger.info(`Could not register the ${name} patch`, e);
+    }
   }
 
-  // Steam builds its overviews once and keeps them, so every change to the
-  // library has to ask for a repaint. It is the only thing that does.
-  const unsubscribe = library.subscribe(() => installState.refreshAll());
+  // Steam builds its overviews and its details once and keeps them, so every
+  // change to the library has to ask for a repaint. It is the only thing that does.
+  const unsubscribe = library.subscribe(() => {
+    installState.refreshAll();
+    appDetails.refreshAll();
+  });
 
   window.addEventListener("beforeunload", () => {
     unsubscribe();
-    unpatch?.();
+    for (const unpatch of unpatches) unpatch();
   });
 
   // Cache only: every shortcut in the grid claims to be installed until this

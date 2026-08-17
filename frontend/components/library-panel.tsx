@@ -7,7 +7,7 @@ import {
   ProgressBarWithInfo,
   showContextMenu,
 } from "@steambrew/client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { logger } from "../index";
 import { type EpicGame } from "../rpc";
 import * as artwork from "../services/artwork";
@@ -34,17 +34,29 @@ function describeAge(refreshedAt: number) {
   return `updated ${Math.floor(hours / 24)}d ago`;
 }
 
+/** Describe a finished sync, for a panel that may not have been open for it. */
+function describeResult(result: shortcuts.SyncResult) {
+  return (
+    `Added ${result.added}, removed ${result.removed}, ${result.artworkApplied} images` +
+    (result.failed ? `, ${result.failed} failed` : "")
+  );
+}
+
 export function LibraryPanel() {
   const [games, setGames] = useState<EpicGame[] | undefined>(undefined);
   const [refreshedAt, setRefreshedAt] = useState(0);
-  const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
   const [synced, setSynced] = useState(0);
   const [note, setNote] = useState<string | undefined>(undefined);
-  const [progress, setProgress] = useState<{ done: number; total: number } | undefined>(undefined);
+
+  // A sync outlives this panel, so its progress is read from the service rather
+  // than held here - closing the dialog mid-sync and reopening it used to show
+  // an idle panel with a sync still running behind it.
+  const sync = useSyncExternalStore(shortcuts.subscribeToSync, shortcuts.getSyncState);
 
   const load = useCallback(async (refresh: boolean): Promise<number | undefined> => {
-    setBusy(true);
+    setLoading(true);
     setError(undefined);
 
     // Only the call is guarded: wrapping what follows would report a failure
@@ -58,7 +70,7 @@ export function LibraryPanel() {
     } catch (reason: unknown) {
       logger.info("GetLibrary failed", reason);
       setError("The plugin's backend didn't respond.");
-      setBusy(false);
+      setLoading(false);
       return;
     }
 
@@ -70,7 +82,7 @@ export function LibraryPanel() {
       setSynced(shortcuts.syncedCount(result.games));
     }
 
-    setBusy(false);
+    setLoading(false);
     return result.ok ? result.refreshedAt : undefined;
   }, []);
 
@@ -85,24 +97,12 @@ export function LibraryPanel() {
   const onSync = useCallback(async () => {
     if (!games) return;
 
-    setBusy(true);
     setNote(undefined);
-    setProgress({ done: 0, total: games.length });
 
-    const result = await shortcuts.sync(games, (done, total) => setProgress({ done, total }));
-    setProgress(undefined);
-
-    // Everything just added is an unknown appid until this runs, and an unknown
-    // appid stays "installed". Repainting follows from it, through the library's
-    // subscribers.
-    library.reindexAppIds();
-
+    // The service owns the progress, the appid reindexing and the result - all
+    // of which have to keep happening if this panel is closed halfway through.
+    await shortcuts.sync(games);
     setSynced(shortcuts.syncedCount(games));
-    setNote(
-      `Added ${result.added}, removed ${result.removed}, ${result.artworkApplied} images` +
-        (result.failed ? `, ${result.failed} failed` : ""),
-    );
-    setBusy(false);
   }, [games]);
 
   const onManage = useCallback(
@@ -137,8 +137,16 @@ export function LibraryPanel() {
     [onSync],
   );
 
+  // A sync that finished while this panel was closed, or one started by an
+  // earlier mount, still has to update the count this one is showing.
+  useEffect(() => {
+    if (sync.active || !games) return;
+    setSynced(shortcuts.syncedCount(games));
+  }, [sync.active, games]);
+
   const total = games?.length ?? 0;
   const installed = games?.filter((game) => game.installed).length ?? 0;
+  const busy = loading || sync.active;
 
   return (
     <>
@@ -154,7 +162,7 @@ export function LibraryPanel() {
         bottomSeparator={total > 0 ? "standard" : "none"}
       >
         <DialogButton disabled={busy} onClick={() => void load(true)}>
-          {busy && !progress ? "Refreshing..." : "Refresh"}
+          {loading ? "Refreshing..." : "Refresh"}
         </DialogButton>
       </Field>
 
@@ -164,13 +172,14 @@ export function LibraryPanel() {
           // The bar replaces the description rather than taking a row of its own:
           // it belongs to this action, and a full-width child overruns the panel.
           description={
-            progress ? (
+            sync.active ? (
               <ProgressBarWithInfo
-                nProgress={(progress.done / progress.total) * 100}
-                sOperationText={`Setting up ${progress.done} of ${progress.total}`}
+                nProgress={sync.total ? (sync.done / sync.total) * 100 : 0}
+                sOperationText={`Setting up ${sync.done} of ${sync.total}`}
               />
             ) : (
               (note ??
+              (sync.lastResult && describeResult(sync.lastResult)) ??
               (synced === total
                 ? `All ${total} games are in your Steam library.`
                 : `${synced} of ${total} games are in your Steam library.`))
