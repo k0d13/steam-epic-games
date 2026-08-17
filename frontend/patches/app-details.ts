@@ -73,8 +73,11 @@ function apply(details: AppDetails) {
 
   // Written, not skipped: refreshAll re-applies to details we already corrected,
   // so leaving the field alone would leave our own `false` in place.
+  // Any state, not just running: a finished install has written the whole game
+  // to disk, and library.installed only catches up a poll later - long enough
+  // for the row to flash back in between the download ending and Play appearing.
   const job = jobs.get(game.appName);
-  if (job?.kind === "install" && (job.state === "running" || job.state === "paused")) {
+  if (job?.kind === "install") {
     details.bHasAnyLocalContent = true;
     return;
   }
