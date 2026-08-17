@@ -29,6 +29,9 @@ function Set-PluginName {
 }
 
 function Build-Plugin {
+  Write-Host "Fetching vendored binaries..."
+  node scripts/fetch-legendary.mjs
+
   Write-Host "Building plugin..."
   pnpm exec millennium-ttc --build dev
 }

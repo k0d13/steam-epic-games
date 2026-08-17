@@ -5,6 +5,7 @@
     "format": "oxfmt",
     "lint": "oxlint",
     "check": "tsc --noEmit",
+    "prebuild": "node scripts/fetch-legendary.mjs",
     "build": "millennium-ttc --build prod",
     "dev": "powershell -ExecutionPolicy Bypass -File dev.ps1",
     "changeset": "changeset"
