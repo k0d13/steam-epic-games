@@ -22,6 +22,7 @@ local CACHE_PATH = utils.get_backend_path() .. "/data/library.json"
 ---@field install_path string|nil
 ---@field install_size integer|nil Bytes on disk
 ---@field version string|nil Installed build version
+---@field folder_name string|nil Directory Epic expects the game to live in
 ---@field needs_update boolean
 ---@field art_portrait string|nil Tall box art URL
 ---@field art_hero string|nil Wide art URL
@@ -172,6 +173,9 @@ local function merge_game(entry, local_game)
     install_path = local_game and local_game.install_path or nil,
     install_size = local_game and local_game.install_size or nil,
     version = local_game and local_game.version or nil,
+    -- What legendary names the game's directory when it's given no
+    -- --game-folder, so the install dialog can show the full path up front.
+    folder_name = ((metadata.customAttributes or {}).FolderName or {}).value,
     -- legendary has reported this under both names across versions, and
     -- guessing wrong silently means updates never surface.
     needs_update = local_game ~= nil

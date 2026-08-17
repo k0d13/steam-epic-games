@@ -6,6 +6,7 @@ import { LibraryPanel } from "./components/library-panel";
 import * as appDetails from "./patches/app-details";
 import * as downloadOverview from "./patches/download-overview";
 import * as installState from "./patches/install-state";
+import * as installWizard from "./patches/install-wizard";
 import * as installs from "./patches/installs";
 import * as manageMenu from "./patches/manage-menu";
 import rpc, { type EpicStatus } from "./rpc";
@@ -49,6 +50,7 @@ export default definePlugin(async () => {
     ["install state", installState.register],
     ["app details", appDetails.register],
     ["installs", installs.register],
+    ["install wizard", installWizard.register],
     ["manage menu", manageMenu.register],
   ] as const) {
     try {
@@ -90,9 +92,8 @@ export default definePlugin(async () => {
   // anything still running from last time and start polling it again.
   await jobs.refresh();
 
-  // Temporary: there's no install UI yet, so this is how installs get driven -
-  // `epicGames.StartInstall("Fortnite")` from the SharedJSContext console.
-  // Remove once the install dialog exists.
+  // Debugging only: every RPC by hand from the SharedJSContext console, e.g.
+  // `epicGames.GetInstallOptions("Fortnite")`. Nothing in the plugin reads it.
   (window as unknown as { epicGames: typeof rpc }).epicGames = rpc;
 
   logger.info("Plugin loaded");

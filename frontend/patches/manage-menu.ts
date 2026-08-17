@@ -3,6 +3,7 @@ import { createElement, cloneElement, Children, type ReactElement, type ReactNod
 import { Steam } from "steambrew-utils";
 import { onPopupCreate } from "steambrew-utils/watchers";
 import { logger } from "../index";
+import { findExport } from "../services/modules";
 import * as jobs from "../state/jobs";
 import * as library from "../state/library";
 
@@ -102,47 +103,11 @@ type UninstallDialog = (
   confirmPassword: boolean,
 ) => void;
 
-interface WebpackRequire {
-  (id: string): Record<string, unknown>;
-  m: Record<string, unknown>;
-}
-
 /** The dialog opener, told apart from the error dialog in the same module. */
 function isUninstallDialog(value: unknown): value is UninstallDialog {
   if (typeof value !== "function") return false;
   const source = value.toString();
   return source.includes("#UninstallDialog_Title") && source.includes("small_mode");
-}
-
-/**
- * Found by hand rather than with `findModuleExport`, which searches the module
- * cache @steambrew/client built when it loaded - and the library's chunks load
- * later than that, so the dialog simply isn't in it.
- *
- * Module *factories* are functions, so they can be searched by source without
- * being run, and only the one that matches is required.
- */
-function findUninstallDialog(): UninstallDialog | undefined {
-  let webpackRequire: WebpackRequire | undefined;
-  const id = Symbol("epic-games");
-  const chunks = Reflect.get(globalThis, "webpackChunksteamui") as
-    | { push(chunk: unknown[]): void }
-    | undefined;
-  chunks?.push([[id], {}, (r: WebpackRequire) => void (webpackRequire = r)]);
-  if (!webpackRequire) return undefined;
-
-  for (const moduleId of Object.keys(webpackRequire.m)) {
-    const factory = webpackRequire.m[moduleId];
-    if (typeof factory !== "function" || !factory.toString().includes("#UninstallDialog_Title")) {
-      continue;
-    }
-
-    for (const value of Object.values(webpackRequire(moduleId))) {
-      if (isUninstallDialog(value)) return value;
-    }
-  }
-
-  return undefined;
 }
 
 let uninstallDialog: UninstallDialog | undefined;
@@ -172,7 +137,7 @@ function fallbackConfirm(appName: string, name: string) {
 function confirmUninstall(appId: number, appName: string, name: string) {
   if (!searched) {
     searched = true;
-    uninstallDialog = findUninstallDialog();
+    uninstallDialog = findExport("#UninstallDialog_Title", isUninstallDialog);
     if (!uninstallDialog) logger.warn("Steam's uninstall dialog wasn't found, using our own");
   }
 

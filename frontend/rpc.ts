@@ -31,6 +31,8 @@ export interface EpicGame {
   installSize?: number;
   version?: string;
   needsUpdate: boolean;
+  /** Directory Epic expects the game in, which is what legendary names it. */
+  folderName?: string;
   artPortrait?: string;
   artHero?: string;
 }
@@ -118,6 +120,7 @@ interface RawGame {
   install_size?: number;
   version?: string;
   needs_update: boolean;
+  folder_name?: string;
   art_portrait?: string;
   art_hero?: string;
 }
@@ -131,6 +134,7 @@ function toGame(raw: RawGame): EpicGame {
     installSize: raw.install_size,
     version: raw.version,
     needsUpdate: raw.needs_update,
+    folderName: raw.folder_name,
     artPortrait: raw.art_portrait,
     artHero: raw.art_hero,
   };

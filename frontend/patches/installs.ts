@@ -3,6 +3,7 @@ import { NON_STEAM_APP_APPID_MASK } from "steambrew-utils";
 import { logger } from "../index";
 import * as jobs from "../state/jobs";
 import * as library from "../state/library";
+import * as wizard from "./install-wizard";
 
 // Steam's Install, Pause and Resume buttons all end up in one of three
 // SteamClient functions, and they're plain properties on a plain object. So
@@ -13,10 +14,15 @@ import * as library from "../state/library";
 // that isn't ours - these are global functions, and real Steam downloads go
 // through them while an Epic game is installing.
 
+/** One of our games by appid, if it's one of ours at all. */
+function epicGame(appId: number) {
+  if (appId < NON_STEAM_APP_APPID_MASK) return undefined;
+  return library.getByAppId(appId);
+}
+
 /** Which of our games an appid is, if it's one of ours at all. */
 function epicAppName(appId: number): string | undefined {
-  if (appId < NON_STEAM_APP_APPID_MASK) return undefined;
-  return library.getByAppId(appId)?.appName;
+  return epicGame(appId)?.appName;
 }
 
 /**
@@ -41,20 +47,25 @@ interface Bridge {
 export function register() {
   const bridge = SteamClient as unknown as Bridge;
   const patches = [
-    // Steam's own install wizard is driven by the native client and only knows
-    // real appids, so there's nothing to reuse: an Epic appid gets started
-    // straight away. Until the install dialog exists this takes legendary's
-    // default install location, which is what `legendary install` alone uses.
+    // The native client only raises its install wizard for real appids, so for
+    // ours the wizard is opened from the JS side instead - same dialog, same
+    // window. install-wizard.ts owns that and the buttons on it.
     replacePatch(bridge.Installs, "OpenInstallWizard", ([appIds]: [number[]]) => {
-      const ours = (appIds ?? []).map(epicAppName).filter((name) => name !== undefined);
+      const ours = (appIds ?? []).filter((appId) => epicGame(appId) !== undefined);
       if (ours.length === 0) return callOriginal;
 
       // A mixed selection is possible from a multi-select in the library, and
       // Steam still has to handle its own half of it.
-      const theirs = (appIds ?? []).filter((appId) => epicAppName(appId) === undefined);
+      const theirs = (appIds ?? []).filter((appId) => epicGame(appId) === undefined);
       if (theirs.length > 0) bridge.Installs.OpenInstallWizard(theirs);
 
-      for (const appName of ours) void jobs.install(appName);
+      // The wizard is one dialog and one store field, so a multi-select of Epic
+      // games can only open it for one of them. Rare enough not to design
+      // around, and the rest are a second click away.
+      const [first] = ours;
+      const game = first === undefined ? undefined : epicGame(first);
+      if (game && first !== undefined) void wizard.open(first, game.appName, game.folderName);
+
       return undefined;
     }),
 
