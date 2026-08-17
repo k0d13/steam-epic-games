@@ -19,6 +19,18 @@ import * as library from "../state/library";
 let verified = false;
 
 /**
+ * States Steam sets while it is running the shortcut's process itself. They're
+ * the answer to a different question than ours - the game is installed either
+ * way - and overwriting them with ReadyToLaunch is what leaves the play bar
+ * showing Play for a game that's already open.
+ */
+const RUNNING_STATUSES = new Set<number>([
+  EDisplayStatus.Launching,
+  EDisplayStatus.Running,
+  EDisplayStatus.Terminating,
+]);
+
+/**
  * The overview fields we write. None are in @steambrew/client's typings, being
  * plain properties on a store object, so this describes only what we touch.
  */
@@ -80,9 +92,11 @@ function applyInstallState(overview: Steam.AppOverview) {
     }
 
     data.installed = game.installed;
-    data.display_status = game.installed
-      ? EDisplayStatus.ReadyToLaunch
-      : EDisplayStatus.ReadyToInstall;
+    if (!(game.installed && RUNNING_STATUSES.has(data.display_status ?? 0))) {
+      data.display_status = game.installed
+        ? EDisplayStatus.ReadyToLaunch
+        : EDisplayStatus.ReadyToInstall;
+    }
     data.status_percentage = 0;
   }
 
