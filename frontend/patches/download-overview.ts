@@ -97,15 +97,7 @@ export function sync() {
     return;
   }
 
-  if (claimed === undefined || overview.update_appid !== claimed) return;
-
-  claimed = undefined;
-  overview.update_appid = 0;
-  overview.update_state = "None";
-  overview.update_is_install = false;
-  overview.overall_percent_complete = 0;
-  overview.overall_estimated_time_remaining_sec = -1;
-  overview.update_network_bytes_per_second = 0;
+  release();
 }
 
 /** Give the overview back, for an unload that happens mid-install. */
@@ -118,5 +110,6 @@ export function release() {
   overview.update_state = "None";
   overview.update_is_install = false;
   overview.overall_percent_complete = 0;
+  overview.overall_estimated_time_remaining_sec = -1;
   overview.update_network_bytes_per_second = 0;
 }

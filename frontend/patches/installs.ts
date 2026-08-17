@@ -26,6 +26,21 @@ function epicAppName(appId: number): string | undefined {
 }
 
 /**
+ * Split a selection into our games and Steam's. A mixed one is possible from a
+ * multi-select in the library, and Steam still has to handle its own half.
+ */
+function partition(appIds: number[] | undefined) {
+  const ours: number[] = [];
+  const theirs: number[] = [];
+
+  for (const appId of appIds ?? []) {
+    (epicGame(appId) ? ours : theirs).push(appId);
+  }
+
+  return { ours, theirs };
+}
+
+/**
  * The functions we patch. None are in @steambrew/client's typings - they're
  * properties on the native bridge object - so this describes only what we call.
  */
@@ -51,12 +66,9 @@ export function register() {
     // ours the wizard is opened from the JS side instead - same dialog, same
     // window. install-wizard.ts owns that and the buttons on it.
     replacePatch(bridge.Installs, "OpenInstallWizard", ([appIds]: [number[]]) => {
-      const ours = (appIds ?? []).filter((appId) => epicGame(appId) !== undefined);
+      const { ours, theirs } = partition(appIds);
       if (ours.length === 0) return callOriginal;
 
-      // A mixed selection is possible from a multi-select in the library, and
-      // Steam still has to handle its own half of it.
-      const theirs = (appIds ?? []).filter((appId) => epicGame(appId) === undefined);
       if (theirs.length > 0) bridge.Installs.OpenInstallWizard(theirs);
 
       // The wizard is one dialog and one store field, so a multi-select of Epic
@@ -76,13 +88,16 @@ export function register() {
       bridge.Installs,
       "OpenUninstallWizard",
       ([appIds, confirmed]: [number[], boolean]) => {
-        const ours = (appIds ?? []).map(epicAppName).filter((name) => name !== undefined);
+        const { ours, theirs } = partition(appIds);
         if (ours.length === 0) return callOriginal;
 
-        const theirs = (appIds ?? []).filter((appId) => epicAppName(appId) === undefined);
         if (theirs.length > 0) bridge.Installs.OpenUninstallWizard(theirs, confirmed);
 
-        for (const appName of ours) void jobs.uninstall(appName);
+        for (const appId of ours) {
+          const appName = epicAppName(appId);
+          if (appName) void jobs.uninstall(appName);
+        }
+
         return undefined;
       },
     ),

@@ -72,9 +72,13 @@ $ConfigPath = "$SteamPath\millennium\config\config.json"
 $PluginName, $PluginCommonName = Get-PluginName -Path "./plugin.json"
 Stop-SteamProcess
 Set-PluginName -Path "plugin.json" -Name $PluginName-dev -CommonName "$PluginCommonName (dev)"
-Build-Plugin
-Copy-PluginFiles -Destination "$SteamPath\millennium\plugins\$PluginName-dev"
-Set-PluginName -Path "plugin.json" -Name $PluginName -CommonName $PluginCommonName
+try {
+  Build-Plugin
+  Copy-PluginFiles -Destination "$SteamPath\millennium\plugins\$PluginName-dev"
+} finally {
+  Set-PluginName -Path "plugin.json" -Name $PluginName -CommonName $PluginCommonName
+}
+
 Toggle-Plugin -Path $ConfigPath -Name $PluginName -Enable $false
 Toggle-Plugin -Path $ConfigPath -Name $PluginName-dev -Enable $true
 Start-SteamProcess $SteamPath

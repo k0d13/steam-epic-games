@@ -155,6 +155,17 @@ export interface LibraryResult {
   refreshedAt: number;
 }
 
+function toLibrary(raw: RawLibrary): LibraryResult {
+  return {
+    ok: raw.ok,
+    error: raw.error,
+    // Lua has one table type, so an empty library arrives as `{}`: an object
+    // with no `map` on it, and a TypeError on every fresh install.
+    games: (Array.isArray(raw.games) ? raw.games : []).map(toGame),
+    refreshedAt: raw.refreshed_at ?? 0,
+  };
+}
+
 interface RawJob {
   app_name: string;
   kind: "install" | "uninstall";
@@ -221,38 +232,16 @@ export class RPC {
    * legendary's catalog cache, which is what picks up a newly bought game.
    */
   async GetLibrary(refresh = false, force = false): Promise<LibraryResult> {
-    const raw = await call<RawLibrary>("RPC.GetLibrary", { refresh, force });
-
-    // Lua has one table type, so an empty library arrives as `{}` - an object
-    // with no `map` on it, and a TypeError on every fresh install.
-    const games = Array.isArray(raw.games) ? raw.games : [];
-
-    return {
-      ok: raw.ok,
-      error: raw.error,
-      games: games.map(toGame),
-      refreshedAt: raw.refreshed_at ?? 0,
-    };
+    return toLibrary(await call<RawLibrary>("RPC.GetLibrary", { refresh, force }));
   }
 
   /**
    * Re-read only what's installed on disk. No round trip to Epic, so it costs a
-   * fraction of a full `GetLibrary(true)` - this is the refresh for after an
+   * fraction of a full `GetLibrary(true)`: this is the refresh for after an
    * install or an uninstall, where the catalog can't have changed.
    */
   async GetInstalled(): Promise<LibraryResult> {
-    const raw = await call<RawLibrary>("RPC.GetLibrary", { installed: true });
-
-    // Lua has one table type, so an empty library arrives as `{}` - an object
-    // with no `map` on it, and a TypeError on every fresh install.
-    const games = Array.isArray(raw.games) ? raw.games : [];
-
-    return {
-      ok: raw.ok,
-      error: raw.error,
-      games: games.map(toGame),
-      refreshedAt: raw.refreshed_at ?? 0,
-    };
+    return toLibrary(await call<RawLibrary>("RPC.GetLibrary", { installed: true }));
   }
 
   /** What a shortcut for this game should run. */

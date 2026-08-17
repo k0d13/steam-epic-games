@@ -2,6 +2,7 @@ import { NON_STEAM_APP_APPID_MASK, Steam } from "steambrew-utils";
 import { logger } from "../index";
 import rpc, { type EpicGame } from "../rpc";
 import * as appIds from "../state/app-ids";
+import { createEmitter } from "../state/emitter";
 import * as library from "../state/library";
 import * as artwork from "./artwork";
 
@@ -36,22 +37,16 @@ export interface SyncState {
 
 let state: SyncState = { active: false, done: 0, total: 0 };
 
-const listeners = new Set<() => void>();
+const emitter = createEmitter();
+export const subscribeToSync = emitter.subscribe;
 
 function setState(next: Partial<SyncState>) {
   state = { ...state, ...next };
-  for (const listener of listeners) listener();
+  emitter.emit();
 }
 
 export function getSyncState(): SyncState {
   return state;
-}
-
-export function subscribeToSync(listener: () => void) {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
 }
 
 /**

@@ -4,17 +4,17 @@ local legendary = require("legendary")
 local logger = require("logger")
 local utils = require("utils")
 
--- Long-running legendary commands - installs, updates, uninstalls.
+-- Long-running legendary commands: installs, updates, uninstalls.
 --
 -- `utils.exec` is a blocking `popen`, so running a multi-gigabyte install
 -- through it would freeze the Lua state and every RPC with it for as long as the
--- download takes. So nothing here waits: a job is a detached PowerShell process
--- that owns legendary, writes its output to a log and its progress to a small
--- status file, and this module only ever reads those files.
+-- download takes. So nothing here waits. A job is a detached PowerShell process
+-- that owns legendary, writes its progress and its last error to small files,
+-- and this module only ever reads those files back.
 --
--- The frontend polls `jobs.list()` about once a second. That has to stay cheap,
--- which is why the *runner* parses legendary's progress lines rather than this
--- module tailing a log that grows to hundreds of kilobytes over a long download.
+-- The frontend polls `jobs.list()` about once a second, so that path spawns no
+-- subprocess of its own beyond a single `tasklist` for liveness, and reads
+-- nothing that grows with the length of a download.
 
 local jobs = {}
 
@@ -48,14 +48,8 @@ local ROOT = utils.get_backend_path() .. "/data/jobs"
 ---already, but they're not ours to trust as path components.
 ---@param app_name string
 ---@return string
-local function slug(app_name)
-  return (app_name:gsub("[^%w%-%_]", "_"))
-end
-
----@param app_name string
----@return string
 local function job_dir(app_name)
-  return ROOT .. "/" .. slug(app_name)
+  return ROOT .. "/" .. (app_name:gsub("[^%w%-%_]", "_"))
 end
 
 ---Read a file, or nil if it isn't there yet. The runner creates these as it
@@ -83,9 +77,10 @@ end
 ---
 --- `2>&1` merges legendary's stderr, which is where the DLManager progress lines
 --- go, into the pipeline. Every line is appended to the log; the ones that carry
---- progress also overwrite status.txt, which is what the frontend ends up
---- reading. status.txt is written whole each time, so a reader either sees the
---- previous state or the new one.
+--- progress or an error also overwrite a small file of their own, so that
+--- reading either back never costs a scan of a log hundreds of kilobytes long.
+--- Those files are written whole each time, so a reader sees either the previous
+--- state or the new one.
 local RUNNER = [[
 $ErrorActionPreference = 'Continue'
 $PID | Out-File -Encoding ascii -FilePath "$Dir\pid.txt"
@@ -102,6 +97,9 @@ $percent = 0; $done = 0; $total = 0; $eta = ''; $elapsed = ''; $speed = 0
   } elseif ($line -match 'Download\s+- ([\d.]+) MiB/s \(raw\)') {
     $speed = $matches[1]
   } else {
+    if ($line -match '(ERROR|CRITICAL):') {
+      $line | Out-File -Encoding utf8 -FilePath "$Dir\error.txt"
+    }
     return
   }
 
@@ -120,8 +118,8 @@ $code | Out-File -Encoding ascii -FilePath "$Dir\exit.txt"
 ---Start a detached, hidden PowerShell running one legendary command.
 ---
 ---Launched through wscript because that's the only way to get a process with no
----console window at all - `powershell -WindowStyle Hidden` still flashes one,
----and this window would otherwise sit on screen for the length of the download.
+---console window at all. `powershell -WindowStyle Hidden` still flashes one, and
+---this window would otherwise sit on screen for the length of the download.
 ---@param dir string
 ---@param args string[] Arguments to legendary
 ---@return boolean started
@@ -165,16 +163,31 @@ end
 
 -- Reading a job back ----------------------------------------------------------
 
----Is a PID still ours, and still running?
----
----Asked by name as well as by number: PIDs get reused, and a stale one that now
----belongs to something else would otherwise read as a job still downloading.
----@param pid integer
----@return boolean
-local function is_alive(pid)
-  local output = utils.exec('tasklist /FI "PID eq ' .. pid .. '" /FO CSV /NH 2>&1')
-  if not output then return false end
-  return output:lower():find("powershell.exe", 1, true) ~= nil
+--- Every live runner PID, read in one go. Listing a job asks about each of them
+--- in turn, and one `tasklist` for the whole answer is the difference between
+--- one blocking subprocess per poll and one per job per poll.
+---@type table<integer, true>|nil
+local live_pids = nil
+
+---@return table<integer, true>
+local function get_live_pids()
+  if live_pids then return live_pids end
+
+  live_pids = {}
+  local output = utils.exec('tasklist /FI "IMAGENAME eq powershell.exe" /FO CSV /NH 2>&1') or ""
+  -- CSV rows look like "powershell.exe","1234","Console","1","52,000 K".
+  for pid in output:gmatch('"powershell%.exe","(%d+)"') do
+    live_pids[tonumber(pid)] = true
+  end
+
+  return live_pids
+end
+
+---Drop the PID snapshot, so the next read is current. Called at the top of
+---anything that reads jobs back, since holding it any longer than one answer
+---would report a finished install as still running.
+local function invalidate_pids()
+  live_pids = nil
 end
 
 ---@param dir string
@@ -200,36 +213,27 @@ local function read_progress(dir)
   }
 end
 
----The last error legendary printed, for a job that failed.
 ---@param dir string
----@return string|nil
-local function read_error(dir)
-  local text = read(dir .. "/log.txt")
+---@return table|nil
+local function read_meta(dir)
+  local text = read(dir .. "/job.json")
   if not text then return nil end
 
-  local last
-  for line in text:gmatch("[^\r\n]+") do
-    if line:find("ERROR:") or line:find("CRITICAL:") then last = utils.trim(line) end
-  end
-  return last
+  local ok, meta = pcall(json.decode, text)
+  if not ok or type(meta) ~= "table" then return nil end
+  return meta
 end
 
----Read one game's job off disk, or nil if it has never had one.
+---Build one job out of its directory and the metadata already read from it.
 ---
 ---State is derived rather than stored, because the runner can die at any moment
 ---without getting the chance to record anything: an exit code means finished, a
 ---live PID means running, and a PID that is gone with no exit code means it was
----killed - which is what pause is.
----@param app_name string
----@return Job|nil
-function jobs.get(app_name)
-  local dir = job_dir(app_name)
-  local meta_text = read(dir .. "/job.json")
-  if not meta_text then return nil end
-
-  local ok, meta = pcall(json.decode, meta_text)
-  if not ok or type(meta) ~= "table" then return nil end
-
+---killed, which is what pause is.
+---@param dir string
+---@param meta table
+---@return Job
+local function build(dir, meta)
   local pid = tonumber(read(dir .. "/pid.txt") or "")
   local exit_code = tonumber(read(dir .. "/exit.txt") or "")
 
@@ -237,10 +241,8 @@ function jobs.get(app_name)
   local state
   if exit_code then
     state = exit_code == 0 and "done" or "failed"
-  elseif pid and is_alive(pid) then
-    state = "running"
   elseif pid then
-    state = "paused"
+    state = get_live_pids()[pid] and "running" or "paused"
   else
     -- The runner hasn't got as far as writing its PID. That's the first half
     -- second of a job, not a problem.
@@ -248,34 +250,44 @@ function jobs.get(app_name)
   end
 
   return {
-    app_name = meta.app_name or app_name,
+    app_name = meta.app_name,
     kind = meta.kind or "install",
     state = state,
     pid = pid,
     started_at = meta.started_at or 0,
     exit_code = exit_code,
     progress = read_progress(dir),
-    error = state == "failed" and read_error(dir) or nil,
+    error = state == "failed" and utils.trim(read(dir .. "/error.txt") or "") or nil,
   }
+end
+
+---Read one game's job off disk, or nil if it has never had one.
+---@param app_name string
+---@return Job|nil
+function jobs.get(app_name)
+  invalidate_pids()
+
+  local dir = job_dir(app_name)
+  local meta = read_meta(dir)
+  if not meta then return nil end
+
+  meta.app_name = meta.app_name or app_name
+  return build(dir, meta)
 end
 
 ---Every job we know about, running or finished.
 ---@return Job[]
 function jobs.list()
+  invalidate_pids()
+
   local result = {}
   if not fs.is_directory(ROOT) then return result end
 
   for _, entry in ipairs(fs.list(ROOT) or {}) do
-    if entry.is_directory then
-      -- The directory is named after the slug, not the app name, so the app name
-      -- comes back out of the job's own metadata.
-      local meta_text = read(entry.path .. "/job.json")
-      local ok, meta = pcall(json.decode, meta_text or "")
-      if ok and type(meta) == "table" and meta.app_name then
-        local job = jobs.get(meta.app_name)
-        if job then table.insert(result, job) end
-      end
-    end
+    -- The directory is named after a slug of the app name, so the app name
+    -- comes back out of the job's own metadata.
+    local meta = entry.is_directory and read_meta(entry.path)
+    if meta and meta.app_name then table.insert(result, build(entry.path, meta)) end
   end
 
   return result
@@ -295,8 +307,8 @@ local function start(app_name, kind, args)
   if existing and existing.state == "running" then return existing end
 
   -- Everything from a previous run of this game goes, including the log and the
-  -- last progress it reached - otherwise a fresh install would report the
-  -- percentage the old one stopped at until its first progress line arrives.
+  -- last progress it reached, or a fresh install would report the percentage
+  -- the old one stopped at until its first progress line arrives.
   local dir = job_dir(app_name)
   if fs.is_directory(dir) then fs.remove_all(dir) end
   fs.create_directories(dir)
@@ -362,7 +374,7 @@ function jobs.pause(app_name)
   return true
 end
 
----Stop a job and forget it ever ran. What's on disk is left alone - removing a
+---Stop a job and forget it ever ran. What's on disk is left alone: removing a
 ---partial install is `uninstall`'s job, not this one's.
 ---@param app_name string
 ---@return boolean cancelled

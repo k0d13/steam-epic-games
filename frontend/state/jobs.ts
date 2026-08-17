@@ -1,5 +1,6 @@
 import { logger } from "../index";
 import rpc, { type Job } from "../rpc";
+import { createEmitter } from "./emitter";
 import * as library from "./library";
 
 // The frontend's view of the backend's installs. The backend can't push, so
@@ -13,20 +14,10 @@ const POLL_MS = 1000;
 
 const byAppName = new Map<string, Job>();
 
-const listeners = new Set<() => void>();
+const emitter = createEmitter();
+export const subscribe = emitter.subscribe;
 
 let timer: ReturnType<typeof setTimeout> | undefined;
-
-function notify() {
-  for (const listener of listeners) listener();
-}
-
-export function subscribe(listener: () => void) {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-}
 
 /** The current job for one game, running or finished, if it has ever had one. */
 export function get(appName: string): Job | undefined {
@@ -90,7 +81,7 @@ async function poll() {
   }
 
   const finished = apply(jobs);
-  notify();
+  emitter.emit();
 
   if (finished) {
     // Only the installed half can have changed, so this is the cheap refresh -
@@ -118,35 +109,32 @@ function schedule() {
 export async function refresh() {
   const jobs = await rpc.GetJobs();
   apply(jobs);
-  notify();
+  emitter.emit();
   schedule();
+}
+
+/** Take a freshly started job on, without waiting for the next poll to see it. */
+function track(appName: string, job: Job | undefined) {
+  if (!job) return undefined;
+
+  byAppName.set(appName, job);
+  emitter.emit();
+  schedule();
+
+  logger.info(`Started ${job.kind}`, { appName });
+  return job;
 }
 
 /**
- * Start, or resume, an install. legendary's `install` is both - pointed at a
+ * Start, or resume, an install. legendary's `install` is both: pointed at a
  * partial download it continues from where it stopped.
  */
 export async function install(appName: string, basePath?: string, gameFolder?: string) {
-  const job = await rpc.StartInstall(appName, basePath, gameFolder);
-  if (!job) return undefined;
-
-  byAppName.set(appName, job);
-  notify();
-  schedule();
-
-  logger.info("Installing", { appName, basePath });
-  return job;
+  return track(appName, await rpc.StartInstall(appName, basePath, gameFolder));
 }
 
 export async function uninstall(appName: string) {
-  const job = await rpc.StartUninstall(appName);
-  if (!job) return undefined;
-
-  byAppName.set(appName, job);
-  notify();
-  schedule();
-
-  return job;
+  return track(appName, await rpc.StartUninstall(appName));
 }
 
 /** Stop an install, keeping the partial download. `install` resumes it. */

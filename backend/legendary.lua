@@ -39,19 +39,29 @@ local function quote(arg)
 end
 
 --- Printed between commands in a batch so their output can be told apart. Long
---- enough that nothing legendary prints can be mistaken for it - a false match
---- would split one command's JSON in half.
+--- enough that a false match, which would split one command's JSON in half,
+--- can't come out of anything legendary prints.
 local SEPARATOR = "--epic-games-plugin-next--"
+
+---The subcommand out of one argument list, for a log line.
+---@param args string[]
+---@return string
+local function subcommand(args)
+  for _, arg in ipairs(args) do
+    if arg:sub(1, 1) ~= "-" then return arg end
+  end
+  return "?"
+end
 
 ---Run several legendary commands, in order, behind one terminal flash.
 ---
 ---legendary is a console application and Steam is a GUI process with no console,
----so every exec flashes a terminal on screen, and Millennium has no way to start
+---so every exec flashes a terminal on screen and Millennium has no way to start
 ---a process without one. The only lever left is to call it less: one exec per
 ---user action rather than one per command.
 ---@param arg_lists string[][] Arguments to legendary, unquoted, one list per command
 ---@return string[] outputs stdout and stderr together, one per command, empty if the binary is missing
----@return integer status Exit status of the last command - cmd's chaining loses the rest - or -1 if there was nothing to run
+---@return integer status Exit status of the last command, since cmd's chaining loses the rest, or -1 if there was nothing to run
 function legendary.run_batch(arg_lists)
   local outputs = {}
   for index = 1, #arg_lists do
@@ -64,6 +74,7 @@ function legendary.run_batch(arg_lists)
   end
 
   local commands = {}
+  local names = {}
   for index, args in ipairs(arg_lists) do
     local parts = { quote(BINARY) }
     for _, arg in ipairs(args) do
@@ -71,8 +82,10 @@ function legendary.run_batch(arg_lists)
     end
 
     -- 2>&1 because legendary writes its own log lines, and every error worth
-    -- showing the user, to stderr - which popen doesn't capture on its own.
+    -- showing the user, to stderr, which popen doesn't capture on its own.
     commands[index] = table.concat(parts, " ") .. " 2>&1"
+
+    names[index] = subcommand(args)
   end
 
   -- `&` rather than `&&`: one legendary error in the middle shouldn't silently
@@ -82,11 +95,22 @@ function legendary.run_batch(arg_lists)
   -- The whole line is then wrapped in one more pair of quotes. utils.exec goes
   -- through popen, which runs `cmd /c <line>`, and cmd strips the first and last
   -- quote off that line before parsing it. Without the extra pair it eats the
-  -- quotes around the binary and splits the path at its first space - and the
+  -- quotes around the binary and splits the path at its first space, and the
   -- path always has one, since Steam installs to Program Files (x86). The error
   -- is "'C:\Program' is not recognized", printed to a console nobody reads.
+  local started = utils.time_ms()
   local output, status = utils.exec('"' .. line .. '"')
-  logger:info("Exited " .. tostring(status) .. ": " .. line)
+  local elapsed = utils.time_ms() - started
+
+  -- The commands and how long they blocked for, since that is the number worth
+  -- watching. The line itself is only interesting when one of them failed.
+  status = tonumber(status) or -1
+  local summary = utils.join(names, ", ") .. " in " .. elapsed .. "ms"
+  if status == 0 then
+    logger:info("Ran " .. summary)
+  else
+    logger:warn("Ran " .. summary .. ", exited " .. status .. ": " .. line)
+  end
 
   -- Split by hand rather than with utils.split, which takes its delimiter a
   -- character at a time and would cut this into pieces at every dash.
@@ -102,7 +126,7 @@ function legendary.run_batch(arg_lists)
     remaining = remaining:sub(to + 1)
   end
 
-  return outputs, tonumber(status) or -1
+  return outputs, status
 end
 
 ---Run one legendary command and block until it exits.
@@ -120,9 +144,8 @@ end
 ---@return string? error
 function legendary.decode_json(output)
   -- stdout and stderr are merged, so the JSON arrives with legendary's own log
-  -- lines mixed in. Those look like "[cli] INFO: Logging in..." - so searching
-  -- for the first "[" locks onto the "[cli]" of a log line and decodes that.
-  -- Scan for the first line that opens a document and isn't a log prefix.
+  -- lines mixed in. Those look like "[cli] INFO: Logging in...", so searching
+  -- for the first "[" would lock onto the "[cli]" of one and decode that.
   local lines = utils.split(output, "\n")
   for index, line in ipairs(lines) do
     local trimmed = utils.trim(line)
@@ -137,16 +160,15 @@ function legendary.decode_json(output)
   return nil, utils.trim(output)
 end
 
----Pick the most useful line out of a failed command's output.
+---The last error line in some legendary output, if it printed one.
 ---@param output string
----@param fallback string
----@return string
-local function last_error(output, fallback)
+---@return string|nil
+function legendary.last_error(output)
   local last
   for line in output:gmatch("[^\r\n]+") do
     if line:find("ERROR:") or line:find("CRITICAL:") then last = utils.trim(line) end
   end
-  return last or fallback
+  return last
 end
 
 -- Status ----------------------------------------------------------------------
@@ -234,10 +256,8 @@ function legendary.authenticate(code)
   -- before trying the new code, so getting this wrong signs the user out rather
   -- than leaving them as they were. Hence the wording.
   return false,
-    last_error(
-      output,
-      "That code didn't work - it may have expired or already been used. Press Sign in for a fresh one."
-    )
+    legendary.last_error(output)
+      or "That code didn't work, it may have expired or already been used. Press Sign in for a fresh one."
 end
 
 ---Sign out, so the next sign in starts clean.

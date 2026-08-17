@@ -1,6 +1,7 @@
 import { logger } from "../index";
 import rpc, { type EpicGame } from "../rpc";
 import * as appIds from "./app-ids";
+import { createEmitter } from "./emitter";
 
 // An in-memory mirror of the backend's library, indexed by both keys we look
 // things up by. The install state patch runs inside Steam's own render path, so
@@ -10,12 +11,9 @@ import * as appIds from "./app-ids";
 const byAppName = new Map<string, EpicGame>();
 const byAppId = new Map<number, EpicGame>();
 
-/** Called whenever the library changes, so anything showing it can repaint. */
-const listeners = new Set<() => void>();
-
-function notify() {
-  for (const listener of listeners) listener();
-}
+/** Fires whenever the library changes, so anything showing it can repaint. */
+const emitter = createEmitter();
+export const subscribe = emitter.subscribe;
 
 function reindex(games: EpicGame[]) {
   byAppName.clear();
@@ -27,7 +25,7 @@ function reindex(games: EpicGame[]) {
     if (appId !== undefined) byAppId.set(appId, game);
   }
 
-  notify();
+  emitter.emit();
 }
 
 /** Re-read the appid mapping without refetching the library from the backend. */
@@ -37,13 +35,6 @@ export function reindexAppIds() {
 
 export function getByAppId(appId: number): EpicGame | undefined {
   return byAppId.get(appId);
-}
-
-export function subscribe(listener: () => void) {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
 }
 
 /**

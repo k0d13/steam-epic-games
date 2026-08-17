@@ -1,6 +1,5 @@
+local cache = require("cache")
 local egl = require("egl")
-local fs = require("fs")
-local json = require("json")
 local legendary = require("legendary")
 local logger = require("logger")
 local utils = require("utils")
@@ -62,14 +61,9 @@ end
 
 ---Read the cached library from disk, if there is one.
 function library.load()
-  if not fs.is_file(CACHE_PATH) then
+  local decoded = cache.read(CACHE_PATH, "library")
+  if not decoded then
     logger:info("No cached library yet")
-    return
-  end
-
-  local ok, decoded = pcall(json.decode, utils.read_file(CACHE_PATH) or "")
-  if not ok or type(decoded) ~= "table" then
-    logger:warn("Cached library is unreadable, ignoring it")
     return
   end
 
@@ -78,33 +72,47 @@ function library.load()
   logger:info("Loaded " .. #games .. " games from cache")
 end
 
----Write the library to disk through a temp file, so a crash mid-write can't
----leave a truncated cache behind for the next boot to fail on.
 local function save()
-  fs.create_directories(fs.parent_path(CACHE_PATH))
-
-  local temp_path = CACHE_PATH .. ".tmp"
-  local ok, err = utils.write_file(temp_path, json.encode({
-    games = games,
-    refreshed_at = refreshed_at,
-  }))
-
-  if not ok then
-    logger:error("Could not write the library cache: " .. tostring(err))
-    return
-  end
-
-  -- rename() won't replace an existing file on Windows. Losing the cache in the
-  -- window between the two is survivable; the next refresh rebuilds it.
-  if fs.is_file(CACHE_PATH) then fs.remove(CACHE_PATH) end
-  if not fs.rename(temp_path, CACHE_PATH) then logger:error("Could not replace the library cache") end
+  cache.write(CACHE_PATH, { games = games, refreshed_at = refreshed_at }, "library")
 end
 
 -- Refresh ---------------------------------------------------------------------
 
----Register any Epic Games Launcher install that `egl-sync` left behind - it
----silently skips manifests it can't fully resolve, see egl.lua - and return the
----installed-game index with those folded in. Normally does nothing at all.
+--- Reads what's on disk. Local, so no round trip to Epic.
+local LIST_INSTALLED = { "list-installed", "--check-updates", "--json" }
+
+---Index one `list-installed` output by app name, so merging stays linear rather
+---than a nested scan over 300+ titles.
+---@param output string
+---@return table<string, table>|nil installed_by_name
+local function index_installed(output)
+  local installed = legendary.decode_json(output)
+  if type(installed) ~= "table" then return nil end
+
+  local by_name = {}
+  for _, game in ipairs(installed) do
+    by_name[game.app_name] = game
+  end
+  return by_name
+end
+
+---Copy the installed half of a game across from `list-installed`.
+---@param game EpicGame
+---@param local_game table|nil
+local function apply_installed(game, local_game)
+  game.installed = local_game ~= nil
+  game.install_path = local_game and local_game.install_path or nil
+  game.install_size = local_game and local_game.install_size or nil
+  game.version = local_game and local_game.version or nil
+  -- legendary has reported this under both names across versions, and guessing
+  -- wrong silently means updates never surface.
+  game.needs_update = local_game ~= nil
+    and (local_game.needs_update == true or local_game.update_available == true)
+end
+
+---Register any Epic Games Launcher install that `egl-sync` left behind, since
+---it silently skips manifests it can't fully resolve (see egl.lua), and return
+---the installed-game index with those folded in. Normally does nothing at all.
 ---@param owned table[] Decoded `legendary list` output
 ---@param installed_by_name table<string, table> app_name -> installed game
 ---@return table<string, table> installed_by_name
@@ -130,17 +138,10 @@ local function import_leftover_egl_installs(owned, installed_by_name)
 
   -- Re-reading the installed list is what picks the imports up, and it rides in
   -- the same batch rather than costing a second terminal flash.
-  table.insert(commands, { "list-installed", "--check-updates", "--json" })
+  table.insert(commands, LIST_INSTALLED)
 
   local outputs = legendary.run_batch(commands)
-  local installed = legendary.decode_json(outputs[#outputs])
-  if type(installed) ~= "table" then return installed_by_name end
-
-  local merged = {}
-  for _, game in ipairs(installed) do
-    merged[game.app_name] = game
-  end
-  return merged
+  return index_installed(outputs[#outputs]) or installed_by_name
 end
 
 ---Is this catalog entry a game, rather than something Epic merely calls one?
@@ -166,23 +167,19 @@ end
 local function merge_game(entry, local_game)
   local metadata = entry.metadata or {}
 
-  return {
+  ---@type EpicGame
+  local game = {
     app_name = entry.app_name,
     title = entry.app_title or metadata.title or entry.app_name,
-    installed = local_game ~= nil,
-    install_path = local_game and local_game.install_path or nil,
-    install_size = local_game and local_game.install_size or nil,
-    version = local_game and local_game.version or nil,
     -- What legendary names the game's directory when it's given no
     -- --game-folder, so the install dialog can show the full path up front.
     folder_name = ((metadata.customAttributes or {}).FolderName or {}).value,
-    -- legendary has reported this under both names across versions, and
-    -- guessing wrong silently means updates never surface.
-    needs_update = local_game ~= nil
-      and (local_game.needs_update == true or local_game.update_available == true),
     art_portrait = pick_art(metadata.keyImages, "portrait"),
     art_hero = pick_art(metadata.keyImages, "hero"),
   }
+
+  apply_installed(game, local_game)
+  return game
 end
 
 ---Ask legendary for the whole library and rebuild from it.
@@ -200,28 +197,15 @@ function library.refresh(force)
   -- One batch, one terminal flash. The EGL sync goes first because it's what
   -- makes Epic Games Launcher installs visible to the list-installed after it.
   -- Its failure is only logged: not having EGL is the normal case.
-  local outputs = legendary.run_batch({
-    egl.sync_args(),
-    list_args,
-    { "list-installed", "--check-updates", "--json" },
-  })
+  local outputs = legendary.run_batch({ egl.sync_args(), list_args, LIST_INSTALLED })
 
   logger:info("Epic Games Launcher sync: " .. utils.trim(outputs[1]))
 
   local owned, err = legendary.decode_json(outputs[2])
   if type(owned) ~= "table" then return nil, err or "legendary returned no library" end
 
-  -- Indexed so the merge below stays linear rather than a nested scan over 300+
-  -- titles.
-  local installed_by_name = {}
-  local installed = legendary.decode_json(outputs[3])
-  if type(installed) == "table" then
-    for _, game in ipairs(installed) do
-      installed_by_name[game.app_name] = game
-    end
-  end
-
-  installed_by_name = import_leftover_egl_installs(owned, installed_by_name)
+  local installed_by_name =
+    import_leftover_egl_installs(owned, index_installed(outputs[3]) or {})
 
   local merged = {}
   for _, entry in ipairs(owned) do
@@ -242,40 +226,29 @@ end
 
 ---Re-read only what's on disk, leaving the catalog alone.
 ---
----This is the after-an-install refresh. `list-installed` is local - no Epic
----round trip, no `--force-refresh`, a fraction of a full refresh - and an
----install can only ever change the installed half of a game we already know
----about. A game the catalog has never seen can't appear this way, which is
----correct: buying a game is what `library.refresh` is for.
+---This is the after-an-install refresh. An install can only ever change the
+---installed half of a game we already know about, so a game the catalog has
+---never seen can't appear this way. That is correct: buying a game is what
+---`library.refresh` is for.
 ---@return EpicGame[]|nil games
 ---@return string? error
 function library.refresh_installed()
   if not legendary.get_binary() then return nil, "legendary binary not found" end
 
-  local output = legendary.run({ "list-installed", "--check-updates", "--json" })
-  local installed, err = legendary.decode_json(output)
-  if type(installed) ~= "table" then return nil, err or "legendary returned no installed games" end
+  local installed_by_name = index_installed(legendary.run(LIST_INSTALLED))
+  if not installed_by_name then return nil, "legendary returned no installed games" end
 
-  local installed_by_name = {}
-  for _, game in ipairs(installed) do
-    installed_by_name[game.app_name] = game
-  end
-
+  local count = 0
   for _, game in ipairs(games) do
-    local local_game = installed_by_name[game.app_name]
-    game.installed = local_game ~= nil
-    game.install_path = local_game and local_game.install_path or nil
-    game.install_size = local_game and local_game.install_size or nil
-    game.version = local_game and local_game.version or nil
-    game.needs_update = local_game ~= nil
-      and (local_game.needs_update == true or local_game.update_available == true)
+    apply_installed(game, installed_by_name[game.app_name])
+    if game.installed then count = count + 1 end
   end
 
   -- refreshed_at is left where it was on purpose: it means "when did we last
   -- ask Epic", which this didn't.
   save()
 
-  logger:info("Refreshed installs: " .. #installed .. " on disk")
+  logger:info("Refreshed installs: " .. count .. " on disk")
   return games
 end
 

@@ -1,4 +1,5 @@
 import rpc, { type GameSize } from "../rpc";
+import { createEmitter } from "./emitter";
 
 // Sizes are read one game at a time, off the back of a Steam render that needs
 // a synchronous answer and can't wait several seconds for Epic. So everything
@@ -9,7 +10,9 @@ import rpc, { type GameSize } from "../rpc";
 const known = new Map<string, GameSize | null>();
 const pending = new Set<string>();
 
-const listeners = new Set<() => void>();
+/** Fires when a size arrives, so whatever is showing it can repaint. */
+const emitter = createEmitter();
+export const subscribe = emitter.subscribe;
 
 /** The size of a game, if we already have it. Never blocks and never fetches. */
 export function get(appName: string): GameSize | undefined {
@@ -31,16 +34,8 @@ export function ensure(appName: string) {
     // A miss is usually Epic being unreachable. Recorded either way: retrying
     // on every render would mean a subprocess per frame.
     known.set(appName, size ?? null);
-    if (size) for (const listener of listeners) listener();
+    if (size) emitter.emit();
   });
-}
-
-/** Called when a size arrives, so whatever is showing it can repaint. */
-export function subscribe(listener: () => void) {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
 }
 
 /**

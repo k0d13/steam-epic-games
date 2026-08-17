@@ -1,15 +1,14 @@
-local fs = require("fs")
-local json = require("json")
+local disk = require("cache")
 local legendary = require("legendary")
 local logger = require("logger")
 local utils = require("utils")
 
 -- How much room a game needs before it's installed. Steam shows this next to
--- the Install button, and it's the one number `legendary list` doesn't carry -
--- only `legendary info` does, and that fetches the game's manifest from Epic,
--- so it costs a subprocess and a few seconds per title. Doing that for 200
--- games to fill in a field the user sees one game at a time is not worth it,
--- so this is asked for a game at a time and cached forever.
+-- the Install button, and it's the one number `legendary list` doesn't carry.
+-- Only `legendary info` does, and that fetches the game's manifest from Epic,
+-- so it costs a subprocess and a few seconds per title. Asked for a game at a
+-- time and cached forever rather than filled in for 200 games the user only
+-- ever sees one at a time.
 
 local sizes = {}
 
@@ -29,32 +28,11 @@ local loaded = false
 local function load()
   if loaded then return end
   loaded = true
-
-  if not fs.is_file(CACHE_PATH) then return end
-
-  local ok, decoded = pcall(json.decode, utils.read_file(CACHE_PATH) or "")
-  if not ok or type(decoded) ~= "table" then
-    logger:warn("Cached sizes are unreadable, ignoring them")
-    return
-  end
-
-  cache = decoded
+  cache = disk.read(CACHE_PATH, "sizes") or {}
 end
 
----Same temp-file dance as the library cache, for the same reason: a crash
----mid-write must not leave a truncated document for the next boot to choke on.
 local function save()
-  fs.create_directories(fs.parent_path(CACHE_PATH))
-
-  local temp_path = CACHE_PATH .. ".tmp"
-  local ok, err = utils.write_file(temp_path, json.encode(cache))
-  if not ok then
-    logger:error("Could not write the size cache: " .. tostring(err))
-    return
-  end
-
-  if fs.is_file(CACHE_PATH) then fs.remove(CACHE_PATH) end
-  if not fs.rename(temp_path, CACHE_PATH) then logger:error("Could not replace the size cache") end
+  disk.write(CACHE_PATH, cache, "sizes")
 end
 
 ---What one game needs on disk, from the cache if we've ever asked before.
