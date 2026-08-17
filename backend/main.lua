@@ -23,6 +23,11 @@ GetLibrary = RPC.GetLibrary
 GetLaunchCommand = RPC.GetLaunchCommand
 GetGameSize = RPC.GetGameSize
 PlaceIcon = RPC.PlaceIcon
+StartInstall = RPC.StartInstall
+StartUninstall = RPC.StartUninstall
+GetJobs = RPC.GetJobs
+PauseJob = RPC.PauseJob
+CancelJob = RPC.CancelJob
 
 local function on_load()
   -- Cache only, so the frontend's first GetLibrary is answered from disk rather

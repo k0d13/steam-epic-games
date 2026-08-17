@@ -1,5 +1,6 @@
 import { callOriginal, replacePatch } from "@steambrew/client";
 import { logger } from "../index";
+import * as jobs from "../state/jobs";
 import * as library from "../state/library";
 import * as sizes from "../state/sizes";
 
@@ -60,10 +61,23 @@ let verified = false;
  * Rewrite one app's details to match what Epic says. Installed games are left
  * alone: Steam's own answer for them is already "there is content on disk",
  * which is true, and the row is meant to be hidden then anyway.
+ *
+ * A game part-way through an install counts as installed for this purpose.
+ * Steam drops the row the moment its own download starts - bytes on disk are
+ * local content - and that's what stops the play bar shifting under the cursor
+ * as the progress bar appears.
  */
 function apply(details: AppDetails) {
   const game = library.getByAppId(details.unAppID);
   if (!game || game.installed) return;
+
+  // Written, not skipped: refreshAll re-applies to details we already corrected,
+  // so leaving the field alone would leave our own `false` in place.
+  const job = jobs.get(game.appName);
+  if (job?.kind === "install" && (job.state === "running" || job.state === "paused")) {
+    details.bHasAnyLocalContent = true;
+    return;
+  }
 
   details.bHasAnyLocalContent = false;
 

@@ -63,3 +63,20 @@ export async function load(refresh = false, force = false) {
 
   return result;
 }
+
+/**
+ * Re-read what's installed on disk and repaint. This is what an install or an
+ * uninstall finishing calls: the catalog can't have changed, so it skips the
+ * trip to Epic that `load(true)` makes.
+ */
+export async function loadInstalled() {
+  const result = await rpc.GetInstalled();
+
+  if (!result.ok) {
+    logger.debug("Failed to re-read the installed games", result.error);
+    return result;
+  }
+
+  reindex(result.games);
+  return result;
+}

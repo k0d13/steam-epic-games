@@ -1,4 +1,5 @@
 local grid = require("grid")
+local jobs = require("jobs")
 local json = require("json")
 local legendary = require("legendary")
 local library = require("library")
@@ -75,12 +76,19 @@ end
 ---for a refresh - a cold `legendary list` hits Epic and takes a few seconds on a
 ---large account, so it is never done behind the user's back. Pass `refresh` to
 ---read it, and `force` to also bypass legendary's own catalog cache.
+---
+---`installed` is the cheap middle setting: it re-reads what's on disk without
+---going out to Epic at all, which is everything an install can have changed.
 ---@param payload string
 ---@return string
 function RPC.GetLibrary(payload)
   local wrapped_func = rpcmethod(function(data)
     local games, err = library.get()
-    if data.refresh then games, err = library.refresh(data.force == true) end
+    if data.installed then
+      games, err = library.refresh_installed()
+    elseif data.refresh then
+      games, err = library.refresh(data.force == true)
+    end
 
     if not games then return { ok = false, error = err } end
     return { ok = true, games = games, refreshed_at = library.get_refreshed_at() }
@@ -125,6 +133,72 @@ function RPC.GetGameSize(payload)
     local size, err = sizes.get(data.app_name, data.refresh == true)
     if not size then return { ok = false, error = err } end
     return { ok = true, disk = size.disk, download = size.download }
+  end)
+  return wrapped_func(payload)
+end
+
+-- Installs --------------------------------------------------------------------
+
+---Start installing, updating or resuming one game.
+---
+---Returns as soon as the job is spawned - the install itself runs detached, and
+---its progress is read back with GetJobs. Starting a game that is already
+---installing is a no-op that returns the running job.
+---@param payload string
+---@return string
+function RPC.StartInstall(payload)
+  local wrapped_func = rpcmethod(function(data)
+    local job, err = jobs.install(data.app_name, data.base_path, data.game_folder)
+    if not job then return { ok = false, error = err } end
+    return { ok = true, job = job }
+  end)
+  return wrapped_func(payload)
+end
+
+---Remove a game from disk. The Steam shortcut is left alone - keeping
+---uninstalled games in the library is the point of the plugin.
+---@param payload string
+---@return string
+function RPC.StartUninstall(payload)
+  local wrapped_func = rpcmethod(function(data)
+    local job, err = jobs.uninstall(data.app_name)
+    if not job then return { ok = false, error = err } end
+    return { ok = true, job = job }
+  end)
+  return wrapped_func(payload)
+end
+
+---Every install or uninstall we know about, running or finished.
+---
+---This is what the frontend polls while something is downloading, so it stays
+---cheap: the runner writes its own progress to a small file and this only reads
+---it back.
+---@param payload string
+---@return string
+function RPC.GetJobs(payload)
+  local wrapped_func = rpcmethod(function()
+    return { ok = true, jobs = jobs.list() }
+  end)
+  return wrapped_func(payload)
+end
+
+---Stop a running install, keeping what's already downloaded. legendary has no
+---pause of its own, so this kills it; StartInstall is the resume.
+---@param payload string
+---@return string
+function RPC.PauseJob(payload)
+  local wrapped_func = rpcmethod(function(data)
+    return { ok = jobs.pause(data.app_name) }
+  end)
+  return wrapped_func(payload)
+end
+
+---Stop a job and forget it. What's on disk is left where it is.
+---@param payload string
+---@return string
+function RPC.CancelJob(payload)
+  local wrapped_func = rpcmethod(function(data)
+    return { ok = jobs.cancel(data.app_name) }
   end)
   return wrapped_func(payload)
 end

@@ -236,6 +236,45 @@ function library.refresh(force)
   return games
 end
 
+---Re-read only what's on disk, leaving the catalog alone.
+---
+---This is the after-an-install refresh. `list-installed` is local - no Epic
+---round trip, no `--force-refresh`, a fraction of a full refresh - and an
+---install can only ever change the installed half of a game we already know
+---about. A game the catalog has never seen can't appear this way, which is
+---correct: buying a game is what `library.refresh` is for.
+---@return EpicGame[]|nil games
+---@return string? error
+function library.refresh_installed()
+  if not legendary.get_binary() then return nil, "legendary binary not found" end
+
+  local output = legendary.run({ "list-installed", "--check-updates", "--json" })
+  local installed, err = legendary.decode_json(output)
+  if type(installed) ~= "table" then return nil, err or "legendary returned no installed games" end
+
+  local installed_by_name = {}
+  for _, game in ipairs(installed) do
+    installed_by_name[game.app_name] = game
+  end
+
+  for _, game in ipairs(games) do
+    local local_game = installed_by_name[game.app_name]
+    game.installed = local_game ~= nil
+    game.install_path = local_game and local_game.install_path or nil
+    game.install_size = local_game and local_game.install_size or nil
+    game.version = local_game and local_game.version or nil
+    game.needs_update = local_game ~= nil
+      and (local_game.needs_update == true or local_game.update_available == true)
+  end
+
+  -- refreshed_at is left where it was on purpose: it means "when did we last
+  -- ask Epic", which this didn't.
+  save()
+
+  logger:info("Refreshed installs: " .. #installed .. " on disk")
+  return games
+end
+
 ---The library as we last saw it, which is empty until something refreshes it.
 ---
 ---Deliberately never refreshes on its own: this is what answers the frontend's

@@ -1,6 +1,7 @@
 import { beforePatch, EDisplayStatus } from "@steambrew/client";
 import { forceFakeLocationChange, NON_STEAM_APP_APPID_MASK, Steam } from "steambrew-utils";
 import { logger } from "../index";
+import * as jobs from "../state/jobs";
 import * as library from "../state/library";
 
 // This is the whole trick.
@@ -24,6 +25,7 @@ let verified = false;
 interface PerClientData {
   installed?: boolean;
   display_status?: number;
+  status_percentage?: number;
 }
 
 interface MutableOverview {
@@ -45,12 +47,37 @@ function applyInstallState(overview: Steam.AppOverview) {
 
   const app = overview as unknown as MutableOverview;
 
+  // Steam derives the whole install UI - the button's label and icon, the
+  // progress bar, whether Pause is offered - from these two fields, so a
+  // running job needs no UI of its own. `Downloading` is deliberate over
+  // `Installing`: it's the status Steam's own progress bar reads a percentage
+  // for, where Installing draws an indeterminate spinner.
+  const job = jobs.get(game.appName);
+  const downloading = job?.kind === "install" && (job.state === "running" || job.state === "paused");
+
   for (const data of [app.local_per_client_data, ...(app.per_client_data ?? [])]) {
     if (!data) continue;
+
+    if (downloading) {
+      data.installed = false;
+      data.display_status =
+        job.state === "paused" ? EDisplayStatus.DownloadPaused : EDisplayStatus.Downloading;
+      data.status_percentage = job.progress?.percent ?? 0;
+      continue;
+    }
+
     data.installed = game.installed;
     data.display_status = game.installed
       ? EDisplayStatus.ReadyToLaunch
       : EDisplayStatus.ReadyToInstall;
+    data.status_percentage = 0;
+  }
+
+  if (downloading) {
+    // Not `size_on_disk`: a half-downloaded game isn't installed, and setting it
+    // would put it in the automatic Installed collection mid-download.
+    app.size_on_disk = undefined;
+    return;
   }
 
   // The automatic "Installed" collection tests size_on_disk rather than the

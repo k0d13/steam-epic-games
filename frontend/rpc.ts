@@ -50,6 +50,31 @@ export interface LaunchCommand {
   startDir: string;
 }
 
+/** How far along a running install is. Absent until legendary's first progress line. */
+export interface JobProgress {
+  percent: number;
+  downloaded: number;
+  total: number;
+  /** "00:10:00", straight from legendary. */
+  eta?: string;
+  elapsed?: string;
+  /** MiB/s, raw off the wire. */
+  speed?: number;
+  updatedAt: number;
+}
+
+/** One detached legendary install or uninstall. */
+export interface Job {
+  appName: string;
+  kind: "install" | "uninstall";
+  /** `paused` is a killed runner - legendary has no pause, so resuming re-runs install. */
+  state: "running" | "paused" | "done" | "failed";
+  startedAt: number;
+  exitCode?: number;
+  progress?: JobProgress;
+  error?: string;
+}
+
 // The backend speaks snake_case because that's what legendary and Lua both use.
 // Converting once here keeps the rest of the frontend in normal TS casing.
 
@@ -126,6 +151,44 @@ export interface LibraryResult {
   refreshedAt: number;
 }
 
+interface RawJob {
+  app_name: string;
+  kind: "install" | "uninstall";
+  state: "running" | "paused" | "done" | "failed";
+  started_at: number;
+  exit_code?: number;
+  error?: string;
+  progress?: {
+    percent: number;
+    downloaded: number;
+    total: number;
+    eta?: string;
+    elapsed?: string;
+    speed?: number;
+    updated_at: number;
+  };
+}
+
+function toJob(raw: RawJob): Job {
+  return {
+    appName: raw.app_name,
+    kind: raw.kind,
+    state: raw.state,
+    startedAt: raw.started_at,
+    exitCode: raw.exit_code,
+    error: raw.error,
+    progress: raw.progress && {
+      percent: raw.progress.percent,
+      downloaded: raw.progress.downloaded,
+      total: raw.progress.total,
+      eta: raw.progress.eta,
+      elapsed: raw.progress.elapsed,
+      speed: raw.progress.speed,
+      updatedAt: raw.progress.updated_at,
+    },
+  };
+}
+
 export class RPC {
   /**
    * Is legendary usable, and is an Epic account signed in? Cached in the backend
@@ -168,6 +231,26 @@ export class RPC {
     };
   }
 
+  /**
+   * Re-read only what's installed on disk. No round trip to Epic, so it costs a
+   * fraction of a full `GetLibrary(true)` - this is the refresh for after an
+   * install or an uninstall, where the catalog can't have changed.
+   */
+  async GetInstalled(): Promise<LibraryResult> {
+    const raw = await call<RawLibrary>("RPC.GetLibrary", { installed: true });
+
+    // Lua has one table type, so an empty library arrives as `{}` - an object
+    // with no `map` on it, and a TypeError on every fresh install.
+    const games = Array.isArray(raw.games) ? raw.games : [];
+
+    return {
+      ok: raw.ok,
+      error: raw.error,
+      games: games.map(toGame),
+      refreshedAt: raw.refreshed_at ?? 0,
+    };
+  }
+
   /** What a shortcut for this game should run. */
   async GetLaunchCommand(appName: string): Promise<LaunchCommand | undefined> {
     const raw = await call<{ ok: boolean; exe?: string; arguments?: string; start_dir?: string }>(
@@ -196,6 +279,60 @@ export class RPC {
     }
 
     return { disk: raw.disk, download: raw.download ?? raw.disk };
+  }
+
+  /**
+   * Start installing, updating or resuming a game. Returns as soon as the job
+   * is spawned - watch it with `GetJobs`. `basePath` is the parent directory,
+   * `gameFolder` the directory name inside it, matching legendary's own split.
+   */
+  async StartInstall(appName: string, basePath?: string, gameFolder?: string) {
+    const raw = await call<{ ok: boolean; job?: RawJob; error?: string }>("RPC.StartInstall", {
+      app_name: appName,
+      base_path: basePath,
+      game_folder: gameFolder,
+    });
+
+    if (!raw.ok || !raw.job) {
+      logger.info("Could not start the install", { appName, error: raw.error });
+      return undefined;
+    }
+
+    return toJob(raw.job);
+  }
+
+  /** Remove a game from disk, leaving its Steam shortcut in place. */
+  async StartUninstall(appName: string) {
+    const raw = await call<{ ok: boolean; job?: RawJob; error?: string }>("RPC.StartUninstall", {
+      app_name: appName,
+    });
+
+    if (!raw.ok || !raw.job) {
+      logger.info("Could not start the uninstall", { appName, error: raw.error });
+      return undefined;
+    }
+
+    return toJob(raw.job);
+  }
+
+  /** Every install and uninstall the backend knows about. Cheap enough to poll. */
+  async GetJobs(): Promise<Job[]> {
+    const raw = await call<{ ok: boolean; jobs?: RawJob[] }>("RPC.GetJobs");
+
+    // Lua has one table type, so no jobs at all arrives as `{}`, not `[]`.
+    return Array.isArray(raw.jobs) ? raw.jobs.map(toJob) : [];
+  }
+
+  /** Stop an install, keeping the partial download. `StartInstall` resumes it. */
+  async PauseJob(appName: string) {
+    const raw = await call<{ ok: boolean }>("RPC.PauseJob", { app_name: appName });
+    return raw.ok;
+  }
+
+  /** Stop a job and forget it. Whatever is on disk stays there. */
+  async CancelJob(appName: string) {
+    const raw = await call<{ ok: boolean }>("RPC.CancelJob", { app_name: appName });
+    return raw.ok;
   }
 
   /**

@@ -4,8 +4,11 @@ import { Logger } from "steambrew-utils/logger";
 import { AuthPanel } from "./components/auth-panel";
 import { LibraryPanel } from "./components/library-panel";
 import * as appDetails from "./patches/app-details";
+import * as downloadOverview from "./patches/download-overview";
 import * as installState from "./patches/install-state";
-import { type EpicStatus } from "./rpc";
+import * as installs from "./patches/installs";
+import rpc, { type EpicStatus } from "./rpc";
+import * as jobs from "./state/jobs";
 import * as library from "./state/library";
 
 export const logger = new Logger("Steam Epic Games");
@@ -44,6 +47,7 @@ export default definePlugin(async () => {
   for (const [name, patch] of [
     ["install state", installState.register],
     ["app details", appDetails.register],
+    ["installs", installs.register],
   ] as const) {
     try {
       unpatches.push(patch());
@@ -54,13 +58,24 @@ export default definePlugin(async () => {
 
   // Steam builds its overviews and its details once and keeps them, so every
   // change to the library has to ask for a repaint. It is the only thing that does.
-  const unsubscribe = library.subscribe(() => {
+  const repaint = () => {
+    downloadOverview.sync();
     installState.refreshAll();
     appDetails.refreshAll();
-  });
+  };
+
+  // A running install repaints for the same reason, once a second: the tile's
+  // progress bar is read off the overview, so the overview has to be rewritten
+  // for it to move.
+  const unsubscribe = library.subscribe(repaint);
+  const unsubscribeJobs = jobs.subscribe(repaint);
 
   window.addEventListener("beforeunload", () => {
     unsubscribe();
+    unsubscribeJobs();
+    // The overview is Steam's, and a reload with our appid left in it would
+    // show a download that no longer has anything writing to it.
+    downloadOverview.release();
     for (const unpatch of unpatches) unpatch();
   });
 
@@ -68,6 +83,15 @@ export default definePlugin(async () => {
   // resolves, so it can't be a `legendary list` against Epic. The panel asks for
   // the real thing once it's on screen.
   await library.load();
+
+  // An install outlives a Steam restart - it's a detached process - so pick up
+  // anything still running from last time and start polling it again.
+  await jobs.refresh();
+
+  // Temporary: there's no install UI yet, so this is how installs get driven -
+  // `epicGames.StartInstall("Fortnite")` from the SharedJSContext console.
+  // Remove once the install dialog exists.
+  (window as unknown as { epicGames: typeof rpc }).epicGames = rpc;
 
   logger.info("Plugin loaded");
 
