@@ -66,7 +66,7 @@ function apply(jobs: Job[]) {
   // A job that has vanished from the backend was cancelled, and cancelling
   // leaves whatever it had already written on disk - so that counts too.
   const seen = new Set(jobs.map((job) => job.appName));
-  for (const appName of [...byAppName.keys()]) {
+  for (const appName of byAppName.keys()) {
     if (seen.has(appName)) continue;
     byAppName.delete(appName);
     finished = true;
@@ -84,7 +84,7 @@ async function poll() {
   } catch (reason: unknown) {
     // The backend going quiet mid-download shouldn't leave a dead poller
     // behind: try again on the next tick rather than giving up on the install.
-    logger.debug("GetJobs failed", reason);
+    logger.warn("GetJobs failed", reason);
     schedule();
     return;
   }

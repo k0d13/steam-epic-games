@@ -98,7 +98,7 @@ export function AuthPanel({ onStatus }: AuthPanelProps) {
         if (!cancelled) applyStatus(result);
       })
       .catch((reason: unknown) => {
-        logger.info("GetStatus failed", reason);
+        logger.warn("GetStatus failed", reason);
         if (!cancelled) setUnreachable(true);
       });
     return () => {

@@ -53,10 +53,23 @@ function applyInstallState(overview: Steam.AppOverview) {
   // `Installing`: it's the status Steam's own progress bar reads a percentage
   // for, where Installing draws an indeterminate spinner.
   const job = jobs.get(game.appName);
-  const downloading = job?.kind === "install" && (job.state === "running" || job.state === "paused");
+  const downloading =
+    job?.kind === "install" && (job.state === "running" || job.state === "paused");
+  // legendary's uninstall is a directory delete, so there's no percentage worth
+  // showing - just the status, which Steam draws as its own spinner.
+  const uninstalling = job?.kind === "uninstall" && job.state === "running";
 
   for (const data of [app.local_per_client_data, ...(app.per_client_data ?? [])]) {
     if (!data) continue;
+
+    if (uninstalling) {
+      // Still installed until the delete finishes, and saying otherwise would
+      // pull the game out of the Installed collection while it's still there.
+      data.installed = true;
+      data.display_status = EDisplayStatus.Uninstalling;
+      data.status_percentage = 0;
+      continue;
+    }
 
     if (downloading) {
       data.installed = false;

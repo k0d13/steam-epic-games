@@ -7,6 +7,7 @@ import * as appDetails from "./patches/app-details";
 import * as downloadOverview from "./patches/download-overview";
 import * as installState from "./patches/install-state";
 import * as installs from "./patches/installs";
+import * as manageMenu from "./patches/manage-menu";
 import rpc, { type EpicStatus } from "./rpc";
 import * as jobs from "./state/jobs";
 import * as library from "./state/library";
@@ -48,11 +49,12 @@ export default definePlugin(async () => {
     ["install state", installState.register],
     ["app details", appDetails.register],
     ["installs", installs.register],
+    ["manage menu", manageMenu.register],
   ] as const) {
     try {
       unpatches.push(patch());
     } catch (e) {
-      logger.info(`Could not register the ${name} patch`, e);
+      logger.error(`Could not register the ${name} patch`, e);
     }
   }
 

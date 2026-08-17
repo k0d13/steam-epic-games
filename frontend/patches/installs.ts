@@ -25,6 +25,7 @@ function epicAppName(appId: number): string | undefined {
  */
 interface Installs {
   OpenInstallWizard(appIds: number[]): void;
+  OpenUninstallWizard(appIds: number[], bConfirm: boolean): void;
 }
 
 interface Downloads {
@@ -56,6 +57,24 @@ export function register() {
       for (const appName of ours) void jobs.install(appName);
       return undefined;
     }),
+
+    // What Steam's own uninstall dialog calls when you confirm it. Patching
+    // here rather than at the menu item means the dialog is Steam's, wording
+    // and layout and all, and anything else that routes through it works too.
+    replacePatch(
+      bridge.Installs,
+      "OpenUninstallWizard",
+      ([appIds, confirmed]: [number[], boolean]) => {
+        const ours = (appIds ?? []).map(epicAppName).filter((name) => name !== undefined);
+        if (ours.length === 0) return callOriginal;
+
+        const theirs = (appIds ?? []).filter((appId) => epicAppName(appId) === undefined);
+        if (theirs.length > 0) bridge.Installs.OpenUninstallWizard(theirs, confirmed);
+
+        for (const appName of ours) void jobs.uninstall(appName);
+        return undefined;
+      },
+    ),
 
     // Resume, and the Download button on an update. legendary has no resume of
     // its own: `install` against a partial download continues it.

@@ -1,6 +1,6 @@
 import { logger } from "../index";
-import * as jobs from "../state/jobs";
 import * as appIds from "../state/app-ids";
+import * as jobs from "../state/jobs";
 
 // The app page's progress bar does not come from the overview's
 // `status_percentage`, whatever the tile in the grid does.

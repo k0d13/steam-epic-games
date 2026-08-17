@@ -54,7 +54,7 @@ export async function load(refresh = false, force = false) {
   const result = await rpc.GetLibrary(refresh, force);
 
   if (!result.ok) {
-    logger.debug("Failed to load the Epic library", result.error);
+    logger.error("Failed to load the Epic library", result.error);
     return result;
   }
 
@@ -73,7 +73,7 @@ export async function loadInstalled() {
   const result = await rpc.GetInstalled();
 
   if (!result.ok) {
-    logger.debug("Failed to re-read the installed games", result.error);
+    logger.warn("Failed to re-read the installed games", result.error);
     return result;
   }
 

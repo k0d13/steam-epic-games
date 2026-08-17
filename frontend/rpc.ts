@@ -294,7 +294,7 @@ export class RPC {
     });
 
     if (!raw.ok || !raw.job) {
-      logger.info("Could not start the install", { appName, error: raw.error });
+      logger.warn("Could not start the install", { appName, error: raw.error });
       return undefined;
     }
 
@@ -308,7 +308,7 @@ export class RPC {
     });
 
     if (!raw.ok || !raw.job) {
-      logger.info("Could not start the uninstall", { appName, error: raw.error });
+      logger.warn("Could not start the uninstall", { appName, error: raw.error });
       return undefined;
     }
 

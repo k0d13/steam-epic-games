@@ -86,7 +86,7 @@ async function createShortcut(game: EpicGame): Promise<number | undefined> {
   );
 
   if (typeof appId !== "number" || appId === 0) {
-    logger.debug("Steam refused to create a shortcut", { appName: game.appName, appId });
+    logger.warn("Steam refused to create a shortcut", { appName: game.appName, appId });
     return undefined;
   }
 

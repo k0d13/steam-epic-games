@@ -68,7 +68,7 @@ export function LibraryPanel() {
       // something changed at Epic's end that legendary's catalog cache misses.
       result = await library.load(refresh, refresh);
     } catch (reason: unknown) {
-      logger.info("GetLibrary failed", reason);
+      logger.warn("GetLibrary failed", reason);
       setError("The plugin's backend didn't respond.");
       setLoading(false);
       return;
