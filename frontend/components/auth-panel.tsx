@@ -1,15 +1,7 @@
-import { Button, Field, findClassModule, TextField } from "@steambrew/client";
+import { DialogButton, Field, TextField } from "@steambrew/client";
 import { useCallback, useEffect, useState } from "react";
 import { logger } from "../index";
 import rpc, { type EpicStatus } from "../rpc";
-
-// `Button` is defined as `DialogButton.render({}).type`, which keeps only the
-// bare <button> inside the wrapper - so none of the Steam classes DialogButton
-// would have applied come along, and it renders unstyled. Hence buttonClassName
-// below, pulled off the settings module so the buttons still look like Steam's.
-const SettingsStyles = findClassModule((m) => m.SectionTopLine)!;
-
-const buttonClassName = `${SettingsStyles.SettingsDialogButton} ${SettingsStyles.ShortcutChange} DialogButton`;
 
 /**
  * Open a URL outside Steam.
@@ -62,7 +54,15 @@ export function extractCode(pasted: string) {
   );
 }
 
-export function AuthPanel() {
+export interface AuthPanelProps {
+  /**
+   * Called with every status this panel reads, so what's below it - the library,
+   * which only means anything once there's an account - can follow along.
+   */
+  onStatus?: (status: EpicStatus) => void;
+}
+
+export function AuthPanel({ onStatus }: AuthPanelProps) {
   const [status, setStatus] = useState<EpicStatus | undefined>(undefined);
 
   const [busy, setBusy] = useState(false);
@@ -76,6 +76,16 @@ export function AuthPanel() {
   // included - looking in the wrong place entirely.
   const [unreachable, setUnreachable] = useState(false);
 
+  // Every path that learns a status goes through this, so nothing above can be
+  // told about a sign in and miss the sign out that follows it.
+  const applyStatus = useCallback(
+    (next: EpicStatus | undefined) => {
+      setStatus(next);
+      if (next) onStatus?.(next);
+    },
+    [onStatus],
+  );
+
   // The catch matters more than it looks. Without it a backend that throws -
   // or never answers - leaves `status` undefined forever, and the panel sits on
   // "Checking for legendary..." with nothing to say why. Failing visibly is the
@@ -85,7 +95,7 @@ export function AuthPanel() {
     rpc
       .GetStatus()
       .then((result) => {
-        if (!cancelled) setStatus(result);
+        if (!cancelled) applyStatus(result);
       })
       .catch((reason: unknown) => {
         logger.info("GetStatus failed", reason);
@@ -94,7 +104,7 @@ export function AuthPanel() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [applyStatus]);
 
   const onSignIn = useCallback(() => {
     const opened = openInBrowser(status?.loginUrl ?? "https://legendary.gl/epiclogin");
@@ -116,18 +126,18 @@ export function AuthPanel() {
     // The code is single use, so clear it - pasting it again would only fail.
     setCode("");
     setAwaitingCode(false);
-    setStatus(result.status);
+    applyStatus(result.status);
     setBusy(false);
-  }, [code]);
+  }, [applyStatus, code]);
 
   const onSignOut = useCallback(async () => {
     setBusy(true);
     setError(undefined);
 
     const result = await rpc.SignOut();
-    setStatus(result.status);
+    applyStatus(result.status);
     setBusy(false);
-  }, []);
+  }, [applyStatus]);
 
   if (unreachable) {
     return (
@@ -139,7 +149,9 @@ export function AuthPanel() {
     );
   }
 
-  if (!status) return <Field description="Checking for legendary..." bottomSeparator="none" />;
+  if (!status) {
+    return <Field description="Checking for legendary..." bottomSeparator="none" />;
+  }
 
   if (!status.available) {
     return (
@@ -156,11 +168,13 @@ export function AuthPanel() {
       <Field
         label="Epic account"
         description={`Signed in as ${status.account}`}
-        bottomSeparator="none"
+        childrenContainerWidth="min"
+        // The library rows render directly below, in the same section.
+        bottomSeparator="standard"
       >
-        <Button className={buttonClassName} disabled={busy} onClick={onSignOut}>
+        <DialogButton disabled={busy} onClick={onSignOut}>
           Sign out
-        </Button>
+        </DialogButton>
       </Field>
     );
   }
@@ -170,11 +184,12 @@ export function AuthPanel() {
       <Field
         label="Epic account"
         description="Not signed in. This opens Epic's login page in your browser."
+        childrenContainerWidth="min"
         bottomSeparator={awaitingCode ? "standard" : "none"}
       >
-        <Button className={buttonClassName} disabled={busy} onClick={onSignIn}>
+        <DialogButton disabled={busy} onClick={onSignIn}>
           Sign in
-        </Button>
+        </DialogButton>
       </Field>
 
       {awaitingCode && (
@@ -198,13 +213,9 @@ export function AuthPanel() {
             placeholder='{"authorizationCode": "..."}'
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCode(e.target.value)}
           />
-          <Button
-            className={buttonClassName}
-            disabled={!code.trim() || busy}
-            onClick={onSubmitCode}
-          >
+          <DialogButton disabled={!code.trim() || busy} onClick={onSubmitCode}>
             {busy ? "Signing in..." : "Continue"}
-          </Button>
+          </DialogButton>
         </Field>
       )}
     </>

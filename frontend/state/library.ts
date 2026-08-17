@@ -1,0 +1,65 @@
+import { logger } from "../index";
+import rpc, { type EpicGame } from "../rpc";
+import * as appIds from "./app-ids";
+
+// An in-memory mirror of the backend's library, indexed by both keys we look
+// things up by. The install state patch runs inside Steam's own render path, so
+// it needs a synchronous answer to "is this one of ours?" rather than an RPC
+// round trip.
+
+const byAppName = new Map<string, EpicGame>();
+const byAppId = new Map<number, EpicGame>();
+
+/** Called whenever the library changes, so anything showing it can repaint. */
+const listeners = new Set<() => void>();
+
+function notify() {
+  for (const listener of listeners) listener();
+}
+
+function reindex(games: EpicGame[]) {
+  byAppName.clear();
+  byAppId.clear();
+
+  for (const game of games) {
+    byAppName.set(game.appName, game);
+    const appId = appIds.getAppId(game.appName);
+    if (appId !== undefined) byAppId.set(appId, game);
+  }
+
+  notify();
+}
+
+/** Re-read the appid mapping without refetching the library from the backend. */
+export function reindexAppIds() {
+  reindex([...byAppName.values()]);
+}
+
+export function getByAppId(appId: number): EpicGame | undefined {
+  return byAppId.get(appId);
+}
+
+export function subscribe(listener: () => void) {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+/**
+ * Load the library from the backend, from its cache unless `refresh` is set - a
+ * cold `legendary list` hits Epic and takes several seconds.
+ */
+export async function load(refresh = false, force = false) {
+  const result = await rpc.GetLibrary(refresh, force);
+
+  if (!result.ok) {
+    logger.debug("Failed to load the Epic library", result.error);
+    return result;
+  }
+
+  reindex(result.games);
+  logger.debug("Loaded the Epic library", { games: result.games.length, refresh });
+
+  return result;
+}

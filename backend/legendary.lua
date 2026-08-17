@@ -21,6 +21,14 @@ local LOGIN_URL = "https://legendary.gl/epiclogin"
 --- this hangs directly off it. See backend/vendor/LICENSE - legendary is GPL-3.0.
 local BINARY = utils.get_backend_path() .. "/vendor/legendary.exe"
 
+---The shipped legendary binary, or nil if it isn't there. Public because a
+---shortcut points *at* it - Steam launches legendary, not the game's own exe.
+---@return string|nil path
+function legendary.get_binary()
+  if not fs.is_file(BINARY) then return nil end
+  return BINARY
+end
+
 -- Commands --------------------------------------------------------------------
 
 ---Quote a single argument for cmd.exe.
@@ -30,46 +38,87 @@ local function quote(arg)
   return '"' .. arg:gsub('"', '\\"') .. '"'
 end
 
----Run one legendary command and block until it exits.
+--- Printed between commands in a batch so their output can be told apart. Long
+--- enough that nothing legendary prints can be mistaken for it - a false match
+--- would split one command's JSON in half.
+local SEPARATOR = "--epic-games-plugin-next--"
+
+---Run several legendary commands, in order, behind one terminal flash.
 ---
 ---legendary is a console application and Steam is a GUI process with no console,
----so every command flashes a terminal on the user's screen. Millennium has no
----way to start a process without one, so that's accepted for now.
----@param args string[] Arguments to legendary, unquoted
----@return string output stdout and stderr together, empty if the binary is missing
----@return integer status -1 if there was nothing to run
-function legendary.run(args)
+---so every exec flashes a terminal on screen, and Millennium has no way to start
+---a process without one. The only lever left is to call it less: one exec per
+---user action rather than one per command.
+---@param arg_lists string[][] Arguments to legendary, unquoted, one list per command
+---@return string[] outputs stdout and stderr together, one per command, empty if the binary is missing
+---@return integer status Exit status of the last command - cmd's chaining loses the rest - or -1 if there was nothing to run
+function legendary.run_batch(arg_lists)
+  local outputs = {}
+  for index = 1, #arg_lists do
+    outputs[index] = ""
+  end
+
   if not fs.is_file(BINARY) then
     logger:error("No legendary binary at " .. BINARY)
-    return "", -1
+    return outputs, -1
   end
 
-  local parts = { quote(BINARY) }
-  for _, arg in ipairs(args) do
-    table.insert(parts, quote(arg))
+  local commands = {}
+  for index, args in ipairs(arg_lists) do
+    local parts = { quote(BINARY) }
+    for _, arg in ipairs(args) do
+      table.insert(parts, quote(arg))
+    end
+
+    -- 2>&1 because legendary writes its own log lines, and every error worth
+    -- showing the user, to stderr - which popen doesn't capture on its own.
+    commands[index] = table.concat(parts, " ") .. " 2>&1"
   end
 
-  -- 2>&1 because legendary writes its own log lines, and every error worth
-  -- showing the user, to stderr - which popen doesn't capture on its own.
-  --
+  -- `&` rather than `&&`: one legendary error in the middle shouldn't silently
+  -- drop everything after it.
+  local line = table.concat(commands, " & echo " .. SEPARATOR .. " & ")
+
   -- The whole line is then wrapped in one more pair of quotes. utils.exec goes
   -- through popen, which runs `cmd /c <line>`, and cmd strips the first and last
   -- quote off that line before parsing it. Without the extra pair it eats the
   -- quotes around the binary and splits the path at its first space - and the
   -- path always has one, since Steam installs to Program Files (x86). The error
   -- is "'C:\Program' is not recognized", printed to a console nobody reads.
-  local command = '"' .. table.concat(parts, " ") .. ' 2>&1"'
-  local output, status = utils.exec(command)
+  local output, status = utils.exec('"' .. line .. '"')
+  logger:info("Exited " .. tostring(status) .. ": " .. line)
 
-  logger:info("Exited " .. tostring(status) .. ": " .. command)
-  return output or "", tonumber(status) or -1
+  -- Split by hand rather than with utils.split, which takes its delimiter a
+  -- character at a time and would cut this into pieces at every dash.
+  local remaining = output or ""
+  for index = 1, #arg_lists do
+    local from, to = remaining:find(SEPARATOR, 1, true)
+    if not from then
+      outputs[index] = remaining
+      break
+    end
+
+    outputs[index] = remaining:sub(1, from - 1)
+    remaining = remaining:sub(to + 1)
+  end
+
+  return outputs, tonumber(status) or -1
+end
+
+---Run one legendary command and block until it exits.
+---@param args string[] Arguments to legendary, unquoted
+---@return string output stdout and stderr together, empty if the binary is missing
+---@return integer status -1 if there was nothing to run
+function legendary.run(args)
+  local outputs, status = legendary.run_batch({ args })
+  return outputs[1] or "", status
 end
 
 ---Decode the JSON a legendary command printed.
 ---@param output string
 ---@return any|nil decoded
 ---@return string? error
-local function decode_json(output)
+function legendary.decode_json(output)
   -- stdout and stderr are merged, so the JSON arrives with legendary's own log
   -- lines mixed in. Those look like "[cli] INFO: Logging in..." - so searching
   -- for the first "[" locks onto the "[cli]" of a log line and decodes that.
@@ -132,7 +181,7 @@ function legendary.get_status(refresh)
   -- `status --json` is the only command that reports the logged in account, and
   -- it reports "<not logged in>" rather than failing when nobody is.
   local output = legendary.run({ "status", "--json" })
-  local decoded, err = decode_json(output)
+  local decoded, err = legendary.decode_json(output)
 
   local account = type(decoded) == "table" and decoded.account or nil
   if account == json.null or account == "<not logged in>" then account = nil end

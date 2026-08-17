@@ -10,6 +10,7 @@ if type(jit) == "table" and type(jit.off) == "function" then
 end
 
 local legendary = require("legendary")
+local library = require("library")
 local logger = require("logger")
 local millennium = require("millennium")
 
@@ -18,8 +19,15 @@ RPC = require("rpc").RPC
 GetStatus = RPC.GetStatus
 SignIn = RPC.SignIn
 SignOut = RPC.SignOut
+GetLibrary = RPC.GetLibrary
+GetLaunchCommand = RPC.GetLaunchCommand
+PlaceIcon = RPC.PlaceIcon
 
 local function on_load()
+  -- Cache only, so the frontend's first GetLibrary is answered from disk rather
+  -- than by going out to Epic. Costs nothing when there's no cache yet.
+  library.load()
+
   millennium.ready()
   logger:info("Backend loaded, waiting for frontend...")
 end
