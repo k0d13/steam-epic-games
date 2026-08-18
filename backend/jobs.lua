@@ -169,17 +169,32 @@ end
 ---@type table<integer, true>|nil
 local live_pids = nil
 
----@return table<integer, true>
+---Every live runner PID, or nil when no usable snapshot could be taken.
+---
+---`tasklist` failing, or answering with something unparseable, is a different
+---answer from "nothing is running". Treating the two the same reports a live
+---install as dead, which is what leaves a download frozen at "Download Paused,
+---100% Complete" until Steam is restarted.
+---@return table<integer, true>|nil
 local function get_live_pids()
   if live_pids then return live_pids end
 
-  live_pids = {}
-  local output = utils.exec('tasklist /FI "IMAGENAME eq powershell.exe" /FO CSV /NH 2>&1') or ""
+  local output = utils.exec('tasklist /FI "IMAGENAME eq powershell.exe" /FO CSV /NH 2>&1')
+  if not output then return nil end
+
+  local found = {}
+  local any = false
   -- CSV rows look like "powershell.exe","1234","Console","1","52,000 K".
   for pid in output:gmatch('"powershell%.exe","(%d+)"') do
-    live_pids[tonumber(pid)] = true
+    found[tonumber(pid)] = true
+    any = true
   end
 
+  -- This is only ever asked while a job with a PID exists, and that job's own
+  -- runner is a powershell.exe, so no rows at all means the answer is wrong.
+  if not any then return nil end
+
+  live_pids = found
   return live_pids
 end
 
@@ -228,8 +243,8 @@ end
 ---
 ---State is derived rather than stored, because the runner can die at any moment
 ---without getting the chance to record anything: an exit code means finished, a
----live PID means running, and a PID that is gone with no exit code means it was
----killed, which is what pause is.
+---live PID means running, and a PID that is gone with no exit code means the
+---runner died - deliberately if pause left its marker behind, otherwise not.
 ---@param dir string
 ---@param meta table
 ---@return Job
@@ -241,8 +256,16 @@ local function build(dir, meta)
   local state
   if exit_code then
     state = exit_code == 0 and "done" or "failed"
+  elseif fs.is_file(dir .. "/paused.txt") then
+    -- Pausing is a kill, so the runner never records anything itself: the
+    -- marker jobs.pause leaves is the only evidence that the missing process
+    -- was meant to be missing.
+    state = "paused"
   elseif pid then
-    state = get_live_pids()[pid] and "running" or "paused"
+    local live = get_live_pids()
+    -- No usable answer about what is running: the last thing known is that this
+    -- job was started, and saying otherwise stops the frontend polling it.
+    state = (live == nil or live[pid]) and "running" or "failed"
   else
     -- The runner hasn't got as far as writing its PID. That's the first half
     -- second of a job, not a problem.
@@ -369,6 +392,9 @@ function jobs.pause(app_name)
   local job = jobs.get(app_name)
   if not job or not job.pid or job.state ~= "running" then return false end
 
+  -- Written before the kill: a read that lands in the gap between the two would
+  -- otherwise see a runner that vanished on its own and call the job failed.
+  utils.write_file(job_dir(app_name) .. "/paused.txt", "1")
   utils.exec("taskkill /F /T /PID " .. job.pid .. " 2>&1")
   logger:info("Paused " .. app_name)
   return true
