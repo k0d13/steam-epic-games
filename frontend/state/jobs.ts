@@ -116,8 +116,20 @@ export async function refresh() {
 }
 
 /** Take a freshly started job on, without waiting for the next poll to see it. */
-function track(appName: string, job: Job | undefined) {
-  if (!job) return undefined;
+async function track(appName: string, job: Job | undefined) {
+  if (!job) {
+    // The call failed, but the backend spawns the runner before it answers, so
+    // the install may well be underway with nothing watching it. Ask what is
+    // actually running rather than leaving the UI on Install for a game that is
+    // downloading.
+    logger.warn("No job came back from the backend", { appName });
+    try {
+      await refresh();
+    } catch (reason: unknown) {
+      logger.warn("Could not read the jobs back", reason);
+    }
+    return get(appName);
+  }
 
   byAppName.set(appName, job);
   emitter.emit();
