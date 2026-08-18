@@ -81,14 +81,16 @@ async function poll() {
   }
 
   const finished = apply(jobs);
-  emitter.emit();
 
   if (finished) {
-    // Only the installed half can have changed, so this is the cheap refresh -
-    // and it repaints the tile through the library's own listeners.
+    // Before the emit, not after: the job is no longer running but the library
+    // still says the game isn't installed, and repainting in between is what
+    // flashes Install between Installing and Play. Only the installed half can
+    // have changed, so this is the cheap refresh, and it emits on its own.
     await library.loadInstalled();
   }
 
+  emitter.emit();
   schedule();
 }
 
