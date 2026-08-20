@@ -2,6 +2,7 @@ local fs = require("fs")
 local json = require("json")
 local logger = require("logger")
 local utils = require("utils")
+local vendor = require("vendor")
 
 -- Everything here is a wrapper around the `legendary` CLI
 -- (https://github.com/derrod/legendary), which owns Epic's OAuth entirely - we
@@ -13,20 +14,31 @@ local legendary = {}
 --- page it lands on prints the authorization code we need.
 local LOGIN_URL = "https://legendary.gl/epiclogin"
 
---- The legendary build shipped with this plugin. Downloaded at build time by
---- scripts/fetch-legendary.mjs from a pinned upstream release, verified against a
---- recorded SHA-256, and shipped inside the plugin - nothing is fetched at
---- runtime, so the plugin never pulls an executable onto a user's machine.
---- get_backend_path() is the backend directory itself, not a file inside it, so
---- this hangs directly off it. See backend/vendor/LICENSE - legendary is GPL-3.0.
-local BINARY = utils.get_backend_path() .. "/vendor/legendary.exe"
+--- The resolved binary, once vendor.lua has produced one. Nil until then.
+---@type string|nil
+local BINARY = nil
 
----The shipped legendary binary, or nil if it isn't there. Public because a
+---The legendary binary, downloading it first if this machine hasn't got it.
+---
+---Resolved lazily rather than at load, so a fetch that failed - no connection
+---when Steam started, say - is retried the next time something asks instead of
+---leaving the plugin dead until a restart. Once it has succeeded this is a file
+---test and nothing more.
+---@return string|nil path
+---@return string? error
+local function resolve()
+  if BINARY and fs.is_file(BINARY) then return BINARY end
+
+  local path, err = vendor.ensure()
+  BINARY = path
+  return path, err
+end
+
+---The legendary binary, or nil if it couldn't be fetched. Public because a
 ---shortcut points *at* it - Steam launches legendary, not the game's own exe.
 ---@return string|nil path
 function legendary.get_binary()
-  if not fs.is_file(BINARY) then return nil end
-  return BINARY
+  return (resolve())
 end
 
 -- Commands --------------------------------------------------------------------
@@ -68,15 +80,16 @@ function legendary.run_batch(arg_lists)
     outputs[index] = ""
   end
 
-  if not fs.is_file(BINARY) then
-    logger:error("No legendary binary at " .. BINARY)
+  local binary, err = resolve()
+  if not binary then
+    logger:error("No legendary binary: " .. tostring(err))
     return outputs, -1
   end
 
   local commands = {}
   local names = {}
   for index, args in ipairs(arg_lists) do
-    local parts = { quote(BINARY) }
+    local parts = { quote(binary) }
     for _, arg in ipairs(args) do
       table.insert(parts, quote(arg))
     end
@@ -190,12 +203,13 @@ local status = nil
 function legendary.get_status(refresh)
   if status and not refresh then return status end
 
-  if not fs.is_file(BINARY) then
+  local binary, err = resolve()
+  if not binary then
     status = {
       available = false,
       authenticated = false,
       login_url = LOGIN_URL,
-      error = "No legendary binary at " .. BINARY,
+      error = err or "legendary could not be downloaded.",
     }
     return status
   end

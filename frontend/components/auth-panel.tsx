@@ -106,6 +106,17 @@ export function AuthPanel({ onStatus }: AuthPanelProps) {
     };
   }, [applyStatus]);
 
+  const onRetry = useCallback(async () => {
+    setBusy(true);
+    try {
+      applyStatus(await rpc.GetStatus(true));
+    } catch (reason: unknown) {
+      logger.warn("GetStatus failed", reason);
+      setUnreachable(true);
+    }
+    setBusy(false);
+  }, [applyStatus]);
+
   const onSignIn = useCallback(() => {
     const opened = openInBrowser(status?.loginUrl ?? "https://legendary.gl/epiclogin");
     setAwaitingCode(true);
@@ -157,9 +168,16 @@ export function AuthPanel({ onStatus }: AuthPanelProps) {
     return (
       <Field
         label="Legendary is missing"
-        description={status.error ?? "The bundled binary could not be found or run."}
+        description={status.error ?? "Legendary could not be downloaded or run."}
+        childrenContainerWidth="min"
         bottomSeparator="none"
-      />
+      >
+        {/* A refresh re-runs the download, since the usual reason to be here is
+            a machine that was offline when the plugin first asked for it. */}
+        <DialogButton disabled={busy} onClick={onRetry}>
+          {busy ? "Downloading..." : "Retry"}
+        </DialogButton>
+      </Field>
     );
   }
 

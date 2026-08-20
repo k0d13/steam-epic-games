@@ -1,4 +1,4 @@
 .ignore/
 node_modules/
 .millennium/
-backend/vendor/legendary.exe
+backend/vendor/

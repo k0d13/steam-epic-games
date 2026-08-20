@@ -19,8 +19,10 @@ A Millennium plugin that brings your Epic Games library into Steam - install, la
 
 - [Millennium](https://steambrew.app/)
 
-[Legendary](https://github.com/derrod/legendary) ships with the plugin, so
-there's nothing else to install and nothing is downloaded at runtime.
+[Legendary](https://github.com/derrod/legendary) does the Epic side of the work.
+You don't need to install it: the plugin downloads a pinned release the first
+time it needs one, checks it against a recorded SHA-256, and keeps it in
+`backend/vendor/`. That happens once, and nothing else is fetched at runtime.
 
 ## Setup
 
