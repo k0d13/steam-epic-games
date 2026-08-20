@@ -4,17 +4,12 @@ import { logger } from "../index";
 import rpc, { type EpicStatus } from "../rpc";
 
 /**
- * Open a URL outside Steam.
- *
- * Tried in order because availability varies by client build: on this one
- * SteamClient.System.OpenInSystemBrowser doesn't exist, and calling a missing
- * method off an optional chain fails silently - the button simply does nothing,
- * with nothing logged to explain why. Hence also the logging.
+ * Open a URL outside Steam. Which of these exists varies by client build, and a
+ * missing one off an optional chain fails silently - hence the logging.
  */
 function openInBrowser(url: string) {
-  // SteamClient.URL is declared with an interface literally named `URL`, which
-  // TypeScript resolves to the DOM's global URL instead, hiding its real
-  // members - so getting at ExecuteSteamURL means going around the types.
+  // SteamClient.URL's interface is named `URL`, which TypeScript resolves to
+  // the DOM's global instead - so this goes around the types.
   const client = SteamClient as unknown as {
     URL?: { ExecuteSteamURL?(url: string): void };
     System?: { OpenInSystemBrowser?(url: string): void };
@@ -37,12 +32,9 @@ function openInBrowser(url: string) {
 }
 
 /**
- * Pull the authorization code out of whatever the user pasted.
- *
- * Epic's redirect page shows a blob of JSON, and which part of it someone copies
- * is anyone's guess - the bare code, the whole document, or the `redirectUrl`
- * inside it. All three are unambiguous, so accept all three rather than making
- * them trim it by hand.
+ * Pull the authorization code out of whatever was pasted: Epic's page shows a
+ * blob of JSON, and the bare code, the whole document and the redirect URL are
+ * all reasonable things to copy off it.
  */
 export function extractCode(pasted: string) {
   const trimmed = pasted.trim();
@@ -55,10 +47,7 @@ export function extractCode(pasted: string) {
 }
 
 export interface AuthPanelProps {
-  /**
-   * Called with every status this panel reads, so what's below it - the library,
-   * which only means anything once there's an account - can follow along.
-   */
+  /** Called with every status this panel reads, so the library below can follow. */
   onStatus?: (status: EpicStatus) => void;
 }
 
@@ -70,14 +59,12 @@ export function AuthPanel({ onStatus }: AuthPanelProps) {
   const [awaitingCode, setAwaitingCode] = useState(false);
   const [code, setCode] = useState("");
 
-  // Kept apart from `status` rather than faked up as an unavailable one: a
-  // backend that didn't answer is not the same thing as a missing binary, and
-  // showing "Legendary is missing" for it sends anyone debugging this - me
-  // included - looking in the wrong place entirely.
+  // Separate from `status`: a backend that didn't answer is not a missing
+  // binary, and saying so sends whoever debugs it to the wrong place.
   const [unreachable, setUnreachable] = useState(false);
 
-  // Every path that learns a status goes through this, so nothing above can be
-  // told about a sign in and miss the sign out that follows it.
+  // Every path that learns a status goes through this, so nothing above
+  // misses one.
   const applyStatus = useCallback(
     (next: EpicStatus | undefined) => {
       setStatus(next);
@@ -86,10 +73,8 @@ export function AuthPanel({ onStatus }: AuthPanelProps) {
     [onStatus],
   );
 
-  // The catch matters more than it looks. Without it a backend that throws -
-  // or never answers - leaves `status` undefined forever, and the panel sits on
-  // "Checking for legendary..." with nothing to say why. Failing visibly is the
-  // difference between a bug someone can report and one that looks like a hang.
+  // Without the catch, a backend that throws leaves the panel on "Checking for
+  // legendary..." forever with nothing to say why.
   useEffect(() => {
     let cancelled = false;
     rpc
@@ -134,7 +119,7 @@ export function AuthPanel({ onStatus }: AuthPanelProps) {
       return;
     }
 
-    // The code is single use, so clear it - pasting it again would only fail.
+    // Single use, so clear it: pasting it again would only fail.
     setCode("");
     setAwaitingCode(false);
     applyStatus(result.status);
@@ -172,8 +157,8 @@ export function AuthPanel({ onStatus }: AuthPanelProps) {
         childrenContainerWidth="min"
         bottomSeparator="none"
       >
-        {/* A refresh re-runs the download, since the usual reason to be here is
-            a machine that was offline when the plugin first asked for it. */}
+        {/* A refresh re-runs the download, for a machine that was offline when
+            the plugin first asked. */}
         <DialogButton disabled={busy} onClick={onRetry}>
           {busy ? "Downloading..." : "Retry"}
         </DialogButton>
@@ -211,9 +196,8 @@ export function AuthPanel({ onStatus }: AuthPanelProps) {
       </Field>
 
       {awaitingCode && (
-        // childrenLayout="below" so the input gets the full width of the panel.
-        // Inline, Steam squeezes it into the right-hand column and a paste this
-        // long simply runs off the edge.
+        // childrenLayout="below" so the input gets the panel's full width;
+        // inline, a paste this long runs off the edge.
         <Field
           description={
             error ??

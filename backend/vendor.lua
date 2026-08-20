@@ -2,22 +2,17 @@ local fs = require("fs")
 local logger = require("logger")
 local utils = require("utils")
 
--- Where the legendary binary comes from.
---
--- It used to be downloaded at build time and shipped inside the plugin, which
--- put a ~30 MB executable in every release and pushed the package past the
--- upload size limit. It is fetched on first use instead, from a release pinned
--- by tag *and* by SHA-256: the download is rejected unless it hashes to exactly
--- the bytes recorded below, so a compromised release, a hijacked CDN or a man
--- in the middle cannot slip a different executable onto a user's machine.
+-- Fetches the legendary binary on first use, from a release pinned by tag *and*
+-- by SHA-256: a download that doesn't hash to exactly the bytes recorded below
+-- is thrown away, so a compromised release or a hijacked CDN can't put a
+-- different executable on a user's machine.
 --
 -- To upgrade, bump VERSION and replace SHA256 with the `digest` field GitHub
 -- publishes for the asset:
 --
 --   curl -sL https://api.github.com/repos/legendary-gl/legendary/releases/latest
 --
--- legendary is GPL-3.0. It is fetched unmodified from its own upstream release
--- and never redistributed by this plugin.
+-- legendary is GPL-3.0, fetched unmodified and never redistributed by us.
 
 local vendor = {}
 
@@ -27,30 +22,21 @@ local SHA256 = "4c01a14c0acb0c46069b197ae7212ea4ea6b861661126ca0593cdac31658fb01
 
 local URL = "https://github.com/legendary-gl/legendary/releases/download/" .. VERSION .. "/" .. ASSET
 
---- Where the binary is kept. get_backend_path() is the backend directory itself,
---- not a file inside it, so this hangs directly off it - the same place data/
---- already writes to.
----
---- Not named after the version: every Steam shortcut points at this path, so a
---- version bump that moved it would leave every shortcut launching a binary that
---- is no longer the one we check. Upgrades replace the file in place instead,
---- which the hash check below notices on its own.
+--- Where the binary is kept. The name has no version in it because every Steam
+--- shortcut points at this path: an upgrade replaces the file in place, which
+--- the hash check notices on its own.
 local DIR = utils.get_backend_path() .. "/vendor"
 local PATH = DIR .. "/legendary.exe"
 
 ---The SHA-256 of a file, lowercase hex, or nil if it couldn't be hashed.
----
----certutil ships with Windows, so this costs no second download and nothing
----extra to install. Its output is three lines - a banner, the hash, a trailer -
----with the hash the only run of 64 hex characters in it.
+---certutil ships with Windows, so there's nothing to install.
 ---@param path string
 ---@return string|nil
 local function digest(path)
   local output = utils.exec('certutil -hashfile "' .. path:gsub("/", "\\") .. '" SHA256 2>&1')
   if not output then return nil end
 
-  -- Frontiers so a 64-character run is not picked out of the middle of a longer
-  -- one, which is the only other hex certutil could print.
+  -- The hash is the only run of exactly 64 hex characters certutil prints.
   local hash = output:gsub("%s", ""):match("%f[%x]" .. ("%x"):rep(64) .. "%f[%X]")
   return hash and hash:lower() or nil
 end
@@ -63,12 +49,8 @@ local function verified(path)
   return digest(path) == SHA256
 end
 
----Fetch a URL to a file, blocking until it's there.
----
----curl.exe has shipped with Windows since 1803 and is the cheap path. The
----PowerShell fallback covers a machine old enough to be missing it, and costs a
----terminal flash and a second or two of startup, which is the right trade for a
----download that happens once.
+---Fetch a URL to a file, blocking until it's there. The PowerShell fallback is
+---for a Windows old enough to be missing curl.exe.
 ---@param destination string
 ---@return boolean ok
 local function fetch(destination)
@@ -80,38 +62,34 @@ local function fetch(destination)
   logger:info("curl did not produce a file, falling back to PowerShell")
   utils.exec(
     'powershell -NoProfile -ExecutionPolicy Bypass -Command "'
-      .. "$ProgressPreference='SilentlyContinue';"
-      .. "Invoke-WebRequest -UseBasicParsing -Uri '"
-      .. URL
-      .. "' -OutFile '"
-      .. target
-      .. "'\" 2>&1"
+    .. "$ProgressPreference='SilentlyContinue';"
+    .. "Invoke-WebRequest -UseBasicParsing -Uri '"
+    .. URL
+    .. "' -OutFile '"
+    .. target
+    .. "'\" 2>&1"
   )
 
   return fs.is_file(destination)
 end
 
 ---The legendary binary, downloading it if this machine hasn't got it yet.
----
----Blocking, and deliberately so: nothing in the backend can do anything useful
----without legendary, so there is no work to get on with while it downloads. It
----only ever happens once per version.
+---Blocks, since nothing here can do anything useful until it's there, and it
+---only happens once per version.
 ---@return string|nil path
 ---@return string? error
 function vendor.ensure()
   if verified(PATH) then return PATH end
 
   if fs.is_file(PATH) then
-    -- A truncated or tampered file. Nothing here will run it, so the only thing
-    -- to do with it is replace it.
     logger:warn("Vendored legendary does not match the pin, refetching")
     fs.remove(PATH)
   end
 
   fs.create_directories(DIR)
 
-  -- Downloaded beside the real name and moved into place once verified, so a
-  -- download interrupted halfway can never be mistaken for a usable binary.
+  -- Downloaded under a temporary name and moved into place once verified, so an
+  -- interrupted download is never mistaken for a usable binary.
   local partial = PATH .. ".part"
   if fs.is_file(partial) then fs.remove(partial) end
 

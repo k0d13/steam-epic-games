@@ -4,20 +4,18 @@ import { type EpicGame } from "../rpc";
 import { createStore } from "../state/storage";
 import * as icons from "./icons";
 
-// Artwork comes from Epic's own catalog metadata, which ships a tall box art and
-// a wide capsule for essentially every title - so there's no SteamGridDB key to
-// configure and no scraping. The bytes are fetched here in the client rather
-// than in the backend because Millennium's Lua has no HTTP client, and because
-// SetCustomArtworkForApp wants base64 anyway.
+// Artwork comes from Epic's own catalog metadata, which has a tall box art and
+// a wide capsule for nearly every title - no SteamGridDB key, no scraping. The
+// bytes are fetched here rather than in the backend because Lua has no HTTP
+// client, and SetCustomArtworkForApp wants base64 anyway.
 
-// Bumping the version means "what we apply has changed, do it all again", which
-// is how an existing library picks up an asset that didn't used to be set.
+// Bumping the version re-applies everything, which is how an existing library
+// picks up an asset we didn't used to set.
 const done = createStore<true>("epic-games:artwork-done:v1");
 
 /**
- * Has this game had its artwork applied? Tracked because it's the expensive part
- * of a sync - four downloads per game - and Steam keeps what it's given in its
- * own grid folder, so it only ever needs doing once.
+ * Has this game had its artwork applied? Tracked because it's four downloads a
+ * game, and Steam keeps what it's given - so it only needs doing once.
  */
 export function isDone(appName: string): boolean {
   return done.get(appName) === true;
@@ -29,11 +27,9 @@ export const forget = done.remove;
 export const forgetAll = done.clear;
 
 /**
- * Fetch an image and hand it back as bare base64.
- *
- * FileReader gives us a `data:` URL, and SetCustomArtworkForApp wants only the
- * payload after the comma - passing the whole URL through silently produces a
- * broken asset rather than an error, which is a miserable thing to debug.
+ * Fetch an image and hand it back as bare base64. SetCustomArtworkForApp wants
+ * only the payload after the comma; give it the whole `data:` URL and it writes
+ * a broken asset without complaining.
  */
 async function fetchAsBase64(url: string): Promise<{ base64: string; type: "jpg" | "png" }> {
   const response = await fetch(url);
@@ -59,20 +55,18 @@ async function fetchAsBase64(url: string): Promise<{ base64: string; type: "jpg"
  * the box art being applied.
  */
 export async function apply(appId: number, game: EpicGame) {
-  // No Logo: Steam's is the transparent wordmark over the hero image, and Epic
-  // barely ships one. Steam draws the title as text instead, which is what
-  // everyone was always going to get.
+  // No Logo: that's the transparent wordmark over the hero image, which Epic
+  // barely ships. Steam draws the title as text without one.
   const assets: [string | undefined, ELibraryAssetType][] = [
     [game.artPortrait, ELibraryAssetType.Capsule],
     [game.artHero, ELibraryAssetType.Hero],
-    // Steam's wide header is the same shape as Epic's wide capsule, and without
-    // one the app page header falls back to a grey placeholder.
+    // Same shape as Epic's wide capsule, and without one the app page header
+    // is a grey placeholder.
     [game.artHero, ELibraryAssetType.Header],
   ];
 
-  // Before the rest: Steam writes the icon as `<appid>.png`, which is the
-  // header's stem, so a hero image that came back as a PNG would rename the
-  // header out from under itself if this ran last.
+  // Before the rest: Steam writes the icon as `<appid>.png`, the same stem a
+  // PNG header would take, so running this last can clobber the header.
   let applied = (await icons.apply(appId, game)) ? 1 : 0;
 
   for (const [url, assetType] of assets) {
@@ -87,8 +81,7 @@ export async function apply(appId: number, game: EpicGame) {
     }
   }
 
-  // Only on a hit: a game whose downloads all failed - offline, or Epic having a
-  // bad day - should be retried next time rather than written off for good.
+  // Only on a hit, so a game whose downloads all failed is retried next time.
   if (applied > 0) done.set(game.appName, true);
 
   return applied;

@@ -6,11 +6,10 @@ import { createEmitter } from "../state/emitter";
 import * as library from "../state/library";
 import * as artwork from "./artwork";
 
-// Every Epic game becomes a real non-Steam shortcut. That's what buys us
-// persistence, collections, search, Big Picture and playtime for free - a purely
-// virtual entry injected into appStore would have none of it and would evaporate
-// on restart. They go through SteamClient.Apps rather than shortcuts.vdf so that
-// Steam allocates the appid and we never touch binary VDF.
+// Every Epic game becomes a real non-Steam shortcut, which is what gets us
+// collections, search, Big Picture and playtime for free. Created through
+// SteamClient.Apps rather than shortcuts.vdf, so Steam allocates the appid and
+// we never touch binary VDF.
 
 export interface SyncResult {
   added: number;
@@ -30,10 +29,8 @@ export interface SyncState {
 }
 
 // A sync outlives the panel that started it: it takes minutes over a few hundred
-// games, and the plugin panel is a dialog the user closes. Holding its progress
-// in the panel's own state meant closing it lost the bar and the busy flag, and
-// reopening showed an idle panel with a sync still running behind it. So the
-// state lives here, and the panel is one of its subscribers.
+// games and the panel is a dialog people close. So its progress lives here and
+// the panel is just a subscriber, or closing it would lose the bar.
 
 let state: SyncState = { active: false, done: 0, total: 0 };
 
@@ -51,8 +48,8 @@ export function getSyncState(): SyncState {
 
 /**
  * How many shortcuts to create before yielding back to the event loop. Each one
- * round-trips to the Steam client, and a first sync of a couple of hundred games
- * would otherwise hold the UI thread long enough to look like a hang.
+ * round-trips to the Steam client, and a first sync of a few hundred games would
+ * otherwise hold the UI thread long enough to look like a hang.
  */
 const BATCH_SIZE = 10;
 
@@ -85,8 +82,8 @@ async function createShortcut(game: EpicGame): Promise<number | undefined> {
     return undefined;
   }
 
-  // AddShortcut names the shortcut after the executable on some client builds,
-  // and every one of ours would then be called "legendary.exe".
+  // Some client builds name the shortcut after the executable, which would make
+  // every one of ours "legendary.exe".
   SteamClient.Apps.SetShortcutName(appId, game.title);
   SteamClient.Apps.SetShortcutLaunchOptions(appId, launch.arguments);
   SteamClient.Apps.SetShortcutStartDir(appId, launch.startDir);
@@ -131,8 +128,8 @@ export async function sync(games: EpicGame[]): Promise<SyncResult> {
     const known = appIds.getAll();
     const owned = new Set(games.map((game) => game.appName));
 
-    // Games that left the account - a refund, or a family sharing arrangement
-    // ending - leave a shortcut that launches into an ownership error.
+    // A game that left the account leaves a shortcut that launches into an
+    // ownership error.
     for (const [appName, appId] of Object.entries(known)) {
       if (owned.has(appName)) continue;
       removeShortcut(appName, appId);
@@ -166,11 +163,9 @@ export async function sync(games: EpicGame[]): Promise<SyncResult> {
       if (++sinceYield >= BATCH_SIZE) {
         sinceYield = 0;
 
-        // A shortcut Steam knows about but the library doesn't have an appid for
-        // yet is, by Steam's reckoning, installed - so everything added during a
-        // sync sat in the grid claiming to be until the whole run finished. Once
-        // a batch rather than once a run keeps that window to a few games, and
-        // costs nothing on the passes that added nothing.
+        // A shortcut Steam knows about but we have no appid for yet counts as
+        // installed, so a new one claims to be until this runs. Once a batch
+        // keeps that window down to a few games.
         if (addedSinceReindex > 0) {
           addedSinceReindex = 0;
           library.reindexAppIds();
@@ -183,8 +178,8 @@ export async function sync(games: EpicGame[]): Promise<SyncResult> {
     logger.info("Shortcut sync complete", result);
     return result;
   } finally {
-    // Not conditional on anything above having succeeded: the appid map has been
-    // written to either way, and the library is what every patch reads.
+    // Unconditional: the appid map has been written to either way, and the
+    // library is what every patch reads.
     library.reindexAppIds();
     setState({ active: false, done: 0, total: 0, lastResult: result });
   }

@@ -14,9 +14,8 @@ import * as artwork from "../services/artwork";
 import * as shortcuts from "../services/shortcuts";
 import * as library from "../state/library";
 
-// Two rows, one button each. Anything more and the buttons stop fitting in how
-// narrow the plugin panel is, so everything past the primary action lives in the
-// context menu that button opens once there's something to manage.
+// Two rows, one button each - the panel is too narrow for more. Everything past
+// the primary action lives in the context menu that button opens.
 
 /** "3 hours ago", roughly - close enough to answer "is this stale?". */
 function describeAge(refreshedAt: number) {
@@ -50,22 +49,20 @@ export function LibraryPanel() {
   const [synced, setSynced] = useState(0);
   const [note, setNote] = useState<string | undefined>(undefined);
 
-  // A sync outlives this panel, so its progress is read from the service rather
-  // than held here - closing the dialog mid-sync and reopening it used to show
-  // an idle panel with a sync still running behind it.
+  // A sync outlives this panel, so its progress is read from the service:
+  // closing the dialog mid-sync must not lose the bar.
   const sync = useSyncExternalStore(shortcuts.subscribeToSync, shortcuts.getSyncState);
 
   const load = useCallback(async (refresh: boolean): Promise<number | undefined> => {
     setLoading(true);
     setError(undefined);
 
-    // Only the call is guarded: wrapping what follows would report a failure
-    // anywhere in the UI as "the backend didn't respond", which is a lie worth
-    // hours to whoever debugs it.
+    // Only the call is guarded, or a failure anywhere in the UI would be
+    // reported as the backend not responding.
     let result;
     try {
-      // `force` rides along, since the only reason to press Refresh is that
-      // something changed at Epic's end that legendary's catalog cache misses.
+      // `force` too: the reason to press Refresh is a change at Epic's end
+      // that legendary's catalog cache would miss.
       result = await library.load(refresh, refresh);
     } catch (reason: unknown) {
       logger.warn("GetLibrary failed", reason);
@@ -87,8 +84,8 @@ export function LibraryPanel() {
   }, []);
 
   useEffect(() => {
-    // Nothing goes out to Epic on its own, so a first run has an empty cache.
-    // Doing it here spends those seconds with a panel on screen saying so.
+    // Nothing goes out to Epic on its own, so a first run has an empty cache -
+    // and this is the one place with a panel on screen to say so.
     void load(false).then((loaded) => {
       if (loaded === 0) void load(true);
     });
@@ -99,8 +96,8 @@ export function LibraryPanel() {
 
     setNote(undefined);
 
-    // The service owns the progress, the appid reindexing and the result - all
-    // of which have to keep happening if this panel is closed halfway through.
+    // The service owns the progress and the result, since both have to survive
+    // this panel closing.
     await shortcuts.sync(games);
     setSynced(shortcuts.syncedCount(games));
   }, [games]);
@@ -137,8 +134,8 @@ export function LibraryPanel() {
     [onSync],
   );
 
-  // A sync that finished while this panel was closed, or one started by an
-  // earlier mount, still has to update the count this one is showing.
+  // A sync that finished while this panel was closed still has to update the
+  // count it's showing.
   useEffect(() => {
     if (sync.active || !games) return;
     setSynced(shortcuts.syncedCount(games));
@@ -169,8 +166,8 @@ export function LibraryPanel() {
       {total > 0 && (
         <Field
           label="Steam shortcuts"
-          // The bar replaces the description rather than taking a row of its own:
-          // it belongs to this action, and a full-width child overruns the panel.
+          // In place of the description rather than a row of its own, which
+          // would overrun the panel.
           description={
             sync.active ? (
               <ProgressBarWithInfo

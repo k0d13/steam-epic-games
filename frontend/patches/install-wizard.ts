@@ -4,23 +4,14 @@ import rpc from "../rpc";
 import { findExport } from "../services/modules";
 import * as jobs from "../state/jobs";
 
-// Steam's install wizard is the dialog the client asks for through
-// SteamClient.Installs.RegisterForShowInstallWizard, and the native half of
-// that only knows real appids - so an Epic game can never make the client raise
-// it. What the native half actually sends is one plain object, and every part
-// of the dialog is drawn from it in JS:
+// The client only raises its install wizard for real appids, so an Epic game
+// can never make it appear. But all the native side sends is one plain object,
+// and the dialog is drawn from it in JS - so writing that object into
+// GameActionsStore opens the wizard ourselves, in Steam's own language and
+// window, with the drive list, space warnings and shortcut checkboxes free.
 //
-//   const e = useMobx(() => GameActionsStore.GetInstallManager());
-//   switch (e.eInstallState) { case k_EInstallMgrStateShowConfig: <InstallConfig installRequest={e}/>
-//
-// So the wizard is opened by writing that object into the store ourselves. The
-// dialog is then Steam's own, in Steam's language, inside the main window where
-// it belongs - the drive list, the space warnings, the shortcut checkboxes and
-// the Install button all come free.
-//
-// Its buttons call four SteamClient.Installs functions, and those are plain
-// properties, so they're intercepted the same way the uninstall flow is: the
-// dialog is Steam's, the part that touches files is ours.
+// Its buttons call four SteamClient.Installs functions, intercepted the same
+// way the uninstall flow is: the dialog is Steam's, the file work is ours.
 
 /** The state the wizard's own configuration page is drawn for. */
 const SHOW_CONFIG = 7;
@@ -35,9 +26,8 @@ interface InstallRequestApp {
 }
 
 /**
- * What the native client sends the wizard. Every field is read somewhere in the
- * dialog, and a missing one renders as a warning or an empty row, so this is
- * built whole rather than partially.
+ * What the native client sends the wizard. Every field is read somewhere, and a
+ * missing one draws a warning or an empty row, so it's built whole.
  */
 interface InstallRequest {
   rgApps: InstallRequestApp[];
@@ -68,14 +58,14 @@ interface InstallFolder {
   bIsMounted: boolean;
 }
 
-/** The store the dialog reads. Only the one field matters to us. */
+/** The store the dialog reads. */
 interface GameActionsStore {
   m_InstallManager: InstallRequest | null;
   GetInstallManager(): InstallRequest | null;
 }
 
-// Declared as returning `unknown` rather than a promise so a patch can return
-// callOriginal, which is a symbol, from the same function.
+// `unknown` rather than a promise, so a patch can return callOriginal - a
+// symbol - from the same function.
 interface Installs {
   SetInstallFolder(folderIndex: number): unknown;
   SetCreateShortcuts(desktop: boolean, systemMenu: boolean): unknown;
@@ -105,9 +95,8 @@ let store: GameActionsStore | undefined;
 let searched = false;
 
 /**
- * The store singleton, found by source rather than by name: the class is a
- * module-local binding, but the store instance is exported, and the getter's
- * body is a string Steam's own build can't rename.
+ * The store singleton, found by the source of one of its getters, which is a
+ * string Steam's build can't rename.
  */
 function getStore(): GameActionsStore | undefined {
   if (!searched) {
@@ -124,11 +113,9 @@ let pending: { appName: string; folderName?: string; request: InstallRequest } |
 let folders: InstallFolder[] = [];
 
 /**
- * Hand the store a fresh object every time.
- *
- * The store's field is a deep mobx observable, so what it holds is a proxy
- * around whatever it was given rather than our object - mutating ours after the
- * fact repaints nothing. Assigning a copy is what the dialog notices.
+ * Hand the store a fresh object every time. Its field is a deep mobx
+ * observable, so it holds a proxy around what it was given - mutating ours
+ * afterwards repaints nothing.
  */
 function publish() {
   const current = getStore();
@@ -147,11 +134,9 @@ function folderByIndex(index: number) {
 }
 
 /**
- * Open Steam's install wizard for one of our games.
- *
- * The size is awaited rather than filled in later: it's what the dialog sizes
- * its warning and its Install button against, and it's cached in the backend
- * after the first look at the game's page, which is where this is opened from.
+ * Open Steam's install wizard for one of our games. The size is awaited, since
+ * the dialog sizes its space warning against it - by this point it's usually
+ * cached from the game's page anyway.
  */
 export async function open(appId: number, appName: string, folderName?: string) {
   const current = getStore();
@@ -181,8 +166,7 @@ export async function open(appId: number, appName: string, folderName?: string) 
       nTotalDisks: 0,
       bCanChangeInstallFolder: true,
       iInstallFolder: chosen.nFolderIndex,
-      // -1 is "none", and any other value draws the "a folder is unmounted"
-      // notice. Same for the peer content server fields below.
+      // -1 is "none"; anything else draws the "a folder is unmounted" notice.
       iUnmountedFolder: -1,
       currentAppID: appId,
       eAppError: 0,
@@ -203,8 +187,8 @@ export async function open(appId: number, appName: string, folderName?: string) 
 export function register() {
   const bridge = SteamClient as unknown as Bridge;
 
-  // All four are what the dialog's own buttons call, and all four are global -
-  // a real Steam install is going through them whenever ours isn't.
+  // What the dialog's buttons call. All global, so a real Steam install goes
+  // through them whenever ours isn't.
   const patches = [
     replacePatch(bridge.Installs, "SetInstallFolder", ([folderIndex]: [number]) => {
       if (!pending) return callOriginal;
@@ -216,8 +200,7 @@ export function register() {
         publish();
       }
 
-      // The store assigns whatever this resolves to straight back over the
-      // request, so it has to be the request rather than nothing.
+      // The store assigns whatever this resolves to back over the request.
       return Promise.resolve({ ...pending.request });
     }),
 
@@ -266,8 +249,8 @@ export function register() {
 
   logger.debug("Registered the install wizard patches");
   return () => {
-    // A wizard left on screen after the patches are gone has buttons that talk
-    // to the native client about an appid it has never heard of.
+    // A wizard left on screen once the patches are gone has buttons that ask
+    // the native client about an appid it has never heard of.
     if (pending) close();
     for (const patch of patches) patch.unpatch();
   };

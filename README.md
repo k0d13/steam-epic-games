@@ -19,10 +19,9 @@ A Millennium plugin that brings your Epic Games library into Steam - install, la
 
 - [Millennium](https://steambrew.app/)
 
-[Legendary](https://github.com/derrod/legendary) does the Epic side of the work.
-You don't need to install it: the plugin downloads a pinned release the first
-time it needs one, checks it against a recorded SHA-256, and keeps it in
-`backend/vendor/`. That happens once, and nothing else is fetched at runtime.
+That's it. The plugin talks to Epic through
+[Legendary](https://github.com/derrod/legendary), which it downloads for you the
+first time it runs.
 
 ## Setup
 
@@ -44,8 +43,5 @@ up what's changed.
 ### Why does a terminal flash on screen?
 
 Legendary is a console application and Steam has no console, so every command
-pops up a terminal window for as long as it runs. Millennium has no way to
+pops up a terminal window for as long as it runs. Millennium gives no way to
 start a process without one.
-
-Downloads are the exception — those run hidden in the background, so a
-multi-gigabyte install won't leave a console window on your screen for an hour.

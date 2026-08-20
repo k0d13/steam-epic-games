@@ -9,7 +9,7 @@ import * as installState from "./patches/install-state";
 import * as installWizard from "./patches/install-wizard";
 import * as installs from "./patches/installs";
 import * as manageMenu from "./patches/manage-menu";
-import rpc, { type EpicStatus } from "./rpc";
+import { type EpicStatus } from "./rpc";
 import * as jobs from "./state/jobs";
 import * as library from "./state/library";
 
@@ -19,9 +19,8 @@ export const logger = new Logger("Steam Epic Games");
 // fall back rather than letting a missing icon take the whole plugin down.
 const PluginIcon = IconsModule?.Download ?? IconsModule?.Settings ?? (() => null);
 
-// Millennium renders this as the plugin's own panel, which is where setup
-// lives. It's reachable whether or not anything has been signed in yet -
-// unlike the app properties dialog, which needs a game to open first.
+// The plugin's own panel, which is where setup lives. Reachable whether or not
+// anything is signed in, unlike the app properties dialog.
 function Panel() {
   const [authenticated, setAuthenticated] = useState(false);
 
@@ -42,9 +41,9 @@ function Panel() {
 }
 
 export default definePlugin(async () => {
-  // Before the library loads, so overviews Steam builds meanwhile go through the
-  // patch. Guarded because Steam's stores move between client builds, and a
-  // patch that no longer applies should cost its own feature, not the plugin.
+  // Before the library loads, so overviews Steam builds meanwhile go through
+  // the patch. Guarded so a patch that no longer applies costs its own feature
+  // rather than the plugin.
   const unpatches: (() => void)[] = [];
   for (const [name, patch] of [
     ["install state", installState.register],
@@ -60,41 +59,35 @@ export default definePlugin(async () => {
     }
   }
 
-  // Steam builds its overviews and its details once and keeps them, so every
-  // change to the library has to ask for a repaint. It is the only thing that does.
+  // Steam builds its overviews once and keeps them, so every change to the
+  // library has to ask for a repaint.
   const repaint = () => {
     downloadOverview.sync();
     installState.refreshAll();
     appDetails.refreshAll();
   };
 
-  // A running install repaints for the same reason, once a second: the tile's
-  // progress bar is read off the overview, so the overview has to be rewritten
-  // for it to move.
+  // A running install repaints once a second, since its progress bar is read
+  // off the overview.
   const unsubscribe = library.subscribe(repaint);
   const unsubscribeJobs = jobs.subscribe(repaint);
 
   window.addEventListener("beforeunload", () => {
     unsubscribe();
     unsubscribeJobs();
-    // The overview is Steam's, and a reload with our appid left in it would
-    // show a download that no longer has anything writing to it.
+    // The overview is Steam's: our appid left in it survives a reload and
+    // shows a download nothing is writing to.
     downloadOverview.release();
     for (const unpatch of unpatches) unpatch();
   });
 
-  // Cache only: every shortcut in the grid claims to be installed until this
-  // resolves, so it can't be a `legendary list` against Epic. The panel asks for
-  // the real thing once it's on screen.
+  // Cache only: every shortcut claims to be installed until this resolves, so
+  // it can't wait on Epic. The panel asks for the real thing once it's up.
   await library.load();
 
-  // An install outlives a Steam restart - it's a detached process - so pick up
-  // anything still running from last time and start polling it again.
+  // Installs are detached, so they outlive a Steam restart: pick up anything
+  // still running and start polling it again.
   await jobs.refresh();
-
-  // Debugging only: every RPC by hand from the SharedJSContext console, e.g.
-  // `epicGames.GetInstallOptions("Fortnite")`. Nothing in the plugin reads it.
-  (window as unknown as { epicGames: typeof rpc }).epicGames = rpc;
 
   logger.info("Plugin loaded");
 

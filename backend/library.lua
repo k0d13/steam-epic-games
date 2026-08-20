@@ -4,10 +4,9 @@ local legendary = require("legendary")
 local logger = require("logger")
 local utils = require("utils")
 
--- The library is the merge of two legendary commands: `list`, everything the
--- account owns straight from Epic's catalog, and `list-installed`, what is
--- actually on disk. Neither alone is enough - the whole point of this plugin is
--- showing games you own but haven't installed.
+-- The merge of two legendary commands: `list`, everything the account owns, and
+-- `list-installed`, what is on disk. Neither alone is enough - showing games you
+-- own but haven't installed is the point of the plugin.
 
 local library = {}
 
@@ -34,8 +33,8 @@ local refreshed_at = 0
 
 -- Artwork ---------------------------------------------------------------------
 
---- Epic ships several images per title under different type names, and which
---- ones exist varies with how old the store page is. First one present wins.
+--- Which image types a title has varies with how old its store page is, so the
+--- first one present wins.
 local ART_TYPES = {
   portrait = { "DieselGameBoxTall", "OfferImageTall", "Thumbnail" },
   hero = { "DieselGameBox", "OfferImageWide", "DieselGameBoxWide" },
@@ -97,28 +96,29 @@ local function index_installed(output)
 end
 
 ---Copy the installed half of a game across from `list-installed`.
----@param game EpicGame
+---@param game table An EpicGame missing its installed fields
 ---@param local_game table|nil
+---@return EpicGame game
 local function apply_installed(game, local_game)
   game.installed = local_game ~= nil
   game.install_path = local_game and local_game.install_path or nil
   game.install_size = local_game and local_game.install_size or nil
   game.version = local_game and local_game.version or nil
-  -- legendary has reported this under both names across versions, and guessing
-  -- wrong silently means updates never surface.
+  -- legendary reports this under both names depending on its version.
   game.needs_update = local_game ~= nil
-    and (local_game.needs_update == true or local_game.update_available == true)
+      and (local_game.needs_update == true or local_game.update_available == true)
+
+  return game
 end
 
----Register any Epic Games Launcher install that `egl-sync` left behind, since
----it silently skips manifests it can't fully resolve (see egl.lua), and return
----the installed-game index with those folded in. Normally does nothing at all.
+---Register any Epic Games Launcher install `egl-sync` skipped (see egl.lua) and
+---return the installed-game index with those folded in. Usually a no-op.
 ---@param owned table[] Decoded `legendary list` output
 ---@param installed_by_name table<string, table> app_name -> installed game
 ---@return table<string, table> installed_by_name
 local function import_leftover_egl_installs(owned, installed_by_name)
-  -- A manifest for something the account doesn't own is a game on somebody
-  -- else's, and asking legendary to import it just fails.
+  -- A manifest for something this account doesn't own belongs to another
+  -- account, and importing it just fails.
   local owned_names = {}
   for _, game in ipairs(owned) do
     owned_names[game.app_name] = true
@@ -136,17 +136,16 @@ local function import_leftover_egl_installs(owned, installed_by_name)
   if #commands == 0 then return installed_by_name end
   logger:info("Importing Epic Games Launcher installs egl-sync skipped: " .. utils.join(titles, ", "))
 
-  -- Re-reading the installed list is what picks the imports up, and it rides in
-  -- the same batch rather than costing a second terminal flash.
+  -- Re-reading the installed list picks the imports up, in the same batch so it
+  -- costs no second terminal flash.
   table.insert(commands, LIST_INSTALLED)
 
   local outputs = legendary.run_batch(commands)
   return index_installed(outputs[#outputs]) or installed_by_name
 end
 
----Is this catalog entry a game, rather than something Epic merely calls one?
----The catalog is full of engine components, plugins and asset packs, and nobody
----wants 200 Unreal plugins in their Steam library.
+---Is this catalog entry a game? The catalog is also full of engine components,
+---plugins and asset packs, which nobody wants in their Steam library.
 ---@param entry table
 ---@return boolean
 local function is_game(entry)
@@ -167,19 +166,17 @@ end
 local function merge_game(entry, local_game)
   local metadata = entry.metadata or {}
 
-  ---@type EpicGame
   local game = {
     app_name = entry.app_name,
     title = entry.app_title or metadata.title or entry.app_name,
-    -- What legendary names the game's directory when it's given no
-    -- --game-folder, so the install dialog can show the full path up front.
+    -- What legendary names the directory when given no --game-folder, so the
+    -- install dialog can show the full path up front.
     folder_name = ((metadata.customAttributes or {}).FolderName or {}).value,
     art_portrait = pick_art(metadata.keyImages, "portrait"),
     art_hero = pick_art(metadata.keyImages, "hero"),
   }
 
-  apply_installed(game, local_game)
-  return game
+  return apply_installed(game, local_game)
 end
 
 ---Ask legendary for the whole library and rebuild from it.
@@ -187,16 +184,15 @@ end
 ---@return EpicGame[]|nil games
 ---@return string? error
 function library.refresh(force)
-  -- Otherwise a broken install surfaces as empty output, and reads as an empty
-  -- library rather than as itself.
+  -- Without this a missing binary reads as an empty library.
   if not legendary.get_binary() then return nil, "legendary binary not found" end
 
   local list_args = { "list", "--json" }
   if force then table.insert(list_args, "--force-refresh") end
 
-  -- One batch, one terminal flash. The EGL sync goes first because it's what
-  -- makes Epic Games Launcher installs visible to the list-installed after it.
-  -- Its failure is only logged: not having EGL is the normal case.
+  -- One batch, one terminal flash. The EGL sync goes first: it's what makes
+  -- launcher installs visible to the list-installed after it. Its failure is
+  -- only logged, since not having EGL is normal.
   local outputs = legendary.run_batch({ egl.sync_args(), list_args, LIST_INSTALLED })
 
   logger:info("Epic Games Launcher sync: " .. utils.trim(outputs[1]))
@@ -205,7 +201,7 @@ function library.refresh(force)
   if type(owned) ~= "table" then return nil, err or "legendary returned no library" end
 
   local installed_by_name =
-    import_leftover_egl_installs(owned, index_installed(outputs[3]) or {})
+      import_leftover_egl_installs(owned, index_installed(outputs[3]) or {})
 
   local merged = {}
   for _, entry in ipairs(owned) do
@@ -224,12 +220,9 @@ function library.refresh(force)
   return games
 end
 
----Re-read only what's on disk, leaving the catalog alone.
----
----This is the after-an-install refresh. An install can only ever change the
----installed half of a game we already know about, so a game the catalog has
----never seen can't appear this way. That is correct: buying a game is what
----`library.refresh` is for.
+---Re-read only what's on disk, leaving the catalog alone. This is the
+---after-an-install refresh: a game the catalog has never seen can't appear this
+---way, which is what `library.refresh` is for.
 ---@return EpicGame[]|nil games
 ---@return string? error
 function library.refresh_installed()
@@ -244,20 +237,17 @@ function library.refresh_installed()
     if game.installed then count = count + 1 end
   end
 
-  -- refreshed_at is left where it was on purpose: it means "when did we last
-  -- ask Epic", which this didn't.
+  -- refreshed_at means "when did we last ask Epic", which this didn't.
   save()
 
   logger:info("Refreshed installs: " .. count .. " on disk")
   return games
 end
 
----The library as we last saw it, which is empty until something refreshes it.
----
----Deliberately never refreshes on its own: this is what answers the frontend's
----first call, at Steam startup, and a cold `legendary list` there would hold the
----plugin behind a network round trip to Epic and a terminal flash nobody asked
----for.
+---The library as we last saw it, empty until something refreshes it. Never
+---refreshes on its own: this answers the frontend's first call at startup, and
+---a cold `legendary list` there would hold the plugin behind a round trip to
+---Epic.
 ---@return EpicGame[] games
 function library.get()
   return games

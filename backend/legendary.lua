@@ -4,41 +4,29 @@ local logger = require("logger")
 local utils = require("utils")
 local vendor = require("vendor")
 
--- Everything here is a wrapper around the `legendary` CLI
--- (https://github.com/derrod/legendary), which owns Epic's OAuth entirely - we
--- never see a password or a token.
+-- A wrapper around the `legendary` CLI (https://github.com/derrod/legendary),
+-- which owns Epic's OAuth entirely - we never see a password or a token.
 
 local legendary = {}
 
---- Where Epic sends the user to log in. legendary owns this redirect, and the
---- page it lands on prints the authorization code we need.
+--- Where Epic sends the user to log in. The page it lands on prints the
+--- authorization code we need.
 local LOGIN_URL = "https://legendary.gl/epiclogin"
 
---- The resolved binary, once vendor.lua has produced one. Nil until then.
 ---@type string|nil
 local BINARY = nil
 
----The legendary binary, downloading it first if this machine hasn't got it.
----
----Resolved lazily rather than at load, so a fetch that failed - no connection
----when Steam started, say - is retried the next time something asks instead of
----leaving the plugin dead until a restart. Once it has succeeded this is a file
----test and nothing more.
+---The legendary binary, downloading it if this machine hasn't got it yet.
+---Public because a shortcut points at it - Steam launches legendary, not the
+---game's own exe.
 ---@return string|nil path
 ---@return string? error
-local function resolve()
+function legendary.get_binary()
   if BINARY and fs.is_file(BINARY) then return BINARY end
 
   local path, err = vendor.ensure()
   BINARY = path
   return path, err
-end
-
----The legendary binary, or nil if it couldn't be fetched. Public because a
----shortcut points *at* it - Steam launches legendary, not the game's own exe.
----@return string|nil path
-function legendary.get_binary()
-  return (resolve())
 end
 
 -- Commands --------------------------------------------------------------------
@@ -51,8 +39,7 @@ local function quote(arg)
 end
 
 --- Printed between commands in a batch so their output can be told apart. Long
---- enough that a false match, which would split one command's JSON in half,
---- can't come out of anything legendary prints.
+--- enough that legendary can't print it by accident.
 local SEPARATOR = "--epic-games-plugin-next--"
 
 ---The subcommand out of one argument list, for a log line.
@@ -67,10 +54,9 @@ end
 
 ---Run several legendary commands, in order, behind one terminal flash.
 ---
----legendary is a console application and Steam is a GUI process with no console,
----so every exec flashes a terminal on screen and Millennium has no way to start
----a process without one. The only lever left is to call it less: one exec per
----user action rather than one per command.
+---Every exec flashes a terminal on screen, since legendary is a console
+---application and Steam has no console. Batching is the only way to have fewer
+---of them: one per user action instead of one per command.
 ---@param arg_lists string[][] Arguments to legendary, unquoted, one list per command
 ---@return string[] outputs stdout and stderr together, one per command, empty if the binary is missing
 ---@return integer status Exit status of the last command, since cmd's chaining loses the rest, or -1 if there was nothing to run
@@ -80,7 +66,7 @@ function legendary.run_batch(arg_lists)
     outputs[index] = ""
   end
 
-  local binary, err = resolve()
+  local binary, err = legendary.get_binary()
   if not binary then
     logger:error("No legendary binary: " .. tostring(err))
     return outputs, -1
@@ -94,29 +80,24 @@ function legendary.run_batch(arg_lists)
       table.insert(parts, quote(arg))
     end
 
-    -- 2>&1 because legendary writes its own log lines, and every error worth
-    -- showing the user, to stderr, which popen doesn't capture on its own.
+    -- legendary writes its log lines and its errors to stderr, which popen
+    -- doesn't capture on its own.
     commands[index] = table.concat(parts, " ") .. " 2>&1"
 
     names[index] = subcommand(args)
   end
 
-  -- `&` rather than `&&`: one legendary error in the middle shouldn't silently
-  -- drop everything after it.
+  -- `&`, not `&&`: one failure in the middle shouldn't drop the rest.
   local line = table.concat(commands, " & echo " .. SEPARATOR .. " & ")
 
-  -- The whole line is then wrapped in one more pair of quotes. utils.exec goes
-  -- through popen, which runs `cmd /c <line>`, and cmd strips the first and last
-  -- quote off that line before parsing it. Without the extra pair it eats the
-  -- quotes around the binary and splits the path at its first space, and the
-  -- path always has one, since Steam installs to Program Files (x86). The error
-  -- is "'C:\Program' is not recognized", printed to a console nobody reads.
+  -- Wrapped in one more pair of quotes: this runs through `cmd /c`, which
+  -- strips the outermost pair before parsing. Without it the path to the binary
+  -- loses its quotes and splits at its first space.
   local started = utils.time_ms()
   local output, status = utils.exec('"' .. line .. '"')
   local elapsed = utils.time_ms() - started
 
-  -- The commands and how long they blocked for, since that is the number worth
-  -- watching. The line itself is only interesting when one of them failed.
+  -- The full line is only worth logging when something failed.
   status = tonumber(status) or -1
   local summary = utils.join(names, ", ") .. " in " .. elapsed .. "ms"
   if status == 0 then
@@ -125,8 +106,8 @@ function legendary.run_batch(arg_lists)
     logger:warn("Ran " .. summary .. ", exited " .. status .. ": " .. line)
   end
 
-  -- Split by hand rather than with utils.split, which takes its delimiter a
-  -- character at a time and would cut this into pieces at every dash.
+  -- Split by hand: utils.split takes its delimiter a character at a time and
+  -- would cut this up at every dash.
   local remaining = output or ""
   for index = 1, #arg_lists do
     local from, to = remaining:find(SEPARATOR, 1, true)
@@ -156,9 +137,9 @@ end
 ---@return any|nil decoded
 ---@return string? error
 function legendary.decode_json(output)
-  -- stdout and stderr are merged, so the JSON arrives with legendary's own log
-  -- lines mixed in. Those look like "[cli] INFO: Logging in...", so searching
-  -- for the first "[" would lock onto the "[cli]" of one and decode that.
+  -- The JSON arrives with legendary's log lines mixed in, and those look like
+  -- "[cli] INFO: Logging in..." - so a search for the first "[" finds a log
+  -- line, not the document.
   local lines = utils.split(output, "\n")
   for index, line in ipairs(lines) do
     local trimmed = utils.trim(line)
@@ -193,8 +174,8 @@ end
 ---@field login_url string Where to send the user to sign in
 ---@field error string|nil Why we couldn't read a status
 
---- Cached because reading it costs a subprocess launch and a terminal flash, and
---- it's checked on every plugin load and every panel render.
+--- Cached: reading it costs a subprocess and a terminal flash, and it's checked
+--- on every panel render.
 ---@type LegendaryStatus|nil
 local status = nil
 
@@ -203,7 +184,7 @@ local status = nil
 function legendary.get_status(refresh)
   if status and not refresh then return status end
 
-  local binary, err = resolve()
+  local binary, err = legendary.get_binary()
   if not binary then
     status = {
       available = false,
@@ -214,8 +195,8 @@ function legendary.get_status(refresh)
     return status
   end
 
-  -- `status --json` is the only command that reports the logged in account, and
-  -- it reports "<not logged in>" rather than failing when nobody is.
+  -- The only command that reports the logged in account. It answers
+  -- "<not logged in>" rather than failing when nobody is.
   local output = legendary.run({ "status", "--json" })
   local decoded, err = legendary.decode_json(output)
 
@@ -236,23 +217,17 @@ end
 
 -- Authentication --------------------------------------------------------------
 
--- `legendary auth --import` would lift an existing login straight out of the
--- Epic Games Launcher, with no browser and nothing to copy. It isn't offered:
--- Epic allows one session per client id, so importing signs the user out of the
--- Epic Games Launcher itself. Silently ending a session in another application
--- is not a reasonable thing for this plugin to do to someone.
+-- `legendary auth --import` would lift a login out of the Epic Games Launcher
+-- with no browser at all, but Epic allows one session per client id: importing
+-- signs the user out of the launcher. Not something to do behind their back.
 
 ---Finish a sign in with the code from Epic's redirect page.
 ---
----`legendary auth` on its own opens a browser and then *blocks on stdin* waiting
----for that code to be pasted in. There's no stdin here, so it dies with
----"RuntimeError: lost sys.stdin" the moment the browser opens - the login looks
----like it worked and nothing is ever saved. `--code` is the non-interactive
----form: the frontend opens the page, the user copies the code off it, and the
----exchange happens here in one shot.
+---`--code` is the non-interactive form. Plain `legendary auth` blocks on stdin
+---waiting for the code, and there is no stdin here.
 ---
----Success can't be read off the exit code: legendary exits 0 even when a login
----fails, so the only reliable answer is to ask it who it thinks we are after.
+---legendary exits 0 even when a login fails, so success is read by asking it who
+---it thinks we are afterwards.
 ---@param code string The authorizationCode from Epic's redirect page
 ---@return boolean success
 ---@return string? error
@@ -262,15 +237,10 @@ function legendary.authenticate(code)
   local output = legendary.run({ "auth", "--code", utils.trim(code) })
   if legendary.get_status(true).authenticated then return true end
 
-  -- legendary's own error here is almost always "authorization_code_not_found",
-  -- i.e. expired or already used, which explains it better than anything we'd
-  -- invent.
-  --
-  -- Note that a failed attempt is not a no-op: legendary clears the stored login
-  -- before trying the new code, so getting this wrong signs the user out rather
-  -- than leaving them as they were. Hence the wording.
+  -- A failed attempt is not a no-op: legendary clears the stored login before
+  -- trying the new code, so a bad code signs the user out. Hence the wording.
   return false,
-    legendary.last_error(output)
+      legendary.last_error(output)
       or "That code didn't work, it may have expired or already been used. Press Sign in for a fresh one."
 end
 

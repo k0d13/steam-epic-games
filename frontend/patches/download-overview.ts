@@ -2,32 +2,16 @@ import { logger } from "../index";
 import * as appIds from "../state/app-ids";
 import * as jobs from "../state/jobs";
 
-// The app page's progress bar does not come from the overview's
-// `status_percentage`, whatever the tile in the grid does.
+// The app page's progress bar doesn't come from the overview's
+// `status_percentage`, whatever the grid tile does. For a game that is actively
+// downloading, Steam reads the percentage out of the client's download overview
+// instead - so with only the status set, the page says "Downloading" and draws
+// no bar at all. Writing the overview completes it, and gives us Steam's
+// "Downloading 12%" detail text for free.
 //
-//   GetProgressBarPct() {
-//     if (LocalDownloadOverview.update_appid == appid) return overall_percent_complete;
-//     const item = GetDownloadItemForOverview(overview);
-//     if (item) return percent(item);
-//     switch (selected_per_client_data.display_status) {
-//       case DownloadQueued: case UpdateQueued: case DownloadPaused:
-//       case UpdatePaused: case DownloadRequired: case UpdateRequired:
-//         return selected_per_client_data.status_percentage;
-//     }
-//     return -1;
-//   }
-//
-// `Downloading` and `Updating` are deliberately missing from that switch: a game
-// that is actively downloading has its numbers in the client's download
-// overview, so Steam reads them from there. With the status set and nothing
-// else, `BIsDownloading()` is true - hence the "Downloading" label - while the
-// percentage is -1 and no bar is drawn. Writing the overview is what completes
-// it, and it gives us Steam's "Downloading 12%" detail text for free.
-//
-// `DownloadOverview` is one object for the whole client, driving the downloads
-// page header and the currently-downloading highlight. Claiming it while Steam
-// is downloading something of its own would show our numbers against their
-// game, so we take it only when it's idle, and hand it back when we're done.
+// There is one of these for the whole client, and it also drives the downloads
+// page. Claiming it while Steam is downloading something of its own would show
+// our numbers against their game, so we take it only when it's idle.
 
 /** Only the fields we touch; the real overview carries several dozen. */
 interface DownloadOverview {
@@ -57,10 +41,8 @@ let verified = false;
 
 /**
  * Point the client's download overview at whichever of our installs is running,
- * or release it once none is.
- *
- * Called on every jobs tick, which is also what repaints the page - so this is
- * the only thing that has to keep the numbers current.
+ * or release it once none is. Called on every jobs tick, which is also what
+ * repaints the page.
  */
 export function sync() {
   const overview = getOverview();
@@ -70,8 +52,8 @@ export function sync() {
   const appId = job && appIds.getAppId(job.appName);
 
   if (job && appId !== undefined) {
-    // Steam's own download wins. Ours still has its status and its tile
-    // progress, it just doesn't get the app page's bar until Steam is finished.
+    // Steam's own download wins. Ours keeps its status and its tile progress,
+    // it just doesn't get the app page's bar until Steam has finished.
     if (overview.update_appid !== 0 && overview.update_appid !== claimed) return;
 
     claimed = appId;
@@ -89,8 +71,8 @@ export function sync() {
       logger.debug("Claimed the download overview", {
         appId,
         appName: job.appName,
-        // Different from what we wrote means the overview is read-only on this
-        // Steam build and the app page's progress bar will stay empty.
+        // Different from what we wrote means it's read-only on this build and
+        // the app page's bar will stay empty.
         got: overview.update_appid,
       });
     }

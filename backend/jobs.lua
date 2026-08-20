@@ -6,15 +6,13 @@ local utils = require("utils")
 
 -- Long-running legendary commands: installs, updates, uninstalls.
 --
--- `utils.exec` is a blocking `popen`, so running a multi-gigabyte install
--- through it would freeze the Lua state and every RPC with it for as long as the
--- download takes. So nothing here waits. A job is a detached PowerShell process
--- that owns legendary, writes its progress and its last error to small files,
--- and this module only ever reads those files back.
+-- Running one through `utils.exec` would freeze the Lua state, and every RPC
+-- with it, for the length of the download. So a job is a detached PowerShell
+-- process that owns legendary and writes its progress and its last error to
+-- small files; this module only reads those files back.
 --
--- The frontend polls `jobs.list()` about once a second, so that path spawns no
--- subprocess of its own beyond a single `tasklist` for liveness, and reads
--- nothing that grows with the length of a download.
+-- The frontend polls `jobs.list()` about once a second, so that path stays
+-- cheap: one `tasklist` for liveness, and nothing that grows with the download.
 
 local jobs = {}
 
@@ -44,8 +42,8 @@ local ROOT = utils.get_backend_path() .. "/data/jobs"
 
 -- Job directories -------------------------------------------------------------
 
----One directory per game, named after it. Epic's app names are alphanumeric
----already, but they're not ours to trust as path components.
+---One directory per game. Epic's app names are alphanumeric already, but
+---they're not ours to trust as path components.
 ---@param app_name string
 ---@return string
 local function job_dir(app_name)
@@ -53,7 +51,7 @@ local function job_dir(app_name)
 end
 
 ---Read a file, or nil if it isn't there yet. The runner creates these as it
----goes, so "missing" is a normal state rather than a failure.
+---goes, so missing is normal.
 ---@param path string
 ---@return string|nil
 local function read(path)
@@ -70,17 +68,13 @@ local function ps_quote(value)
   return "'" .. value:gsub("'", "''") .. "'"
 end
 
---- The script the detached process runs. legendary is invoked inside a pipeline
---- rather than as a separate Start-Process so that this one PID owns everything:
---- `taskkill /T` on it takes legendary down with it, and there's no second
---- process to lose track of.
+--- The script the detached process runs. legendary goes in a pipeline so this
+--- one PID owns everything - `taskkill /T` on it takes legendary down too - and
+--- `2>&1` pulls in stderr, where the progress lines go.
 ---
---- `2>&1` merges legendary's stderr, which is where the DLManager progress lines
---- go, into the pipeline. Every line is appended to the log; the ones that carry
---- progress or an error also overwrite a small file of their own, so that
---- reading either back never costs a scan of a log hundreds of kilobytes long.
---- Those files are written whole each time, so a reader sees either the previous
---- state or the new one.
+--- Every line is appended to the log, and the ones carrying progress or an error
+--- also overwrite a small file of their own, so reading either back never costs
+--- a scan of a log hundreds of kilobytes long.
 local RUNNER = [[
 $ErrorActionPreference = 'Continue'
 $PID | Out-File -Encoding ascii -FilePath "$Dir\pid.txt"
@@ -117,9 +111,9 @@ $code | Out-File -Encoding ascii -FilePath "$Dir\exit.txt"
 
 ---Start a detached, hidden PowerShell running one legendary command.
 ---
----Launched through wscript because that's the only way to get a process with no
----console window at all. `powershell -WindowStyle Hidden` still flashes one, and
----this window would otherwise sit on screen for the length of the download.
+---Through wscript because it's the only way to get no console window at all:
+---`powershell -WindowStyle Hidden` still flashes one, and this window would sit
+---on screen for the length of the download.
 ---@param dir string
 ---@param args string[] Arguments to legendary
 ---@return boolean started
@@ -134,24 +128,23 @@ local function spawn(dir, args)
   end
 
   local script = "$Dir = "
-    .. ps_quote(dir)
-    .. "\n$Exe = "
-    .. ps_quote(binary)
-    -- Not $Args: that's a PowerShell automatic variable and can't be assigned.
-    .. "\n$Arguments = @("
-    .. table.concat(quoted, ", ")
-    .. ")\n"
-    .. RUNNER
+      .. ps_quote(dir)
+      .. "\n$Exe = "
+      .. ps_quote(binary)
+      -- Not $Args: that's a PowerShell automatic variable and can't be assigned.
+      .. "\n$Arguments = @("
+      .. table.concat(quoted, ", ")
+      .. ")\n"
+      .. RUNNER
 
   local script_path = dir .. "/run.ps1"
   local ok, err = utils.write_file(script_path, script)
   if not ok then return false, "Could not write the job script: " .. tostring(err) end
 
-  -- WScript.Shell.Run with a window style of 0 and no wait: hidden, and returns
-  -- immediately, which is the whole point.
+  -- Window style 0 and no wait: hidden, and returns immediately.
   local launcher = 'CreateObject("WScript.Shell").Run "powershell -NoProfile -ExecutionPolicy Bypass -File ""'
-    .. script_path:gsub("/", "\\")
-    .. '""", 0, False'
+      .. script_path:gsub("/", "\\")
+      .. '""", 0, False'
 
   local launcher_path = dir .. "/run.vbs"
   ok, err = utils.write_file(launcher_path, launcher)
@@ -163,18 +156,16 @@ end
 
 -- Reading a job back ----------------------------------------------------------
 
---- Every live runner PID, read in one go. Listing a job asks about each of them
---- in turn, and one `tasklist` for the whole answer is the difference between
---- one blocking subprocess per poll and one per job per poll.
+--- Every live runner PID, read in one go: one `tasklist` per poll rather than
+--- one per job per poll.
 ---@type table<integer, true>|nil
 local live_pids = nil
 
 ---Every live runner PID, or nil when no usable snapshot could be taken.
 ---
----`tasklist` failing, or answering with something unparseable, is a different
----answer from "nothing is running". Treating the two the same reports a live
----install as dead, which is what leaves a download frozen at "Download Paused,
----100% Complete" until Steam is restarted.
+---`tasklist` failing is not the same answer as "nothing is running": treating
+---the two alike reports a live install as dead and freezes the download at
+---"Download Paused, 100% Complete" until Steam restarts.
 ---@return table<integer, true>|nil
 local function get_live_pids()
   if live_pids then return live_pids end
@@ -198,9 +189,8 @@ local function get_live_pids()
   return live_pids
 end
 
----Drop the PID snapshot, so the next read is current. Called at the top of
----anything that reads jobs back, since holding it any longer than one answer
----would report a finished install as still running.
+---Drop the PID snapshot, so the next read is current. Held any longer than one
+---answer it would report a finished install as still running.
 local function invalidate_pids()
   live_pids = nil
 end
@@ -241,10 +231,10 @@ end
 
 ---Build one job out of its directory and the metadata already read from it.
 ---
----State is derived rather than stored, because the runner can die at any moment
----without getting the chance to record anything: an exit code means finished, a
----live PID means running, and a PID that is gone with no exit code means the
----runner died - deliberately if pause left its marker behind, otherwise not.
+---State is derived rather than stored, since the runner can die without getting
+---to record anything: an exit code means finished, a live PID means running, and
+---a PID that is gone with no exit code means the runner died - deliberately if
+---pause left its marker behind, otherwise not.
 ---@param dir string
 ---@param meta table
 ---@return Job
@@ -257,18 +247,17 @@ local function build(dir, meta)
   if exit_code then
     state = exit_code == 0 and "done" or "failed"
   elseif fs.is_file(dir .. "/paused.txt") then
-    -- Pausing is a kill, so the runner never records anything itself: the
-    -- marker jobs.pause leaves is the only evidence that the missing process
-    -- was meant to be missing.
+    -- Pausing is a kill, so this marker is the only evidence that the missing
+    -- process was meant to be missing.
     state = "paused"
   elseif pid then
     local live = get_live_pids()
-    -- No usable answer about what is running: the last thing known is that this
-    -- job was started, and saying otherwise stops the frontend polling it.
+    -- With no usable answer about what is running, the last thing known is that
+    -- this job started; saying otherwise stops the frontend polling it.
     state = (live == nil or live[pid]) and "running" or "failed"
   else
-    -- The runner hasn't got as far as writing its PID. That's the first half
-    -- second of a job, not a problem.
+    -- The runner hasn't written its PID yet, which is the first half second of
+    -- a job rather than a problem.
     state = "running"
   end
 
@@ -307,8 +296,7 @@ function jobs.list()
   if not fs.is_directory(ROOT) then return result end
 
   for _, entry in ipairs(fs.list(ROOT) or {}) do
-    -- The directory is named after a slug of the app name, so the app name
-    -- comes back out of the job's own metadata.
+    -- The directory name is a slug, so the app name comes out of the metadata.
     local meta = entry.is_directory and read_meta(entry.path)
     if meta and meta.app_name then table.insert(result, build(entry.path, meta)) end
   end
@@ -329,9 +317,8 @@ local function start(app_name, kind, args)
   local existing = jobs.get(app_name)
   if existing and existing.state == "running" then return existing end
 
-  -- Everything from a previous run of this game goes, including the log and the
-  -- last progress it reached, or a fresh install would report the percentage
-  -- the old one stopped at until its first progress line arrives.
+  -- Everything from a previous run goes, or a fresh install reports the
+  -- percentage the old one stopped at until its first progress line.
   local dir = job_dir(app_name)
   if fs.is_directory(dir) then fs.remove_all(dir) end
   fs.create_directories(dir)
@@ -351,9 +338,8 @@ end
 
 ---Install or update a game.
 ---
----legendary's `install` is also its update and its resume: pointed at a
----directory that already holds a partial download, it continues from there
----rather than starting over.
+---legendary's `install` is also its update and its resume: pointed at a partial
+---download, it continues from there.
 ---@param app_name string
 ---@param base_path string|nil Parent directory to install into, legendary's default if nil
 ---@param game_folder string|nil Directory name inside it
@@ -383,25 +369,25 @@ end
 
 ---Stop a running job, keeping what has already been downloaded.
 ---
----legendary has no pause, so this is a kill: `/T` to take legendary down with
----the runner that owns it, `/F` because legendary won't respond to anything
----gentler mid-download. Resuming is re-running the same install.
+---legendary has no pause, so this is a kill: `/T` takes legendary down with the
+---runner, `/F` because it won't respond to anything gentler mid-download.
+---Resuming is re-running the install.
 ---@param app_name string
 ---@return boolean stopped
 function jobs.pause(app_name)
   local job = jobs.get(app_name)
   if not job or not job.pid or job.state ~= "running" then return false end
 
-  -- Written before the kill: a read that lands in the gap between the two would
-  -- otherwise see a runner that vanished on its own and call the job failed.
+  -- Before the kill: a read landing in the gap would otherwise see a runner
+  -- that vanished on its own and call the job failed.
   utils.write_file(job_dir(app_name) .. "/paused.txt", "1")
   utils.exec("taskkill /F /T /PID " .. job.pid .. " 2>&1")
   logger:info("Paused " .. app_name)
   return true
 end
 
----Stop a job and forget it ever ran. What's on disk is left alone: removing a
----partial install is `uninstall`'s job, not this one's.
+---Stop a job and forget it ever ran. What's on disk is left alone - removing a
+---partial install is `uninstall`'s job.
 ---@param app_name string
 ---@return boolean cancelled
 function jobs.cancel(app_name)

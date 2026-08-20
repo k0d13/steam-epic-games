@@ -1,13 +1,12 @@
 // Reaching into Steam's own webpack modules.
 //
-// @steambrew/client's findModuleExport searches the module cache it built when
-// it loaded, and the library's chunks load later than that - so anything in
-// them simply isn't in it. Pushing our own chunk gets webpack's `require`
-// instead, and from there every module is reachable.
+// @steambrew/client's findModuleExport only sees the module cache as it was
+// when it loaded, and the library's chunks arrive later. Pushing our own chunk
+// gets webpack's `require` itself, and from there everything is reachable.
 //
-// Module *factories* are functions, so they can be searched by source without
-// being run: only modules whose source proves they're the right one are
-// required, and requiring an unrelated module can have side effects.
+// Factories are functions, so they can be searched by source without being run.
+// Only modules whose source proves they're the right one are required, since
+// requiring an unrelated one can have side effects.
 
 interface WebpackRequire {
   (id: string): Record<string, unknown>;
@@ -34,10 +33,9 @@ function getRequire(): WebpackRequire | undefined {
  * The first export of a Steam module that matches, out of the modules whose
  * source contains `marker`.
  *
- * `marker` is only a filter over factory source - it decides which modules are
- * worth requiring, and `matches` decides what's actually wanted. Pick something
- * for it that Steam's own build can't rename: a localisation token, an error
- * string, a method name it prints somewhere.
+ * `marker` decides which modules are worth requiring and `matches` decides
+ * what's wanted. Pick a marker Steam's build can't rename: a localisation
+ * token, an error string, something it prints.
  */
 export function findExport<T>(
   marker: string,

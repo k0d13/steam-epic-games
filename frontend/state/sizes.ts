@@ -1,10 +1,9 @@
 import rpc, { type GameSize } from "../rpc";
 import { createEmitter } from "./emitter";
 
-// Sizes are read one game at a time, off the back of a Steam render that needs
-// a synchronous answer and can't wait several seconds for Epic. So everything
-// here answers from memory immediately, and asking for a game we don't have
-// starts the fetch and tells its subscribers when it lands.
+// Sizes are read one game at a time from a Steam render, which needs an answer
+// now. So everything here answers from memory, and asking for a game we don't
+// have starts a fetch and tells its subscribers when it lands.
 
 /** `null` records a game we asked about and got nothing for, so we stop asking. */
 const known = new Map<string, GameSize | null>();
@@ -20,9 +19,8 @@ export function get(appName: string): GameSize | undefined {
 }
 
 /**
- * Make sure we're getting this game's size, without waiting for it. Does
- * nothing if it's already known, already being fetched, or already failed -
- * this is called from a render path, so it has to be safe to call constantly.
+ * Make sure we're getting this game's size, without waiting for it. Called from
+ * a render path, so it has to be safe to call constantly.
  */
 export function ensure(appName: string) {
   if (known.has(appName) || pending.has(appName)) return;
@@ -31,16 +29,15 @@ export function ensure(appName: string) {
   void rpc.GetGameSize(appName).then((size) => {
     pending.delete(appName);
 
-    // A miss is usually Epic being unreachable. Recorded either way: retrying
-    // on every render would mean a subprocess per frame.
+    // Misses are recorded too: retrying every render is a subprocess a frame.
     known.set(appName, size ?? null);
     if (size) emitter.emit();
   });
 }
 
 /**
- * Drop what we know about a game, so the next look asks again. For after an
- * install or an update, when the build we measured is no longer the current one.
+ * Drop what we know about a game, for after an install or update has changed
+ * the build it was measured against.
  */
 export function forget(appName: string) {
   known.delete(appName);

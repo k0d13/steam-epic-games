@@ -1,11 +1,8 @@
 import { createStore } from "./storage";
 
-// The mapping between Epic's app names and the Steam appids we were handed when
-// each shortcut was created. Everything else - artwork, install state, launch -
-// is keyed off it, so losing it means orphaned shortcuts nobody can reconcile.
-//
-// Versioned so a change to how shortcuts are made throws away a map pointing at
-// shortcuts built the old way.
+// Epic app names to the Steam appids their shortcuts were given. Artwork,
+// install state and launching are all keyed off it, so losing it orphans every
+// shortcut. Versioned, so a change to how shortcuts are made starts fresh.
 const store = createStore<number>("epic-games:app-ids:v1");
 
 /** Every Epic game we've created a shortcut for, as app name -> Steam appid. */
@@ -19,10 +16,8 @@ export const setAppId = store.set;
 export const removeAppName = store.remove;
 
 /**
- * Drop entries whose shortcut no longer exists in Steam.
- *
- * Users delete shortcuts by hand, and a stale entry here would make us think a
- * game is already synced and silently skip recreating it.
+ * Drop entries whose shortcut no longer exists in Steam. People delete them by
+ * hand, and a stale entry makes us skip recreating the game.
  */
 export function prune(existingAppIds: Set<number>) {
   store.keep((_, appId) => existingAppIds.has(appId));

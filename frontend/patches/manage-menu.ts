@@ -7,28 +7,19 @@ import { findExport } from "../services/modules";
 import * as jobs from "../state/jobs";
 import * as library from "../state/library";
 
-// Steam's Manage submenu has no Uninstall for a non-Steam shortcut, and can't
-// grow one from the data side. The list comes from `fe(overview, clientid)` in
-// the app-actions module:
-//
-//   switch (overview.app_type) {
-//     case Shortcut: return [RemoveShortcut, CreateDesktopShortcut];
-//     ...
-//
-// - hardcoded, and `fe` isn't exported. The only other lever, making our games
-// claim to be a normal app type, would change what a shortcut is everywhere
-// else in the client: artwork, launch options, the non-Steam filters.
+// Steam's Manage submenu has no Uninstall for a non-Steam shortcut. The list is
+// hardcoded per app type in an unexported function, and the only way to change
+// which list we get - claiming to be a normal app - would change what a shortcut
+// is everywhere else in the client.
 //
 // So the item is added to the rendered submenu instead. `BuildManageSubmenu` is
-// a method on the context menu's class, which is the one thing here that is
-// reachable: the class is a `let` binding inside the module and never exported,
-// but every open context menu has an instance of it in its React tree. So the
-// first menu we see hands us the prototype, we patch that, and every menu after
-// it - including the one that just opened, via `forceUpdate` - is ours.
+// a method on the context menu's class, which is never exported but does have
+// an instance in every open menu's React tree: the first menu we see hands us
+// the prototype, and every menu after it - including that one, via
+// `forceUpdate` - is ours.
 //
-// Nothing is removed. "Remove non-Steam game" still does what it says: it drops
-// the shortcut and un-syncs the game, which is a different thing from
-// uninstalling it and worth keeping.
+// Nothing is removed. "Remove non-Steam game" drops the shortcut and un-syncs
+// the game, which is a different thing from uninstalling it.
 
 interface ManageMenuInstance {
   BuildManageSubmenu(...args: unknown[]): ReactElement;
@@ -43,8 +34,8 @@ interface Fiber {
 }
 
 /**
- * The React fiber for a DOM node, if it has one. React stores it under a key
- * with a build-specific suffix, which is why this is a scan and not a lookup.
+ * The React fiber for a DOM node. Stored under a key with a build-specific
+ * suffix, hence the scan.
  */
 function getFiber(node: Element): Fiber | undefined {
   for (const key of Object.keys(node)) {
@@ -59,12 +50,9 @@ function isManageMenu(value: unknown): value is ManageMenuInstance {
 }
 
 /**
- * The class instance behind a menu somewhere under `root`.
- *
- * The fiber a DOM node carries is the *host* fiber for that node, and the class
- * we want rendered it - so it's an ancestor, not a descendant. Hence the climb
- * to the root before the walk down: searching from the node itself finds
- * nothing, however deep it goes.
+ * The class instance behind a menu somewhere under `root`. The fiber a DOM node
+ * carries is that node's own, and the class we want rendered it - an ancestor -
+ * so this climbs to the React root before walking down.
  */
 function findManageMenu(root: Element): ManageMenuInstance | undefined {
   let fiber = getFiber(root);
@@ -91,11 +79,9 @@ function findManageMenu(root: Element): ManageMenuInstance | undefined {
 }
 
 /**
- * Steam's own uninstall dialog - the one that darkens the window behind it
- * rather than opening a second one. It renders from the appid alone and
- * confirms by calling `SteamClient.Installs.OpenUninstallWizard`, which
- * `installs.ts` intercepts, so an Epic game gets Steam's exact dialog, in
- * Steam's language, for free.
+ * Steam's own uninstall dialog. It renders from the appid alone and confirms by
+ * calling `SteamClient.Installs.OpenUninstallWizard`, which installs.ts
+ * intercepts - so an Epic game gets Steam's exact dialog for free.
  */
 type UninstallDialog = (
   appIds: number[],
@@ -114,9 +100,8 @@ let uninstallDialog: UninstallDialog | undefined;
 let searched = false;
 
 /**
- * Our own dialog, for the day Steam's stops being findable. Same shape, own
- * window rather than an overlay, and it skips `OpenUninstallWizard` because
- * nothing would have opened it.
+ * Our own dialog, for the day Steam's stops being findable. It calls the job
+ * directly, since nothing would have opened `OpenUninstallWizard`.
  */
 function fallbackConfirm(appName: string, name: string) {
   showModal(
@@ -127,9 +112,7 @@ function fallbackConfirm(appName: string, name: string) {
       bDestructiveWarning: true,
       onOK: () => void jobs.uninstall(appName),
     }),
-    // Passed explicitly because showModal's own default, findSP(), reads a
-    // gamepad navigation tree that no longer exists on this build and throws
-    // before the modal is ever created.
+    // Explicit because showModal's default, findSP(), throws on this build.
     Steam.MainPopup?.window,
   );
 }
@@ -173,8 +156,8 @@ function patchPrototype(instance: ManageMenuInstance) {
   const prototype = Object.getPrototypeOf(instance) as ManageMenuInstance;
 
   return afterPatch(prototype, "BuildManageSubmenu", (args, ret: ReactElement) => {
-    // Bulk selections are Steam's own path - it filters the actions down to
-    // what every app in the selection supports - and ours would be a lie there.
+    // Bulk selections are Steam's own path: it shows only what every app in
+    // the selection supports, and ours wouldn't be true of all of them.
     const apps = args[0] as OverviewLike[] | undefined;
     const app = apps?.length === 1 ? apps[0] : undefined;
     if (!ret || !app) return ret;
@@ -189,11 +172,8 @@ function patchPrototype(instance: ManageMenuInstance) {
 }
 
 /**
- * A cheap test for "this is worth walking a fiber tree over".
- *
- * The walk climbs to the React root and searches the whole tree, which is not
- * something to do on every DOM mutation in the Steam client. A context menu
- * always brings Steam's own contextmenu classes with it.
+ * A cheap test for "worth walking a fiber tree over", since the walk searches
+ * the whole tree and DOM mutations are constant.
  */
 function looksLikeMenu(node: Element): boolean {
   const className = typeof node.className === "string" ? node.className : "";
@@ -210,18 +190,16 @@ export function register() {
 
     const instance = findManageMenu(root);
     if (!instance) {
-      // The menu's nodes land in the DOM a commit before its class shows up in
-      // the fiber tree, and once the menu has finished opening there are no
-      // more mutations to try again on. So the retries are the difference
-      // between catching this menu and waiting for the next one.
+      // The menu's nodes land in the DOM a commit before its class appears in
+      // the fiber tree, and there are no more mutations once it has opened - so
+      // without the retries we'd be waiting for the next menu.
       if (retries > 0) {
         setTimeout(() => capture(root, retries - 1), 100);
         return;
       }
 
       // Every context menu comes through here, most of them not an app's, so
-      // this is only worth saying once - and it's the difference between the
-      // class having moved and the item being suppressed for this game.
+      // this is only worth saying once.
       if (!missed) {
         missed = true;
         logger.debug("Saw a context menu with no app actions in it");
@@ -232,26 +210,24 @@ export function register() {
     unpatch = patchPrototype(instance);
     logger.debug("Patched the manage menu");
 
-    // The menu that handed us the prototype was built before the patch
-    // existed, so it would be the one menu without our item in it.
+    // The menu that handed us the prototype was built before the patch, so it
+    // would be the one without our item in it.
     instance.forceUpdate();
 
     for (const observer of observers) observer.disconnect();
     observers.length = 0;
   }
 
-  // A context menu is a popup only when Steam is asked for one; by default it
-  // renders into the window it was opened from. So both are watched, and both
-  // stop mattering the moment one of them finds the class.
+  // A context menu is a popup only sometimes; otherwise it renders into the
+  // window it was opened from. So both are watched until one finds the class.
   function observe(root: Element | undefined) {
     if (!root) return undefined;
 
     const observer = new MutationObserver((records) => {
       for (const record of records) {
         for (const node of record.addedNodes) {
-          // `node instanceof Element` is always false here. The menu belongs to
-          // the window it opened in, and that's a different realm from the one
-          // the plugin runs in, so its nodes fail every cross-realm instanceof.
+          // `node instanceof Element` is always false: the menu belongs to
+          // another window, and instanceof doesn't cross realms.
           if (node.nodeType === 1) capture(node as Element);
           if (unpatch) return;
         }
@@ -270,9 +246,9 @@ export function register() {
 
   observe(Steam.MainPopup?.root_element);
 
-  // Every popup, whatever it says it is: a context menu window is empty at
-  // create time, so the observer is the thing that actually finds the menu, and
-  // the immediate attempt only ever pays off for one that's already rendered.
+  // Every popup, whatever it says it is. The window is empty at create time, so
+  // the observer is what finds the menu; the immediate attempt is for one that
+  // has already rendered.
   const unwatch = onPopupCreate((popup, _type, handlers) => {
     if (unpatch) return;
 

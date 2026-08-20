@@ -1,12 +1,12 @@
 import { logger } from "../index";
 
 /**
- * A record kept in localStorage and mirrored in memory, because a sync reads
- * once per game and writes back for most of them - re-parsing a growing
- * document each time is UI-thread work for an answer we already have.
+ * A record kept in localStorage and mirrored in memory: a sync reads once per
+ * game and writes back for most of them, and re-parsing the document each time
+ * is UI-thread work for an answer we already have.
  *
- * `key` should be versioned by the caller, so a change to what's stored throws
- * away entries written under the old meaning rather than half-reading them.
+ * `key` should be versioned, so a change to what's stored throws the old
+ * entries away rather than half-reading them.
  */
 export function createStore<T>(key: string) {
   let cache: Record<string, T> | undefined;

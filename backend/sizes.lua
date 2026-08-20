@@ -3,17 +3,14 @@ local legendary = require("legendary")
 local logger = require("logger")
 local utils = require("utils")
 
--- How much room a game needs before it's installed. Steam shows this next to
--- the Install button, and it's the one number `legendary list` doesn't carry.
--- Only `legendary info` does, and that fetches the game's manifest from Epic,
--- so it costs a subprocess and a few seconds per title. Asked for a game at a
--- time and cached forever rather than filled in for 200 games the user only
--- ever sees one at a time.
+-- How much room a game needs before it's installed, for the "Space Required"
+-- Steam shows beside the Install button. `legendary list` doesn't carry it and
+-- `legendary info` costs a manifest fetch per title, so it's read one game at a
+-- time and cached.
 
 local sizes = {}
 
---- Keyed by app name. Versioned by build id so a game that has since been
---- patched is re-read rather than reporting last year's size.
+--- Keyed by app name, versioned by build id so a patched game is re-read.
 local CACHE_PATH = utils.get_backend_path() .. "/data/sizes.json"
 
 ---@class GameSize
@@ -36,10 +33,9 @@ local function save()
 end
 
 ---What one game needs on disk, from the cache if we've ever asked before.
----
----Blocks on `legendary info` on a miss, which goes out to Epic for the game's
----manifest - several seconds. That's why the frontend asks for this after the
----app page is already on screen rather than as part of loading the library.
+---A miss blocks on `legendary info`, which fetches the manifest from Epic and
+---takes several seconds - hence the frontend asking for it after the app page
+---is already on screen.
 ---@param app_name string
 ---@param refresh boolean|nil Re-read even if it's cached
 ---@return GameSize|nil size
@@ -54,9 +50,8 @@ function sizes.get(app_name, refresh)
   local decoded, err = legendary.decode_json(output)
   if type(decoded) ~= "table" then return nil, err or "legendary returned no info" end
 
-  -- `manifest` is absent when legendary couldn't reach Epic, which is the
-  -- normal offline answer rather than a broken install - so it's not an error
-  -- worth surfacing, there's just nothing to show yet.
+  -- No manifest means legendary couldn't reach Epic, which is the offline
+  -- answer rather than a failure worth showing.
   local manifest = decoded.manifest
   if type(manifest) ~= "table" or type(manifest.disk_size) ~= "number" then
     return nil, "no manifest for " .. app_name
@@ -73,8 +68,8 @@ function sizes.get(app_name, refresh)
   return cache[app_name]
 end
 
----Forget one game's size, so the next ask re-reads it. For after an install or
----an update, when the build it was measured against is no longer the current one.
+---Forget one game's size, for after an install or update has changed the build
+---it was measured against.
 ---@param app_name string
 function sizes.forget(app_name)
   load()

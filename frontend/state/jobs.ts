@@ -4,11 +4,8 @@ import { createEmitter } from "./emitter";
 import * as library from "./library";
 
 // The frontend's view of the backend's installs. The backend can't push, so
-// this polls - but only while something is actually running, so an idle Steam
-// makes no calls at all.
-//
-// Everything that shows an install reads from here: the install state patch
-// turns a running job into Steam's own progress bar, and the panel lists them.
+// this polls, but only while something is running - an idle Steam makes no
+// calls at all. Everything that shows an install reads from here.
 
 const POLL_MS = 1000;
 
@@ -39,11 +36,9 @@ export function paused(): Job[] {
 }
 
 /**
- * Fold one poll's answer in, and report whether anything finished.
- *
- * Finishing is the only transition worth acting on: it's what changes whether
- * the game is installed, which is a different question from how the download is
- * going and costs a call to legendary to answer.
+ * Fold one poll's answer in, and report whether anything finished. Finishing is
+ * the only transition worth acting on, since it's what changes whether the game
+ * is installed.
  */
 function apply(jobs: Job[]) {
   let finished = false;
@@ -54,8 +49,8 @@ function apply(jobs: Job[]) {
     byAppName.set(job.appName, job);
   }
 
-  // A job that has vanished from the backend was cancelled, and cancelling
-  // leaves whatever it had already written on disk - so that counts too.
+  // A job that has vanished was cancelled, which leaves what it downloaded on
+  // disk - so that counts as finishing too.
   const seen = new Set(jobs.map((job) => job.appName));
   for (const appName of byAppName.keys()) {
     if (seen.has(appName)) continue;
@@ -73,8 +68,7 @@ async function poll() {
   try {
     jobs = await rpc.GetJobs();
   } catch (reason: unknown) {
-    // The backend going quiet mid-download shouldn't leave a dead poller
-    // behind: try again on the next tick rather than giving up on the install.
+    // One failed call shouldn't leave a dead poller behind mid-download.
     logger.warn("GetJobs failed", reason);
     schedule();
     return;
@@ -83,10 +77,9 @@ async function poll() {
   const finished = apply(jobs);
 
   if (finished) {
-    // Before the emit, not after: the job is no longer running but the library
-    // still says the game isn't installed, and repainting in between is what
-    // flashes Install between Installing and Play. Only the installed half can
-    // have changed, so this is the cheap refresh, and it emits on its own.
+    // Before the emit: the job has stopped running but the library still says
+    // the game isn't installed, and repainting in between flashes Install
+    // between Installing and Play.
     await library.loadInstalled();
   }
 
@@ -96,9 +89,8 @@ async function poll() {
 
 /**
  * Keep polling while anything is running, and stop when nothing is. Idle is the
- * normal state, and a timer firing every second forever behind a Steam that
- * isn't downloading anything is exactly the kind of thing that gets a plugin
- * blamed for someone's frame rate.
+ * normal state, and a timer firing every second behind an idle Steam is how a
+ * plugin gets blamed for someone's frame rate.
  */
 function schedule() {
   if (timer !== undefined) return;
@@ -118,10 +110,8 @@ export async function refresh() {
 /** Take a freshly started job on, without waiting for the next poll to see it. */
 async function track(appName: string, job: Job | undefined) {
   if (!job) {
-    // The call failed, but the backend spawns the runner before it answers, so
-    // the install may well be underway with nothing watching it. Ask what is
-    // actually running rather than leaving the UI on Install for a game that is
-    // downloading.
+    // The backend spawns the runner before it answers, so the install may be
+    // underway with nothing watching it. Ask what is actually running.
     logger.warn("No job came back from the backend", { appName });
     try {
       await refresh();
@@ -139,10 +129,7 @@ async function track(appName: string, job: Job | undefined) {
   return job;
 }
 
-/**
- * Start, or resume, an install. legendary's `install` is both: pointed at a
- * partial download it continues from where it stopped.
- */
+/** Start, or resume, an install - legendary's `install` is both. */
 export async function install(appName: string, basePath?: string, gameFolder?: string) {
   return track(appName, await rpc.StartInstall(appName, basePath, gameFolder));
 }
