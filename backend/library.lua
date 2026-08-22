@@ -11,7 +11,7 @@ local utils = require("utils")
 local library = {}
 
 --- Cached so a cold start can draw the library before it has spoken to Epic.
-local CACHE_PATH = utils.get_backend_path() .. "/data/library.json"
+local CACHE_PATH = utils.get_backend_path() .. "/data/cache/library.json"
 
 ---@class EpicGame
 ---@field app_name string Epic's internal id, and our stable key for everything
@@ -136,12 +136,12 @@ local function import_leftover_egl_installs(owned, installed_by_name)
   if #commands == 0 then return installed_by_name end
   logger:info("Importing Epic Games Launcher installs egl-sync skipped: " .. utils.join(titles, ", "))
 
-  -- Re-reading the installed list picks the imports up, in the same batch so it
-  -- costs no second terminal flash.
-  table.insert(commands, LIST_INSTALLED)
+  for _, args in ipairs(commands) do
+    legendary.run(args)
+  end
 
-  local outputs = legendary.run_batch(commands)
-  return index_installed(outputs[#outputs]) or installed_by_name
+  -- Re-read: the list only picks the imports up once they have happened.
+  return index_installed(legendary.run(LIST_INSTALLED)) or installed_by_name
 end
 
 ---Is this catalog entry a game? The catalog is also full of engine components,
@@ -190,18 +190,16 @@ function library.refresh(force)
   local list_args = { "list", "--json" }
   if force then table.insert(list_args, "--force-refresh") end
 
-  -- One batch, one terminal flash. The EGL sync goes first: it's what makes
-  -- launcher installs visible to the list-installed after it. Its failure is
-  -- only logged, since not having EGL is normal.
-  local outputs = legendary.run_batch({ egl.sync_args(), list_args, LIST_INSTALLED })
+  -- The EGL sync goes first: it's what makes launcher installs visible to the
+  -- list-installed after it. Its failure is only logged, since not having EGL
+  -- is normal.
+  logger:info("Epic Games Launcher sync: " .. utils.trim(legendary.run(egl.sync_args())))
 
-  logger:info("Epic Games Launcher sync: " .. utils.trim(outputs[1]))
-
-  local owned, err = legendary.decode_json(outputs[2])
+  local owned, err = legendary.decode_json(legendary.run(list_args))
   if type(owned) ~= "table" then return nil, err or "legendary returned no library" end
 
   local installed_by_name =
-      import_leftover_egl_installs(owned, index_installed(outputs[3]) or {})
+      import_leftover_egl_installs(owned, index_installed(legendary.run(LIST_INSTALLED)) or {})
 
   local merged = {}
   for _, entry in ipairs(owned) do

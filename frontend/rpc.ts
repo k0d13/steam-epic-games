@@ -1,15 +1,51 @@
 import { Millennium } from "@steambrew/client";
 import { logger } from "./index";
 
+/**
+ * What a backend method answers instead of a result when the work it needs is
+ * too slow to hold the Lua state for. RPC handlers run on Millennium's main
+ * thread and cannot yield, so the only way not to block every other call is to
+ * start the work, say so, and be asked again - which is what {@link call} does,
+ * invisibly to everything below.
+ */
+interface Pending {
+  pending: true;
+  /** How long the backend wants before the next attempt, in milliseconds. */
+  retry_in?: number;
+}
+
+const isPending = (value: unknown): value is Pending =>
+  typeof value === "object" && value !== null && (value as Pending).pending === true;
+
+/** Stop retrying eventually, so a backend stuck saying "pending" cannot hang a
+ * caller for good. */
+const RETRY_LIMIT_MS = 120_000;
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 async function call<R>(route: `RPC.${string}`, payload: object = {}): Promise<R> {
   const name = route.slice(4);
   logger.debug(`-> ${name}`, payload);
 
-  const raw = await Millennium.callServerMethod(name, { payload: JSON.stringify(payload) });
-  const parsed = JSON.parse(raw) as R;
+  const body = JSON.stringify(payload);
+  const deadline = Date.now() + RETRY_LIMIT_MS;
 
-  logger.debug(`<- ${name}`, parsed);
-  return parsed;
+  for (;;) {
+    const raw = await Millennium.callServerMethod(name, { payload: body });
+    const parsed = JSON.parse(raw) as R | Pending;
+
+    if (!isPending(parsed)) {
+      logger.debug(`<- ${name}`, parsed);
+      return parsed;
+    }
+
+    if (Date.now() > deadline) {
+      logger.warn(`${name} never stopped saying pending`);
+      return parsed as R;
+    }
+
+    await sleep(parsed.retry_in ?? 250);
+  }
 }
 
 /** Whether legendary is usable, and whether an Epic account is signed in. */

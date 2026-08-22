@@ -1,5 +1,6 @@
 local fs = require("fs")
 local logger = require("logger")
+local shell = require("shell")
 local utils = require("utils")
 
 -- Fetches the legendary binary on first use, from a release pinned by tag *and*
@@ -33,7 +34,7 @@ local PATH = DIR .. "/legendary.exe"
 ---@param path string
 ---@return string|nil
 local function digest(path)
-  local output = utils.exec('certutil -hashfile "' .. path:gsub("/", "\\") .. '" SHA256 2>&1')
+  local output = shell.run("certutil", { "-hashfile", (path:gsub("/", "\\")), "SHA256" })
   if not output then return nil end
 
   -- Matched a line at a time: the banner carries the path and the trailer starts
@@ -61,21 +62,25 @@ end
 ---@param destination string
 ---@return boolean ok
 local function fetch(destination)
-  local target = destination:gsub("/", "\\")
+  local target = (destination:gsub("/", "\\"))
 
-  utils.exec('curl.exe -fsSL --retry 2 -o "' .. target .. '" "' .. URL .. '" 2>&1')
+  -- Five minutes: this is a 30MB download over whatever connection the machine
+  -- has, and the usual timeout would give up on a slow one.
+  shell.run("curl.exe", { "-fsSL", "--retry", "2", "-o", target, URL }, { timeout = 300000 })
   if fs.is_file(destination) then return true end
 
   logger:info("curl did not produce a file, falling back to PowerShell")
-  utils.exec(
-    'powershell -NoProfile -ExecutionPolicy Bypass -Command "'
-    .. "$ProgressPreference='SilentlyContinue';"
-    .. "Invoke-WebRequest -UseBasicParsing -Uri '"
+  shell.run("powershell", {
+    "-NoProfile",
+    "-ExecutionPolicy",
+    "Bypass",
+    "-Command",
+    "$ProgressPreference='SilentlyContinue'; Invoke-WebRequest -UseBasicParsing -Uri '"
     .. URL
     .. "' -OutFile '"
     .. target
-    .. "'\" 2>&1"
-  )
+    .. "'",
+  }, { timeout = 300000 })
 
   return fs.is_file(destination)
 end

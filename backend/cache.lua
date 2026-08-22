@@ -3,8 +3,8 @@ local json = require("json")
 local logger = require("logger")
 local utils = require("utils")
 
--- Small JSON documents kept under backend/data. Every one of them is a cache:
--- losing one costs a refresh, so nothing here tries harder than that.
+-- Small JSON documents kept under backend/data/cache. Every one of them is a
+-- cache: losing one costs a refresh, so nothing here tries harder than that.
 
 local cache = {}
 

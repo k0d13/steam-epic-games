@@ -1,6 +1,9 @@
+local disk = require("cache")
 local fs = require("fs")
+local jobs = require("jobs")
 local json = require("json")
 local logger = require("logger")
+local shell = require("shell")
 local utils = require("utils")
 local vendor = require("vendor")
 
@@ -31,17 +34,6 @@ end
 
 -- Commands --------------------------------------------------------------------
 
----Quote a single argument for cmd.exe.
----@param arg string
----@return string
-local function quote(arg)
-  return '"' .. arg:gsub('"', '\\"') .. '"'
-end
-
---- Printed between commands in a batch so their output can be told apart. Long
---- enough that legendary can't print it by accident.
-local SEPARATOR = "--epic-games-plugin-next--"
-
 ---The subcommand out of one argument list, for a log line.
 ---@param args string[]
 ---@return string
@@ -52,84 +44,35 @@ local function subcommand(args)
   return "?"
 end
 
----Run several legendary commands, in order, behind one terminal flash.
----
----Every exec flashes a terminal on screen, since legendary is a console
----application and Steam has no console. Batching is the only way to have fewer
----of them: one per user action instead of one per command.
----@param arg_lists string[][] Arguments to legendary, unquoted, one list per command
----@return string[] outputs stdout and stderr together, one per command, empty if the binary is missing
----@return integer status Exit status of the last command, since cmd's chaining loses the rest, or -1 if there was nothing to run
-function legendary.run_batch(arg_lists)
-  local outputs = {}
-  for index = 1, #arg_lists do
-    outputs[index] = ""
-  end
-
+---Run one legendary command and block until it exits.
+---@param args string[] Arguments to legendary, unquoted
+---@return string output stdout followed by stderr, empty if the binary is missing
+---@return integer status -1 if there was nothing to run
+function legendary.run(args)
   local binary, err = legendary.get_binary()
   if not binary then
     logger:error("No legendary binary: " .. tostring(err))
-    return outputs, -1
+    return "", -1
   end
 
-  local commands = {}
-  local names = {}
-  for index, args in ipairs(arg_lists) do
-    local parts = { quote(binary) }
-    for _, arg in ipairs(args) do
-      table.insert(parts, quote(arg))
-    end
-
-    -- legendary writes its log lines and its errors to stderr, which popen
-    -- doesn't capture on its own.
-    commands[index] = table.concat(parts, " ") .. " 2>&1"
-
-    names[index] = subcommand(args)
-  end
-
-  -- `&`, not `&&`: one failure in the middle shouldn't drop the rest.
-  local line = table.concat(commands, " & echo " .. SEPARATOR .. " & ")
-
-  -- Wrapped in one more pair of quotes: this runs through `cmd /c`, which
-  -- strips the outermost pair before parsing. Without it the path to the binary
-  -- loses its quotes and splits at its first space.
   local started = utils.time_ms()
-  local output, status = utils.exec('"' .. line .. '"')
-  local elapsed = utils.time_ms() - started
+  local output, status = shell.run(binary, args)
 
-  -- The full line is only worth logging when something failed.
-  status = tonumber(status) or -1
-  local summary = utils.join(names, ", ") .. " in " .. elapsed .. "ms"
+  local summary = subcommand(args) .. " in " .. (utils.time_ms() - started) .. "ms"
   if status == 0 then
     logger:info("Ran " .. summary)
   else
-    logger:warn("Ran " .. summary .. ", exited " .. status .. ": " .. line)
+    logger:warn("Ran " .. summary .. ", exited " .. status)
   end
 
-  -- Split by hand: utils.split takes its delimiter a character at a time and
-  -- would cut this up at every dash.
-  local remaining = output or ""
-  for index = 1, #arg_lists do
-    local from, to = remaining:find(SEPARATOR, 1, true)
-    if not from then
-      outputs[index] = remaining
-      break
-    end
-
-    outputs[index] = remaining:sub(1, from - 1)
-    remaining = remaining:sub(to + 1)
-  end
-
-  return outputs, status
+  return output, status
 end
 
----Run one legendary command and block until it exits.
----@param args string[] Arguments to legendary, unquoted
----@return string output stdout and stderr together, empty if the binary is missing
----@return integer status -1 if there was nothing to run
-function legendary.run(args)
-  local outputs, status = legendary.run_batch({ args })
-  return outputs[1] or "", status
+---Is this one of legendary's own log lines, like "[cli] INFO: Logging in..."?
+---@param trimmed string
+---@return boolean
+local function is_log_line(trimmed)
+  return trimmed:match("^%[[%w%-%._]+%]%s+%u+:") ~= nil
 end
 
 ---Decode the JSON a legendary command printed.
@@ -144,8 +87,19 @@ function legendary.decode_json(output)
   for index, line in ipairs(lines) do
     local trimmed = utils.trim(line)
     local opens = trimmed:sub(1, 1)
-    if (opens == "{" or opens == "[") and not trimmed:match("^%[[%w%-%._]+%]%s+%u+:") then
-      local ok, decoded = pcall(json.decode, table.concat(lines, "\n", index))
+    if (opens == "{" or opens == "[") and not is_log_line(trimmed) then
+      -- Stops at the next log line rather than running to the end of the
+      -- output: stderr is appended after stdout, so legendary's chatter lands
+      -- on both sides of the document.
+      local last = #lines
+      for offset = index + 1, #lines do
+        if is_log_line(utils.trim(lines[offset])) then
+          last = offset - 1
+          break
+        end
+      end
+
+      local ok, decoded = pcall(json.decode, table.concat(lines, "\n", index, last))
       if ok then return decoded end
       return nil, "could not decode legendary output: " .. tostring(decoded)
     end
@@ -174,7 +128,7 @@ end
 ---@field login_url string Where to send the user to sign in
 ---@field error string|nil Why we couldn't read a status
 
---- Cached: reading it costs a subprocess and a terminal flash, and it's checked
+--- Cached: reading it costs a subprocess, and it's checked
 --- on every panel render.
 ---@type LegendaryStatus|nil
 local status = nil
@@ -213,6 +167,137 @@ function legendary.get_status(refresh)
 
   logger:info("Status: account=" .. tostring(account))
   return status
+end
+
+---Start a legendary command without waiting for it, for work too slow to hold
+---the Lua state for. Collect it with `legendary.collect`.
+---@param args string[] Arguments to legendary, unquoted
+---@return string|nil id
+---@return string? error
+function legendary.start(args)
+  local binary, err = legendary.get_binary()
+  if not binary then return nil, err or "No legendary binary" end
+
+  return shell.start(binary, args)
+end
+
+---The output of a command started with `legendary.start`, or nil while it is
+---still running. Answers once: collecting it clears it.
+---@param id string
+---@return string|nil output
+function legendary.collect(id)
+  return shell.poll(id)
+end
+
+-- Sizes ----------------------------------------------------------------------
+
+-- How much room a game needs before it is installed, for the "Space Required"
+-- Steam shows beside the Install button. `legendary list` does not carry it and
+-- `legendary info` costs a manifest fetch per title, so it is read one game at a
+-- time and cached, keyed by app name and versioned by build id.
+
+---@class GameSize
+---@field disk integer Bytes the installed game occupies - what Steam calls "Space Required"
+---@field download integer Bytes actually transferred, which is smaller: Epic ships compressed
+---@field build_id string|nil The build this was measured against
+
+local SIZES_PATH = utils.get_backend_path() .. "/data/cache/sizes.json"
+
+---@type table<string, GameSize>|nil
+local sizes = nil
+
+--- The `legendary info` still running for a game, by app name, so asking twice
+--- while the first is in flight waits on that one.
+---@type table<string, string>
+local sizing = {}
+
+---What one game needs on disk.
+---
+---A miss costs a manifest fetch from Epic, several seconds of it, which is far
+---too long to hold the Lua state for. So a miss starts the command and says so;
+---the caller asks again, and the answer is there once it is. Never blocks.
+---@param app_name string
+---@param refresh boolean|nil Re-read even if it's cached
+---@return GameSize|nil size
+---@return string? error
+---@return boolean? still_running The command has been started, ask again shortly
+function legendary.get_size(app_name, refresh)
+  if type(app_name) ~= "string" or app_name == "" then return nil, "No app name provided" end
+
+  sizes = sizes or disk.read(SIZES_PATH, "sizes") or {}
+  if sizes[app_name] and not refresh then return sizes[app_name] end
+
+  local id = sizing[app_name]
+  if not id then
+    local started, err = legendary.start({ "info", app_name, "--json" })
+    if not started then return nil, err end
+
+    sizing[app_name] = started
+    return nil, nil, true
+  end
+
+  local output = legendary.collect(id)
+  if not output then return nil, nil, true end
+  sizing[app_name] = nil
+
+  local decoded, err = legendary.decode_json(output)
+  if type(decoded) ~= "table" then return nil, err or "legendary returned no info" end
+
+  -- No manifest means legendary could not reach Epic, which is the offline
+  -- answer rather than a failure worth showing.
+  local manifest = decoded.manifest
+  if type(manifest) ~= "table" or type(manifest.disk_size) ~= "number" then
+    return nil, "no manifest for " .. app_name
+  end
+
+  sizes[app_name] = {
+    disk = manifest.disk_size,
+    download = manifest.download_size or manifest.disk_size,
+    build_id = manifest.build_id,
+  }
+  disk.write(SIZES_PATH, sizes, "sizes")
+
+  logger:info("Sized " .. app_name .. ": " .. manifest.disk_size .. " bytes on disk")
+  return sizes[app_name]
+end
+
+-- Long-running commands ------------------------------------------------------
+
+---Install, update or resume a game, as a job rather than a wait.
+---
+---legendary's `install` is also its update and its resume: pointed at a partial
+---download, it continues from there.
+---@param app_name string
+---@param base_path string|nil Parent directory to install into, legendary's default if nil
+---@param game_folder string|nil Directory name inside it
+---@return Job|nil job
+---@return string? error
+function legendary.install(app_name, base_path, game_folder)
+  local binary, err = legendary.get_binary()
+  if not binary then return nil, err or "No legendary binary" end
+
+  local args = { "-y", "install", app_name }
+
+  if type(base_path) == "string" and base_path ~= "" then
+    table.insert(args, "--base-path")
+    table.insert(args, (base_path:gsub("/", "\\")))
+  end
+  if type(game_folder) == "string" and game_folder ~= "" then
+    table.insert(args, "--game-folder")
+    table.insert(args, game_folder)
+  end
+
+  return jobs.start(app_name, "install", binary, args)
+end
+
+---@param app_name string
+---@return Job|nil job
+---@return string? error
+function legendary.uninstall(app_name)
+  local binary, err = legendary.get_binary()
+  if not binary then return nil, err or "No legendary binary" end
+
+  return jobs.start(app_name, "uninstall", binary, { "-y", "uninstall", app_name })
 end
 
 -- Authentication --------------------------------------------------------------

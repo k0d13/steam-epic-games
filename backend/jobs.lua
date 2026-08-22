@@ -1,15 +1,19 @@
 local fs = require("fs")
 local json = require("json")
-local legendary = require("legendary")
 local logger = require("logger")
+local shell = require("shell")
 local utils = require("utils")
 
--- Long-running legendary commands: installs, updates, uninstalls.
+-- Work too long to wait for: installs, updates, uninstalls.
 --
--- Running one through `utils.exec` would freeze the Lua state, and every RPC
+-- Running one through `shell.run` would freeze the Lua state, and every RPC
 -- with it, for the length of the download. So a job is a detached PowerShell
--- process that owns legendary and writes its progress and its last error to
+-- process that owns the command and writes its progress and its last error to
 -- small files; this module only reads those files back.
+--
+-- Nothing here knows what it is running. The progress lines it watches for are
+-- legendary's, but the caller supplies the program and the arguments, and
+-- `legendary.lua` is what turns "install this game" into either of those.
 --
 -- The frontend polls `jobs.list()` about once a second, so that path stays
 -- cheap: it only reads files, and nothing it reads grows with the download.
@@ -60,13 +64,6 @@ local function read(path)
 end
 
 -- The runner ------------------------------------------------------------------
-
----Escape a string for a single-quoted PowerShell literal.
----@param value string
----@return string
-local function ps_quote(value)
-  return "'" .. value:gsub("'", "''") .. "'"
-end
 
 --- The script the detached process runs. legendary goes in a pipeline so this
 --- one PID owns everything - `taskkill /T` on it takes legendary down too - and
@@ -122,22 +119,20 @@ $code | Out-File -Encoding ascii -FilePath "$Dir\exit.txt"
 ---`powershell -WindowStyle Hidden` still flashes one, and this window would sit
 ---on screen for the length of the download.
 ---@param dir string
----@param args string[] Arguments to legendary
+---@param exe string The program the runner owns
+---@param args string[] Arguments to it
 ---@return boolean started
 ---@return string? error
-local function spawn(dir, args)
-  local binary = legendary.get_binary()
-  if not binary then return false, "No legendary binary" end
-
+local function spawn(dir, exe, args)
   local quoted = {}
   for index, arg in ipairs(args) do
-    quoted[index] = ps_quote(arg)
+    quoted[index] = shell.ps_quote(arg)
   end
 
   local script = "$Dir = "
-      .. ps_quote(dir)
+      .. shell.ps_quote(dir)
       .. "\n$Exe = "
-      .. ps_quote(binary)
+      .. shell.ps_quote(exe)
       -- Not $Args: that's a PowerShell automatic variable and can't be assigned.
       .. "\n$Arguments = @("
       .. table.concat(quoted, ", ")
@@ -148,16 +143,18 @@ local function spawn(dir, args)
   local ok, err = utils.write_file(script_path, script)
   if not ok then return false, "Could not write the job script: " .. tostring(err) end
 
-  -- Window style 0 and no wait: hidden, and returns immediately.
-  local launcher = 'CreateObject("WScript.Shell").Run "powershell -NoProfile -ExecutionPolicy Bypass -File ""'
-      .. script_path:gsub("/", "\\")
-      .. '""", 0, False'
-
   local launcher_path = dir .. "/run.vbs"
-  ok, err = utils.write_file(launcher_path, launcher)
+  ok, err = utils.write_file(
+    launcher_path,
+    shell.vbs_launcher(
+      'powershell -NoProfile -ExecutionPolicy Bypass -File "' .. (script_path:gsub("/", "\\")) .. '"'
+    )
+  )
   if not ok then return false, "Could not write the job launcher: " .. tostring(err) end
 
-  utils.exec('wscript "' .. launcher_path:gsub("/", "\\") .. '"')
+  -- Returns as soon as wscript has handed the runner off, which is the point:
+  -- nothing here waits for a download.
+  shell.run("wscript", { (launcher_path:gsub("/", "\\")) })
   return true
 end
 
@@ -167,9 +164,8 @@ end
 ---
 ---Asked once a second per job, so it can't cost a subprocess: `tasklist` here
 ---was a console window flashing up and stealing focus for the length of every
----download. Instead the runner holds `lock` open unshared, and Windows refuses
----every other open of it until that process is gone - so a write that fails is
----a runner still running, and a write that succeeds is one that isn't.
+---download. The runner holds `lock` open unshared instead, which nothing else
+---can open until it has exited.
 ---@param dir string
 ---@param pid integer|nil
 ---@return boolean
@@ -182,8 +178,7 @@ local function is_running(dir, pid)
     return pid == nil
   end
 
-  local ok, wrote = pcall(utils.write_file, lock, "")
-  return not (ok and wrote ~= false)
+  return shell.is_locked(lock)
 end
 
 ---@param dir string
@@ -286,12 +281,14 @@ end
 
 -- Starting and stopping -------------------------------------------------------
 
+---Start one job for a game, replacing whatever it last ran.
 ---@param app_name string
 ---@param kind JobKind
+---@param exe string
 ---@param args string[]
 ---@return Job|nil job
 ---@return string? error
-local function start(app_name, kind, args)
+function jobs.start(app_name, kind, exe, args)
   if type(app_name) ~= "string" or app_name == "" then return nil, "No app name provided" end
 
   local existing = jobs.get(app_name)
@@ -309,42 +306,11 @@ local function start(app_name, kind, args)
   )
   if not ok then return nil, "Could not write the job: " .. tostring(err) end
 
-  local started, spawn_error = spawn(dir, args)
+  local started, spawn_error = spawn(dir, exe, args)
   if not started then return nil, spawn_error end
 
   logger:info("Started " .. kind .. " for " .. app_name)
   return jobs.get(app_name)
-end
-
----Install or update a game.
----
----legendary's `install` is also its update and its resume: pointed at a partial
----download, it continues from there.
----@param app_name string
----@param base_path string|nil Parent directory to install into, legendary's default if nil
----@param game_folder string|nil Directory name inside it
----@return Job|nil job
----@return string? error
-function jobs.install(app_name, base_path, game_folder)
-  local args = { "-y", "install", app_name }
-
-  if type(base_path) == "string" and base_path ~= "" then
-    table.insert(args, "--base-path")
-    table.insert(args, (base_path:gsub("/", "\\")))
-  end
-  if type(game_folder) == "string" and game_folder ~= "" then
-    table.insert(args, "--game-folder")
-    table.insert(args, game_folder)
-  end
-
-  return start(app_name, "install", args)
-end
-
----@param app_name string
----@return Job|nil job
----@return string? error
-function jobs.uninstall(app_name)
-  return start(app_name, "uninstall", { "-y", "uninstall", app_name })
 end
 
 ---Stop a running job, keeping what has already been downloaded.
@@ -361,7 +327,7 @@ function jobs.pause(app_name)
   -- Before the kill: a read landing in the gap would otherwise see a runner
   -- that vanished on its own and call the job failed.
   utils.write_file(job_dir(app_name) .. "/paused.txt", "1")
-  utils.exec("taskkill /F /T /PID " .. job.pid .. " 2>&1")
+  shell.run("taskkill", { "/F", "/T", "/PID", tostring(job.pid) })
   logger:info("Paused " .. app_name)
   return true
 end

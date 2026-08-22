@@ -3,7 +3,6 @@ local jobs = require("jobs")
 local json = require("json")
 local legendary = require("legendary")
 local library = require("library")
-local sizes = require("sizes")
 
 -- Every method takes one JSON payload and answers with one JSON document.
 
@@ -89,7 +88,10 @@ end)
 ---beside the Install button. Kept out of GetLibrary because it costs a manifest
 ---fetch per game; slow once per game, cached after that.
 RPC.GetGameSize = method(function(data)
-  local size, err = sizes.get(data.app_name, data.refresh == true)
+  local size, err, still_running = legendary.get_size(data.app_name, data.refresh == true)
+  -- Answered rather than waited for: the frontend asks again after retry_in
+  -- milliseconds, and everything else keeps working meanwhile.
+  if still_running then return { pending = true, retry_in = 500 } end
   if not size then return { ok = false, error = err } end
   return { ok = true, disk = size.disk, download = size.download }
 end)
@@ -100,7 +102,7 @@ end)
 ---is spawned; progress is read back with GetJobs. Starting a game that is
 ---already installing returns the running job.
 RPC.StartInstall = method(function(data)
-  local job, err = jobs.install(data.app_name, data.base_path, data.game_folder)
+  local job, err = legendary.install(data.app_name, data.base_path, data.game_folder)
   if not job then return { ok = false, error = err } end
   return { ok = true, job = job }
 end)
@@ -108,7 +110,7 @@ end)
 ---Remove a game from disk. The Steam shortcut is left alone, since keeping
 ---uninstalled games in the library is the point of the plugin.
 RPC.StartUninstall = method(function(data)
-  local job, err = jobs.uninstall(data.app_name)
+  local job, err = legendary.uninstall(data.app_name)
   if not job then return { ok = false, error = err } end
   return { ok = true, job = job }
 end)
