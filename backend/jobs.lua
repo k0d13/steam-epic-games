@@ -12,7 +12,7 @@ local utils = require("utils")
 -- small files; this module only reads those files back.
 --
 -- The frontend polls `jobs.list()` about once a second, so that path stays
--- cheap: one `tasklist` for liveness, and nothing that grows with the download.
+-- cheap: it only reads files, and nothing it reads grows with the download.
 
 local jobs = {}
 
@@ -77,6 +77,13 @@ end
 --- a scan of a log hundreds of kilobytes long.
 local RUNNER = [[
 $ErrorActionPreference = 'Continue'
+
+# Held, unshared, for as long as this process lives, so the plugin can tell
+# whether the runner is still going by trying to open it. Deliberately never
+# closed: the handle goes when the process does, which is after the exit code
+# at the end of this script has been written.
+$Lock = [System.IO.File]::Open("$Dir\lock", 'Create', 'Write', 'None')
+
 $PID | Out-File -Encoding ascii -FilePath "$Dir\pid.txt"
 
 $percent = 0; $done = 0; $total = 0; $eta = ''; $elapsed = ''; $speed = 0
@@ -156,43 +163,27 @@ end
 
 -- Reading a job back ----------------------------------------------------------
 
---- Every live runner PID, read in one go: one `tasklist` per poll rather than
---- one per job per poll.
----@type table<integer, true>|nil
-local live_pids = nil
-
----Every live runner PID, or nil when no usable snapshot could be taken.
+---Is the runner that owns this directory still alive?
 ---
----`tasklist` failing is not the same answer as "nothing is running": treating
----the two alike reports a live install as dead and freezes the download at
----"Download Paused, 100% Complete" until Steam restarts.
----@return table<integer, true>|nil
-local function get_live_pids()
-  if live_pids then return live_pids end
-
-  local output = utils.exec('tasklist /FI "IMAGENAME eq powershell.exe" /FO CSV /NH 2>&1')
-  if not output then return nil end
-
-  local found = {}
-  local any = false
-  -- CSV rows look like "powershell.exe","1234","Console","1","52,000 K".
-  for pid in output:gmatch('"powershell%.exe","(%d+)"') do
-    found[tonumber(pid)] = true
-    any = true
+---Asked once a second per job, so it can't cost a subprocess: `tasklist` here
+---was a console window flashing up and stealing focus for the length of every
+---download. Instead the runner holds `lock` open unshared, and Windows refuses
+---every other open of it until that process is gone - so a write that fails is
+---a runner still running, and a write that succeeds is one that isn't.
+---@param dir string
+---@param pid integer|nil
+---@return boolean
+local function is_running(dir, pid)
+  local lock = dir .. "/lock"
+  if not fs.is_file(lock) then
+    -- The runner takes the lock before it writes its PID, so no lock and a PID
+    -- is a job that predates the lock or one whose runner died on the way up.
+    -- No lock and no PID is the first moments of a job rather than a corpse.
+    return pid == nil
   end
 
-  -- This is only ever asked while a job with a PID exists, and that job's own
-  -- runner is a powershell.exe, so no rows at all means the answer is wrong.
-  if not any then return nil end
-
-  live_pids = found
-  return live_pids
-end
-
----Drop the PID snapshot, so the next read is current. Held any longer than one
----answer it would report a finished install as still running.
-local function invalidate_pids()
-  live_pids = nil
+  local ok, wrote = pcall(utils.write_file, lock, "")
+  return not (ok and wrote ~= false)
 end
 
 ---@param dir string
@@ -232,9 +223,9 @@ end
 ---Build one job out of its directory and the metadata already read from it.
 ---
 ---State is derived rather than stored, since the runner can die without getting
----to record anything: an exit code means finished, a live PID means running, and
----a PID that is gone with no exit code means the runner died - deliberately if
----pause left its marker behind, otherwise not.
+---to record anything: an exit code means finished, a held lock means running,
+---and a lock nobody holds with no exit code means the runner died - deliberately
+---if pause left its marker behind, otherwise not.
 ---@param dir string
 ---@param meta table
 ---@return Job
@@ -250,15 +241,8 @@ local function build(dir, meta)
     -- Pausing is a kill, so this marker is the only evidence that the missing
     -- process was meant to be missing.
     state = "paused"
-  elseif pid then
-    local live = get_live_pids()
-    -- With no usable answer about what is running, the last thing known is that
-    -- this job started; saying otherwise stops the frontend polling it.
-    state = (live == nil or live[pid]) and "running" or "failed"
   else
-    -- The runner hasn't written its PID yet, which is the first half second of
-    -- a job rather than a problem.
-    state = "running"
+    state = is_running(dir, pid) and "running" or "failed"
   end
 
   return {
@@ -277,8 +261,6 @@ end
 ---@param app_name string
 ---@return Job|nil
 function jobs.get(app_name)
-  invalidate_pids()
-
   local dir = job_dir(app_name)
   local meta = read_meta(dir)
   if not meta then return nil end
@@ -290,8 +272,6 @@ end
 ---Every job we know about, running or finished.
 ---@return Job[]
 function jobs.list()
-  invalidate_pids()
-
   local result = {}
   if not fs.is_directory(ROOT) then return result end
 
