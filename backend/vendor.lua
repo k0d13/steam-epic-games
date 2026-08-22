@@ -36,9 +36,16 @@ local function digest(path)
   local output = utils.exec('certutil -hashfile "' .. path:gsub("/", "\\") .. '" SHA256 2>&1')
   if not output then return nil end
 
-  -- The hash is the only run of exactly 64 hex characters certutil prints.
-  local hash = output:gsub("%s", ""):match("%f[%x]" .. ("%x"):rep(64) .. "%f[%X]")
-  return hash and hash:lower() or nil
+  -- Matched a line at a time: the banner carries the path and the trailer starts
+  -- with hex letters of its own, so reading the output as one run of characters
+  -- glues them onto the digits this is after. Spaces inside the line are dropped
+  -- because older certutil builds print the hash in byte pairs.
+  for line in output:gmatch("[^\r\n]+") do
+    local hash = line:gsub("%s", ""):match("^%x+$")
+    if hash and #hash == 64 then return hash:lower() end
+  end
+
+  return nil
 end
 
 ---Is the file at `path` the executable we pinned?
