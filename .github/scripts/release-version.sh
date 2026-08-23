@@ -2,8 +2,8 @@
 # Bump versions and refresh metadata for a stable release.
 #
 # changesets owns package.json + CHANGELOG.md. We mirror the new version
-# into plugin.json (Millennium's source of truth). Idempotent: if there are
-# no pending changesets, every step is a no-op.
+# into plugin.json (Millennium's source of truth). Only runs when there are
+# pending changesets — `changeset version` exits 1 otherwise.
 set -euo pipefail
 
 # --- Bump versions ----------------------------------------------------------

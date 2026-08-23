@@ -41,7 +41,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
         uses: ./.github/actions/node
@@ -50,7 +50,7 @@ jobs:
         run: pnpm build
 
       - name: Upload dist artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dist
           path: .millennium/
@@ -62,7 +62,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
         uses: ./.github/actions/node
@@ -75,7 +75,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
         uses: ./.github/actions/node
@@ -99,29 +99,29 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
         uses: ./.github/actions/node
 
       - name: Download dist artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: dist
           path: .millennium/
 
       - name: Process changesets
         id: changesets
-        uses: changesets/action@v1
+        uses: changesets/action@v2
         with:
-          version: bash .github/scripts/release-version.sh
-          publish: bash .github/scripts/release-publish.sh
-          title: "Pending Releases"
-          commit: "Update changelog and release"
+          version-script: bash .github/scripts/release-version.sh
+          publish-script: bash .github/scripts/release-publish.sh
+          pr-title: "Pending Releases"
+          commit-message: "Update changelog and release"
           # Our publish script creates the GitHub release (with the plugin zip
           # attached); the action's own release-creation step would 409 on the
           # tag we already published.
-          createGithubReleases: false
+          create-github-releases: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PLUGIN_DB_TOKEN: ${{ secrets.PLUGIN_DB_TOKEN }}
@@ -142,7 +142,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
         uses: ./.github/actions/node
