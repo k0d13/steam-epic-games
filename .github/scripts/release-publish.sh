@@ -36,8 +36,8 @@ fi
 # Check the remote, not just local — Actions checkouts are shallow and don't
 # include tags by default, so a re-run after a previous push wouldn't see it.
 # If the tag is already on the remote, a prior run already did everything
-# below; bail out without printing the magic line so changesets/action
-# doesn't try to re-push the tag and fail.
+# below; bail out without recording a published tag so changesets/action does
+# not report this run as a publish.
 if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; then
   echo "Tag ${tag} already on remote — nothing to publish."
   exit 0
@@ -174,5 +174,13 @@ GH_TOKEN="$GITHUB_TOKEN" gh api \
   "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/comments" \
   -f body="$comment_body" >/dev/null
 
-# Magic line changesets/action greps for to set published: true
-echo "🦋  New tag:  ${name}@${version}"
+# How changesets/action learns that something was published: one NDJSON event
+# per released package, written to the file it points CHANGESETS_OUTPUT at. The
+# v1 magic stdout line no longer does anything. `packageName` has to match the
+# workspace package, which is package.json's name rather than plugin.json's.
+if [ -n "${CHANGESETS_OUTPUT:-}" ]; then
+  jq -nc --arg tag "$tag" --arg pkg "$(jq -r .name package.json)" \
+    '{type: "git-tag", tag: $tag, packageName: $pkg}' >> "$CHANGESETS_OUTPUT"
+fi
+
+echo "Published ${name} ${tag}"
