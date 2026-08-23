@@ -11,15 +11,6 @@ importers:
       '@steambrew/client':
         specifier: ^5.8.4
         version: 5.8.5
-      enhanced-ms:
-        specifier: ^4.2.0
-        version: 4.3.0
-      react:
-        specifier: 19.1.1
-        version: 19.1.1
-      react-dom:
-        specifier: 19.1.1
-        version: 19.1.1(react@19.1.1)
       steambrew-utils:
         specifier: 0.0.0-beta-20260816131110
         version: 0.0.0-beta-20260816131110(@steambrew/client@5.8.5)(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
@@ -33,9 +24,6 @@ importers:
       '@types/react':
         specifier: 19.1.1
         version: 19.1.1
-      '@types/react-dom':
-        specifier: 19.1.1
-        version: 19.1.1(@types/react@19.1.1)
       oxfmt:
         specifier: ^0.28.0
         version: 0.28.0
@@ -1165,11 +1153,6 @@ packages:
   '@types/node@12.20.55':
     resolution: {integrity: sha512-J8xLz7q2OFulZ2cyGTLE1TbbZcjpno7FaN6zdJNrgAdrJ+DZzh/uFR6YrTb4C+nXakvud8Q4+rbhoIWlYQbUFQ==}
 
-  '@types/react-dom@19.1.1':
-    resolution: {integrity: sha512-jFf/woGTVTjUJsl2O7hcopJ1r0upqoq/vIOoCj0yLh3RIXxWcljlpuZ+vEBRXsymD1jhfeJrlyTy/S1UW+4y1w==}
-    peerDependencies:
-      '@types/react': ^19.0.0
-
   '@types/react@19.1.1':
     resolution: {integrity: sha512-ePapxDL7qrgqSF67s0h9m412d9DbXyC1n59O2st+9rjuuamWsZuD2w55rqY12CbzsZ7uVXb5Nw0gEp9Z8MMutQ==}
 
@@ -1350,9 +1333,6 @@ packages:
 
   electron-to-chromium@1.5.407:
     resolution: {integrity: sha512-4R8XgQOdfxexCd/u63lRm6wCHjECwI45MV9wxAs2ggtfWe2hwlo1ql97jKsju2IcJ+jFSTwBssyYoiWhh7mauQ==}
-
-  enhanced-ms@4.3.0:
-    resolution: {integrity: sha512-mMl+aCNSDcVf7Q0KKkp600JFoK9eimXgmdrN8wHNyyKeZbOr88XJw1m8qOIAknuAAPfxxVZMwrU77YG8ol9Oxw==}
 
   enquirer@2.4.1:
     resolution: {integrity: sha512-rRqJg/6gd538VHvR3PSrdRBb/1Vy2YfzHqzvbhGIQpDRKIa4FgV/54b5Q1xYSxOOwKvjXweS26E0Q+nAMwp2pQ==}
@@ -3329,10 +3309,6 @@ snapshots:
 
   '@types/node@12.20.55': {}
 
-  '@types/react-dom@19.1.1(@types/react@19.1.1)':
-    dependencies:
-      '@types/react': 19.1.1
-
   '@types/react@19.1.1':
     dependencies:
       csstype: 3.2.3
@@ -3495,8 +3471,6 @@ snapshots:
       gopd: 1.2.0
 
   electron-to-chromium@1.5.407: {}
-
-  enhanced-ms@4.3.0: {}
 
   enquirer@2.4.1:
     dependencies:
