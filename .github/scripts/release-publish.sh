@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Publish a stable release:
 #   1. Zip plugin.json + .millennium/ into <name>-<version>.zip
-#   2. Tag, push, and create a GitHub release with the zip attached
+#   2. Push an empty release commit whose message is this version's changelog,
+#      then tag it and create a GitHub release with the zip attached
 #   3. Push an update branch to a fork of SteamClientHomeBrew/PluginDatabase
 #      advancing this plugin's submodule pointer to the new release commit
 #   4. Leave a commit comment with a prefilled "compare" link so the maintainer
@@ -31,7 +32,7 @@ if [ ! -f "$zip_name" ]; then
   zip -r "$zip_name" "${zip_targets[@]}"
 fi
 
-# --- Git tag ----------------------------------------------------------------
+# --- Release commit and tag -------------------------------------------------
 
 # Check the remote, not just local — Actions checkouts are shallow and don't
 # include tags by default, so a re-run after a previous push wouldn't see it.
@@ -42,22 +43,54 @@ if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; t
   echo "Tag ${tag} already on remote — nothing to publish."
   exit 0
 fi
+
+# Extract just this version's section from CHANGELOG.md (between `## X.Y.Z` and
+# the next `## ` header) so neither the release notes nor the commit message
+# below carry the entire history.
+notes_file=$(mktemp)
+if [ -f CHANGELOG.md ]; then
+  awk -v ver="$version" '
+    $0 == "## " ver { capture = 1; next }
+    capture && /^## / { exit }
+    capture { print }
+  ' CHANGELOG.md > "$notes_file"
+fi
+
+# Millennium shows, as a plugin's update note, the commit message of whatever
+# commit PluginDatabase's submodule pointer resolves to — left alone that's the
+# changesets merge commit ("Update changelog and release"), which tells users
+# nothing. So carry the changelog on a commit of its own: empty, so it has the
+# exact tree we just built, subject naming the version and the body being the
+# changelog Millennium renders as markdown.
+message_file=$(mktemp)
+{
+  echo "${name} ${tag}"
+  echo
+  cat "$notes_file"
+} > "$message_file"
+
+# A re-run after a failure past this point starts from the merge commit again,
+# so reuse the release commit already on main rather than stacking a second one.
+git fetch origin main --depth=1
+if [ "$(git log -1 --format=%s FETCH_HEAD)" = "${name} ${tag}" ]; then
+  echo "Release commit for ${tag} already on main — reusing it."
+  release_sha=$(git rev-parse FETCH_HEAD)
+  git checkout --detach "$release_sha"
+else
+  git -c user.name="github-actions[bot]" \
+      -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+      commit --allow-empty -F "$message_file"
+  # Pushed with GITHUB_TOKEN, so this doesn't retrigger the workflow.
+  git push origin HEAD:main
+  release_sha=$(git rev-parse HEAD)
+fi
+
 git tag -f "$tag"
 git push origin "$tag"
 
 # --- GitHub release ---------------------------------------------------------
 
 if ! gh release view "$tag" >/dev/null 2>&1; then
-  # Extract just this version's section from CHANGELOG.md (between `## X.Y.Z`
-  # and the next `## ` header) so release notes aren't the entire history.
-  notes_file=$(mktemp)
-  if [ -f CHANGELOG.md ]; then
-    awk -v ver="$version" '
-      $0 == "## " ver { capture = 1; next }
-      capture && /^## / { exit }
-      capture { print }
-    ' CHANGELOG.md > "$notes_file"
-  fi
   gh release create "$tag" "$zip_name" --title "$tag" --notes-file "$notes_file"
 fi
 
@@ -121,8 +154,8 @@ git submodule update --init "$submodule_path"
 # Pin the submodule to the exact commit we just tagged, rather than tracking
 # the configured remote branch — otherwise a commit landing on main between
 # `git tag` and now would advance the DB PR past the release.
-git -C "$submodule_path" fetch origin "$GITHUB_SHA" --depth=1
-git -C "$submodule_path" checkout --detach "$GITHUB_SHA"
+git -C "$submodule_path" fetch origin "$release_sha" --depth=1
+git -C "$submodule_path" checkout --detach "$release_sha"
 
 # Guard against re-runs where the submodule is already at the target commit.
 if git diff --quiet -- "$submodule_path"; then
@@ -171,7 +204,7 @@ EOF
 # Use this repo's GITHUB_TOKEN (not the PAT, which has no access here) to
 # leave the comment on this repo's release commit.
 GH_TOKEN="$GITHUB_TOKEN" gh api \
-  "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/comments" \
+  "repos/${GITHUB_REPOSITORY}/commits/${release_sha}/comments" \
   -f body="$comment_body" >/dev/null
 
 # How changesets/action learns that something was published: one NDJSON event
