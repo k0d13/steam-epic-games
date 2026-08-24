@@ -8,6 +8,7 @@ import * as downloadOverview from "./patches/download-overview";
 import * as installState from "./patches/install-state";
 import * as installWizard from "./patches/install-wizard";
 import * as installs from "./patches/installs";
+import * as libraryBadge from "./patches/library-badge";
 import * as manageMenu from "./patches/manage-menu";
 import { type EpicStatus } from "./rpc";
 import * as jobs from "./state/jobs";
@@ -51,6 +52,7 @@ export default definePlugin(async () => {
     ["installs", installs.register],
     ["install wizard", installWizard.register],
     ["manage menu", manageMenu.register],
+    ["library badge", libraryBadge.register],
   ] as const) {
     try {
       unpatches.push(patch());
@@ -69,11 +71,11 @@ export default definePlugin(async () => {
 
   // A running install repaints once a second, since its progress bar is read
   // off the overview.
-  const unsubscribe = library.subscribe(repaint);
+  const unsubscribeLibrary = library.subscribe(repaint);
   const unsubscribeJobs = jobs.subscribe(repaint);
 
   window.addEventListener("beforeunload", () => {
-    unsubscribe();
+    unsubscribeLibrary();
     unsubscribeJobs();
     // The overview is Steam's: our appid left in it survives a reload and
     // shows a download nothing is writing to.
