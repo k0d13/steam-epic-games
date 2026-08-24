@@ -3,6 +3,7 @@ import { useCallback, useState } from "react";
 import { Logger } from "steambrew-utils/logger";
 import { AuthPanel } from "./components/auth-panel";
 import { LibraryPanel } from "./components/library-panel";
+import * as achievementsPatch from "./patches/achievements";
 import * as appDetails from "./patches/app-details";
 import * as downloadOverview from "./patches/download-overview";
 import * as installState from "./patches/install-state";
@@ -11,6 +12,7 @@ import * as installs from "./patches/installs";
 import * as libraryBadge from "./patches/library-badge";
 import * as manageMenu from "./patches/manage-menu";
 import { type EpicStatus } from "./rpc";
+import * as achievements from "./state/achievements";
 import * as jobs from "./state/jobs";
 import * as library from "./state/library";
 
@@ -53,6 +55,7 @@ export default definePlugin(async () => {
     ["install wizard", installWizard.register],
     ["manage menu", manageMenu.register],
     ["library badge", libraryBadge.register],
+    ["achievements", achievementsPatch.register],
   ] as const) {
     try {
       unpatches.push(patch());
@@ -73,10 +76,13 @@ export default definePlugin(async () => {
   // off the overview.
   const unsubscribeLibrary = library.subscribe(repaint);
   const unsubscribeJobs = jobs.subscribe(repaint);
+  // Achievements land a round trip to Epic after the page asking for them drew.
+  const unsubscribeAchievements = achievements.subscribe(repaint);
 
   window.addEventListener("beforeunload", () => {
     unsubscribeLibrary();
     unsubscribeJobs();
+    unsubscribeAchievements();
     // The overview is Steam's: our appid left in it survives a reload and
     // shows a download nothing is writing to.
     downloadOverview.release();

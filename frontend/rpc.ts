@@ -110,6 +110,33 @@ export interface GameSize {
   download: number;
 }
 
+/** One Epic achievement, unlocked or not. */
+export interface Achievement {
+  /** Epic's internal name, unique within the game. */
+  id: string;
+  name: string;
+  description: string;
+  unlocked: boolean;
+  /** 0 to 1. Only the handful of achievements Epic tracks progress for move. */
+  progress: number;
+  /** Unix seconds, absent while locked. */
+  unlockedAt?: number;
+  icon?: string;
+  /** Percent of players holding it. */
+  rarity?: number;
+  /** Undiscovered, so Steam draws it blurred. */
+  hidden: boolean;
+}
+
+/** Every achievement one game has, with the account's progress folded in. */
+export interface GameAchievements {
+  total: number;
+  unlocked: number;
+  /** Unix seconds of the read from Epic, which is what makes this stale. */
+  fetchedAt: number;
+  achievements: Achievement[];
+}
+
 /** What Steam needs to create a shortcut that launches a game through legendary. */
 export interface LaunchCommand {
   exe: string;
@@ -154,6 +181,25 @@ interface RawLibrary {
   error?: string;
   games?: EpicGame[];
   refreshedAt?: number;
+}
+
+type RawAchievement = Omit<Achievement, "unlockedAt"> & { unlockedAt?: string };
+type RawAchievements = Omit<GameAchievements, "achievements"> & {
+  achievements?: RawAchievement[];
+};
+
+/**
+ * Epic times its unlocks as "2026-06-12 21:21:24.391000+00:00", which is ISO
+ * 8601 with a space where the T belongs - so Date can't read it as it stands,
+ * and Steam wants Unix seconds anyway.
+ */
+function toAchievement(raw: RawAchievement): Achievement {
+  const parsed = raw.unlockedAt ? Date.parse(raw.unlockedAt.replace(" ", "T")) : Number.NaN;
+
+  return {
+    ...raw,
+    unlockedAt: Number.isNaN(parsed) ? undefined : Math.floor(parsed / 1000),
+  };
 }
 
 function toLibrary(raw: RawLibrary): LibraryResult {
@@ -224,6 +270,30 @@ export class RPC {
     }
 
     return { disk: raw.disk, download: raw.download ?? raw.disk };
+  }
+
+  /**
+   * Every achievement a game has, with what the account has unlocked. Costs a
+   * round trip to Epic the first time it's asked for a given game; `refresh`
+   * re-reads one that has gone stale because the game has been played since.
+   */
+  async GetAchievements(appName: string, refresh = false): Promise<GameAchievements | undefined> {
+    const raw = await call<{ ok: boolean; error?: string } & Partial<RawAchievements>>(
+      "RPC.GetAchievements",
+      { app_name: appName, refresh },
+    );
+
+    if (!raw.ok) {
+      logger.debug("Could not read achievements", { appName, error: raw.error });
+      return undefined;
+    }
+
+    return {
+      total: raw.total ?? 0,
+      unlocked: raw.unlocked ?? 0,
+      fetchedAt: raw.fetchedAt ?? 0,
+      achievements: asArray(raw.achievements).map(toAchievement),
+    };
   }
 
   /**

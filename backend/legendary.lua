@@ -270,6 +270,132 @@ function legendary.get_size(app_name, refresh)
   return sizes[app_name]
 end
 
+-- Achievements ---------------------------------------------------------------
+
+-- Epic's achievements for one game, as `legendary achievements` reports them.
+-- Read a game at a time and cached by app name, like sizes above: the command
+-- talks to Epic, so it is far too slow to hold the Lua state for.
+--
+-- Unlike a size, this answer really does go stale - the user unlocks things by
+-- playing - so `fetched_at` rides along and the frontend decides when to ask
+-- again.
+
+local ACHIEVEMENTS_PATH = utils.get_backend_path() .. "/data/cache/achievements.json"
+
+---@class Achievement
+---@field id string Epic's internal name, unique within the game
+---@field name string Display name
+---@field description string
+---@field unlocked boolean
+---@field progress number 0 to 1
+---@field unlocked_at string|nil Epic's timestamp, parsed by the frontend
+---@field icon string|nil Icon URL, already locked or unlocked as appropriate
+---@field rarity number|nil Percent of players holding it
+---@field hidden boolean Undiscovered, so Steam blurs it
+
+---@class GameAchievements
+---@field total integer
+---@field unlocked integer
+---@field fetched_at integer Unix seconds
+---@field achievements Achievement[]
+
+---@type table<string, GameAchievements>|nil
+local achievements = nil
+
+--- The `legendary achievements` still running for a game, by app name.
+---@type table<string, string>
+local achieving = {}
+
+---Flatten one of legendary's four buckets into our own shape.
+---@param entries table[]|nil
+---@param out Achievement[]
+local function collect_achievements(entries, out)
+  if type(entries) ~= "table" then return end
+
+  for _, entry in ipairs(entries) do
+    table.insert(out, {
+      id = entry.name,
+      name = entry.display_name or entry.name,
+      description = entry.description or "",
+      unlocked = entry.unlocked == true,
+      progress = entry.progress or 0,
+      unlocked_at = type(entry.unlock_date) == "string" and entry.unlock_date or nil,
+      icon = entry.icon_link,
+      rarity = (entry.rarity or {}).percent,
+      hidden = entry.hidden == true,
+    })
+  end
+end
+
+---Turn one `legendary achievements --json` document into a GameAchievements.
+---@param decoded table
+---@return GameAchievements
+local function build_achievements(decoded)
+  local list = {}
+  -- Every bucket, in the order Steam wants them read: unlocked first, then
+  -- what's under way, then the rest.
+  collect_achievements(decoded.completed, list)
+  collect_achievements(decoded.in_progress, list)
+  collect_achievements(decoded.uninitiated, list)
+  collect_achievements(decoded.hidden, list)
+
+  return {
+    total = decoded.total_achievements or #list,
+    unlocked = decoded.user_unlocked or 0,
+    fetched_at = math.floor(utils.time()),
+    achievements = list,
+  }
+end
+
+---One game's achievements.
+---
+---Started and collected the way `get_size` is: a miss says so rather than
+---waiting, and the caller asks again shortly. Never blocks.
+---@param app_name string
+---@param refresh boolean|nil Ask Epic again even if it's cached
+---@return GameAchievements|nil result
+---@return string? error
+---@return boolean? still_running The command has been started, ask again shortly
+function legendary.get_achievements(app_name, refresh)
+  if type(app_name) ~= "string" or app_name == "" then return nil, "No app name provided" end
+
+  achievements = achievements or disk.read(ACHIEVEMENTS_PATH, "achievements") or {}
+  if achievements[app_name] and not refresh then return achievements[app_name] end
+
+  local id = achieving[app_name]
+  if not id then
+    -- --hidden, because Steam draws undiscovered achievements itself, blurred,
+    -- and dropping them here would leave its counts short of the total.
+    local started, err = legendary.start({ "achievements", app_name, "--json", "--hidden" })
+    if not started then return nil, err end
+
+    achieving[app_name] = started
+    return nil, nil, true
+  end
+
+  local output = legendary.collect(id)
+  if not output then return nil, nil, true end
+  achieving[app_name] = nil
+
+  local decoded, err = legendary.decode_json(output)
+
+  -- Plenty of Epic games have no achievements at all, and legendary says so in
+  -- a log line rather than an empty document. Cached like any other answer, or
+  -- every session would ask Epic about them again.
+  if type(decoded) ~= "table" and output:find("No achievements found", 1, true) then
+    decoded = {}
+  elseif type(decoded) ~= "table" then
+    return nil, err or "legendary returned no achievements"
+  end
+
+  local result = build_achievements(decoded)
+  achievements[app_name] = result
+  disk.write(ACHIEVEMENTS_PATH, achievements, "achievements")
+
+  logger:info("Read achievements for " .. app_name .. ": " .. result.unlocked .. "/" .. result.total)
+  return result
+end
+
 -- Long-running commands ------------------------------------------------------
 
 ---Install, update or resume a game, as a job rather than a wait.

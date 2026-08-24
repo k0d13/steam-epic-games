@@ -4,6 +4,7 @@ import { once } from "../services/once";
 import * as jobs from "../state/jobs";
 import * as library from "../state/library";
 import * as sizes from "../state/sizes";
+import { getAchievements, type SteamAchievements } from "./achievements";
 
 // Steam's play bar shows "Space Required" beside Install for a game that isn't
 // on disk yet, and drops it once the install starts. It isn't a component to
@@ -21,6 +22,7 @@ interface AppDetails {
   unAppID: number;
   bHasAnyLocalContent?: boolean;
   lDiskSpaceRequiredBytes?: number;
+  achievements?: SteamAchievements;
 }
 
 interface AppData {
@@ -59,8 +61,8 @@ const logApplied = once((details: AppDetails, appName: string) => {
 });
 
 /**
- * Rewrite one app's details to match what Epic says. Installed games are left
- * alone, since Steam's answer for them is already right.
+ * Rewrite one app's details to match what Epic says. The disk-space half is
+ * skipped for installed games, since Steam's answer for them is already right.
  *
  * A game part-way through an install counts as installed here: Steam drops the
  * row once its own download starts, which is what stops the play bar shifting
@@ -68,7 +70,16 @@ const logApplied = once((details: AppDetails, appName: string) => {
  */
 function apply(details: AppDetails) {
   const game = library.getByAppId(details.unAppID);
-  if (!game || game.installed) return;
+  if (!game) return;
+
+  // Achievements go on whether the game is installed or not - Epic keeps them
+  // against the account, so an uninstalled game still has a record to show.
+  // Left alone rather than blanked while we're waiting on Epic, so the section
+  // doesn't flicker out between reads.
+  const achievements = getAchievements(game.appName);
+  if (achievements) details.achievements = achievements;
+
+  if (game.installed) return;
 
   // Any job state, not just running: a finished install is on disk while
   // library.installed catches up a poll later, which is long enough for the row

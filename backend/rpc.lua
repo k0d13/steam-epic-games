@@ -111,6 +111,26 @@ RPC.GetGameSize = method(function(data)
   return { ok = true, disk = size.disk, download = size.download }
 end)
 
+---One game's achievements, as Epic has them. Costs a round trip to Epic on a
+---miss, cached in the backend after that; pass `refresh` to re-read one that
+---has gone stale because the game has been played since.
+RPC.GetAchievements = method(function(data)
+  local result, err, still_running = legendary.get_achievements(data.app_name, data.refresh == true)
+  -- Answered rather than waited for, the same way GetGameSize is.
+  if still_running then return { pending = true, retry_in = 500 } end
+  if not result then return { ok = false, error = err } end
+
+  -- Copied rather than flagged in place: the table is legendary's cache entry,
+  -- and an `ok` written into it would be persisted with it.
+  return {
+    ok = true,
+    total = result.total,
+    unlocked = result.unlocked,
+    fetched_at = result.fetched_at,
+    achievements = result.achievements,
+  }
+end)
+
 -- Installs --------------------------------------------------------------------
 
 ---Start installing, updating or resuming one game. Returns as soon as the job
