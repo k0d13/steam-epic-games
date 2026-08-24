@@ -2,6 +2,7 @@ import { callOriginal, replacePatch } from "@steambrew/client";
 import { logger } from "../index";
 import rpc from "../rpc";
 import { findExport } from "../services/modules";
+import { memo } from "../services/once";
 import * as jobs from "../state/jobs";
 
 // The client only raises its install wizard for real appids, so an Epic game
@@ -91,21 +92,15 @@ function isGameActionsStore(value: unknown): value is GameActionsStore {
   return typeof (value as GameActionsStore | null)?.GetInstallManager === "function";
 }
 
-let store: GameActionsStore | undefined;
-let searched = false;
-
 /**
  * The store singleton, found by the source of one of its getters, which is a
  * string Steam's build can't rename.
  */
-function getStore(): GameActionsStore | undefined {
-  if (!searched) {
-    searched = true;
-    store = findExport("GetInstallManager(){return this.m_InstallManager}", isGameActionsStore);
-    if (!store) logger.warn("Steam's install wizard store wasn't found");
-  }
+const getStore = memo(() => {
+  const store = findExport("GetInstallManager(){return this.m_InstallManager}", isGameActionsStore);
+  if (!store) logger.warn("Steam's install wizard store wasn't found");
   return store;
-}
+});
 
 /** The game the wizard is currently open for, if it's one of ours. */
 let pending: { appName: string; folderName?: string; request: InstallRequest } | undefined;

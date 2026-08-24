@@ -63,10 +63,10 @@ export function register() {
       if (theirs.length > 0) bridge.Installs.OpenInstallWizard(theirs);
 
       // One dialog and one store field, so a multi-select of Epic games can
-      // only open it for the first.
-      const [first] = ours;
-      const game = first === undefined ? undefined : epicGame(first);
-      if (game && first !== undefined) void wizard.open(first, game.appName, game.folderName);
+      // only open it for the first. `ours` is non-empty by the check above.
+      const [first] = ours as [number, ...number[]];
+      const game = epicGame(first);
+      if (game) void wizard.open(first, game.appName, game.folderName);
 
       return undefined;
     }),

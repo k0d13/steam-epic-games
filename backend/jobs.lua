@@ -22,6 +22,10 @@ local jobs = {}
 
 local ROOT = utils.get_backend_path() .. "/data/jobs"
 
+--- How long a job is allowed to have neither a lock nor a PID before it counts
+--- as a runner that never came up. Only has to cover a wscript launch.
+local SPAWN_GRACE = 15
+
 ---@alias JobKind "install" | "uninstall"
 ---@alias JobState "running" | "paused" | "done" | "failed"
 
@@ -32,7 +36,6 @@ local ROOT = utils.get_backend_path() .. "/data/jobs"
 ---@field eta string|nil "00:10:00", straight from legendary
 ---@field elapsed string|nil "00:01:23"
 ---@field speed number|nil MiB/s, raw off the wire
----@field updated_at integer Unix seconds of the last progress line
 
 ---@class Job
 ---@field app_name string
@@ -83,11 +86,17 @@ $Lock = [System.IO.File]::Open("$Dir\lock", 'Create', 'Write', 'None')
 
 $PID | Out-File -Encoding ascii -FilePath "$Dir\pid.txt"
 
+# One handle held open for the whole download rather than an open, write and
+# close per line: legendary prints thousands of them, and it is the only work
+# this loop does on every single one.
+$Log = New-Object System.IO.StreamWriter "$Dir\log.txt", $true, (New-Object System.Text.UTF8Encoding $false)
+$Log.AutoFlush = $true
+
 $percent = 0; $done = 0; $total = 0; $eta = ''; $elapsed = ''; $speed = 0
 
 & $Exe @Arguments 2>&1 | ForEach-Object {
   $line = [string]$_
-  Add-Content -Encoding utf8 -Path "$Dir\log.txt" -Value $line
+  $Log.WriteLine($line)
 
   if ($line -match 'Progress: ([\d.]+)% \((\d+)/(\d+)\), Running for ([\d:]+), ETA: ([\d:]+)') {
     $percent = $matches[1]; $done = $matches[2]; $total = $matches[3]
@@ -101,14 +110,14 @@ $percent = 0; $done = 0; $total = 0; $eta = ''; $elapsed = ''; $speed = 0
     return
   }
 
-  $stamp = [int][double]::Parse((Get-Date -UFormat %s))
   @(
     "percent=$percent", "downloaded=$done", "total=$total",
-    "eta=$eta", "elapsed=$elapsed", "speed=$speed", "updated_at=$stamp"
+    "eta=$eta", "elapsed=$elapsed", "speed=$speed"
   ) -join "`n" | Out-File -Encoding ascii -FilePath "$Dir\status.txt"
 }
 
 $code = $LASTEXITCODE
+$Log.Dispose()
 if ($null -eq $code) { $code = 0 }
 $code | Out-File -Encoding ascii -FilePath "$Dir\exit.txt"
 ]]
@@ -168,14 +177,17 @@ end
 ---can open until it has exited.
 ---@param dir string
 ---@param pid integer|nil
+---@param started_at integer|nil
 ---@return boolean
-local function is_running(dir, pid)
+local function is_running(dir, pid, started_at)
   local lock = dir .. "/lock"
   if not fs.is_file(lock) then
     -- The runner takes the lock before it writes its PID, so no lock and a PID
     -- is a job that predates the lock or one whose runner died on the way up.
-    -- No lock and no PID is the first moments of a job rather than a corpse.
-    return pid == nil
+    -- No lock and no PID is the first moments of a job - but only for a moment:
+    -- a wscript that never got the runner up would otherwise leave a job that
+    -- reads as running forever, polled once a second with nothing behind it.
+    return pid == nil and (utils.time() - (started_at or 0)) < SPAWN_GRACE
   end
 
   return shell.is_locked(lock)
@@ -188,7 +200,8 @@ local function read_progress(dir)
   if not text then return nil end
 
   local fields = {}
-  for key, value in text:gmatch("(%w+)=([^\r\n]*)") do
+  -- Underscores included: a key pattern of `%w+` reads `updated_at` as `at`.
+  for key, value in text:gmatch("([%w_]+)=([^\r\n]*)") do
     fields[key] = value
   end
   if not fields.percent then return nil end
@@ -200,7 +213,6 @@ local function read_progress(dir)
     eta = fields.eta ~= "" and fields.eta or nil,
     elapsed = fields.elapsed ~= "" and fields.elapsed or nil,
     speed = tonumber(fields.speed),
-    updated_at = tonumber(fields.updated_at) or 0,
   }
 end
 
@@ -227,6 +239,7 @@ end
 local function build(dir, meta)
   local pid = tonumber(read(dir .. "/pid.txt") or "")
   local exit_code = tonumber(read(dir .. "/exit.txt") or "")
+  local started_at = meta.started_at or 0
 
   ---@type JobState
   local state
@@ -237,7 +250,7 @@ local function build(dir, meta)
     -- process was meant to be missing.
     state = "paused"
   else
-    state = is_running(dir, pid) and "running" or "failed"
+    state = is_running(dir, pid, started_at) and "running" or "failed"
   end
 
   return {
@@ -245,7 +258,7 @@ local function build(dir, meta)
     kind = meta.kind or "install",
     state = state,
     pid = pid,
-    started_at = meta.started_at or 0,
+    started_at = started_at,
     exit_code = exit_code,
     progress = read_progress(dir),
     error = state == "failed" and utils.trim(read(dir .. "/error.txt") or "") or nil,
@@ -313,21 +326,31 @@ function jobs.start(app_name, kind, exe, args)
   return jobs.get(app_name)
 end
 
----Stop a running job, keeping what has already been downloaded.
+---Kill the runner behind a job we have already read.
 ---
----legendary has no pause, so this is a kill: `/T` takes legendary down with the
----runner, `/F` because it won't respond to anything gentler mid-download.
----Resuming is re-running the install.
+---legendary has no pause, so stopping is a kill: `/T` takes legendary down with
+---the runner, `/F` because it won't respond to anything gentler mid-download.
 ---@param app_name string
+---@param job Job
 ---@return boolean stopped
-function jobs.pause(app_name)
-  local job = jobs.get(app_name)
-  if not job or not job.pid or job.state ~= "running" then return false end
+local function stop(app_name, job)
+  if not job.pid or job.state ~= "running" then return false end
 
   -- Before the kill: a read landing in the gap would otherwise see a runner
   -- that vanished on its own and call the job failed.
   utils.write_file(job_dir(app_name) .. "/paused.txt", "1")
   shell.run("taskkill", { "/F", "/T", "/PID", tostring(job.pid) })
+  return true
+end
+
+---Stop a running job, keeping what has already been downloaded. Resuming is
+---re-running the install.
+---@param app_name string
+---@return boolean stopped
+function jobs.pause(app_name)
+  local job = jobs.get(app_name)
+  if not job or not stop(app_name, job) then return false end
+
   logger:info("Paused " .. app_name)
   return true
 end
@@ -340,7 +363,7 @@ function jobs.cancel(app_name)
   local job = jobs.get(app_name)
   if not job then return false end
 
-  jobs.pause(app_name)
+  stop(app_name, job)
   fs.remove_all(job_dir(app_name))
   logger:info("Cancelled " .. app_name)
   return true

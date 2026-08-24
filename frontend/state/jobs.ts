@@ -2,6 +2,7 @@ import { logger } from "../index";
 import rpc, { type Job } from "../rpc";
 import { createEmitter } from "./emitter";
 import * as library from "./library";
+import * as sizes from "./sizes";
 
 // The frontend's view of the backend's installs. The backend can't push, so
 // this polls, but only while something is running - an idle Steam makes no
@@ -35,17 +36,30 @@ export function paused(): Job[] {
   return [...byAppName.values()].filter((job) => job.state === "paused");
 }
 
+/** What the UI can tell apart: Steam draws the bar in whole percent. */
+const shownPercent = (job: Job | undefined) =>
+  job?.progress === undefined ? undefined : Math.round(job.progress.percent);
+
 /**
- * Fold one poll's answer in, and report whether anything finished. Finishing is
- * the only transition worth acting on, since it's what changes whether the game
- * is installed.
+ * Fold one poll's answer in, and report what came of it.
+ *
+ * `finished` is the transition worth acting on, since it's what changes whether
+ * the game is installed. `changed` is whether a repaint would draw anything
+ * different - a poll that saw the same percent as the last one shouldn't cost a
+ * pass over every overview and a nudge to Steam's router.
  */
 function apply(jobs: Job[]) {
-  let finished = false;
+  const finished: string[] = [];
+  let changed = false;
 
   for (const job of jobs) {
     const previous = byAppName.get(job.appName);
-    if (previous && previous.state === "running" && job.state !== "running") finished = true;
+    if (previous?.state === "running" && job.state !== "running") finished.push(job.appName);
+
+    if (!previous || previous.state !== job.state || shownPercent(previous) !== shownPercent(job)) {
+      changed = true;
+    }
+
     byAppName.set(job.appName, job);
   }
 
@@ -55,10 +69,11 @@ function apply(jobs: Job[]) {
   for (const appName of byAppName.keys()) {
     if (seen.has(appName)) continue;
     byAppName.delete(appName);
-    finished = true;
+    finished.push(appName);
+    changed = true;
   }
 
-  return finished;
+  return { finished, changed };
 }
 
 async function poll() {
@@ -74,16 +89,20 @@ async function poll() {
     return;
   }
 
-  const finished = apply(jobs);
+  const { finished, changed } = apply(jobs);
 
-  if (finished) {
+  if (finished.length > 0) {
+    // Whatever it was measured against has just been installed, updated or
+    // deleted, so the "Space Required" we cached for it is no longer the truth.
+    for (const appName of finished) sizes.forget(appName);
+
     // Before the emit: the job has stopped running but the library still says
     // the game isn't installed, and repainting in between flashes Install
     // between Installing and Play.
     await library.loadInstalled();
   }
 
-  emitter.emit();
+  if (changed) emitter.emit();
   schedule();
 }
 
@@ -99,10 +118,13 @@ function schedule() {
   timer = setTimeout(() => void poll(), POLL_MS);
 }
 
-/** Read the backend's jobs once, and start polling if any of them are running. */
+/**
+ * Read the backend's jobs once, and start polling if any of them are running.
+ * Emits either way, unlike the poll: this is called from the paths that have
+ * just changed something and want the UI to say so.
+ */
 export async function refresh() {
-  const jobs = await rpc.GetJobs();
-  apply(jobs);
+  apply(await rpc.GetJobs());
   emitter.emit();
   schedule();
 }

@@ -29,7 +29,11 @@ function legendary.get_binary()
 
   local path, err = vendor.ensure()
   BINARY = path
-  return path, err
+
+  -- Always with a reason, so every caller can hand the error straight on
+  -- rather than inventing wording of its own.
+  if not path then return nil, err or "legendary binary not found" end
+  return path
 end
 
 -- Commands --------------------------------------------------------------------
@@ -46,9 +50,10 @@ end
 
 ---Run one legendary command and block until it exits.
 ---@param args string[] Arguments to legendary, unquoted
+---@param timeout integer|nil Milliseconds to wait, `shell.run`'s default if nil
 ---@return string output stdout followed by stderr, empty if the binary is missing
 ---@return integer status -1 if there was nothing to run
-function legendary.run(args)
+function legendary.run(args, timeout)
   local binary, err = legendary.get_binary()
   if not binary then
     logger:error("No legendary binary: " .. tostring(err))
@@ -56,7 +61,7 @@ function legendary.run(args)
   end
 
   local started = utils.time_ms()
-  local output, status = shell.run(binary, args)
+  local output, status = shell.run(binary, args, { timeout = timeout })
 
   local summary = subcommand(args) .. " in " .. (utils.time_ms() - started) .. "ms"
   if status == 0 then
@@ -152,7 +157,7 @@ function legendary.get_status(refresh)
   -- The only command that reports the logged in account. It answers
   -- "<not logged in>" rather than failing when nobody is.
   local output = legendary.run({ "status", "--json" })
-  local decoded, err = legendary.decode_json(output)
+  local decoded, decode_error = legendary.decode_json(output)
 
   local account = type(decoded) == "table" and decoded.account or nil
   if account == json.null or account == "<not logged in>" then account = nil end
@@ -162,7 +167,9 @@ function legendary.get_status(refresh)
     authenticated = account ~= nil,
     account = account,
     login_url = LOGIN_URL,
-    error = err,
+    -- Only when we came away with nothing: a decode complaint about the log
+    -- lines around the document isn't a failure if the account came out of it.
+    error = account == nil and decode_error or nil,
   }
 
   logger:info("Status: account=" .. tostring(account))
@@ -176,7 +183,7 @@ end
 ---@return string? error
 function legendary.start(args)
   local binary, err = legendary.get_binary()
-  if not binary then return nil, err or "No legendary binary" end
+  if not binary then return nil, err end
 
   return shell.start(binary, args)
 end
@@ -194,12 +201,15 @@ end
 -- How much room a game needs before it is installed, for the "Space Required"
 -- Steam shows beside the Install button. `legendary list` does not carry it and
 -- `legendary info` costs a manifest fetch per title, so it is read one game at a
--- time and cached, keyed by app name and versioned by build id.
+-- time and cached by app name.
+--
+-- Nothing here can tell that a cached size has gone stale: knowing which build
+-- it was measured against would cost the manifest fetch the cache exists to
+-- avoid. So the frontend drops a game's size when a job touches it instead.
 
 ---@class GameSize
 ---@field disk integer Bytes the installed game occupies - what Steam calls "Space Required"
 ---@field download integer Bytes actually transferred, which is smaller: Epic ships compressed
----@field build_id string|nil The build this was measured against
 
 local SIZES_PATH = utils.get_backend_path() .. "/data/cache/sizes.json"
 
@@ -253,7 +263,6 @@ function legendary.get_size(app_name, refresh)
   sizes[app_name] = {
     disk = manifest.disk_size,
     download = manifest.download_size or manifest.disk_size,
-    build_id = manifest.build_id,
   }
   disk.write(SIZES_PATH, sizes, "sizes")
 
@@ -274,7 +283,7 @@ end
 ---@return string? error
 function legendary.install(app_name, base_path, game_folder)
   local binary, err = legendary.get_binary()
-  if not binary then return nil, err or "No legendary binary" end
+  if not binary then return nil, err end
 
   local args = { "-y", "install", app_name }
 
@@ -295,7 +304,7 @@ end
 ---@return string? error
 function legendary.uninstall(app_name)
   local binary, err = legendary.get_binary()
-  if not binary then return nil, err or "No legendary binary" end
+  if not binary then return nil, err end
 
   return jobs.start(app_name, "uninstall", binary, { "-y", "uninstall", app_name })
 end

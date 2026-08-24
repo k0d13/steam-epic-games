@@ -3,15 +3,30 @@ local jobs = require("jobs")
 local json = require("json")
 local legendary = require("legendary")
 local library = require("library")
+local logger = require("logger")
 
 -- Every method takes one JSON payload and answers with one JSON document.
 
 ---Wrap a handler so it takes and returns JSON.
+---
+---Nothing here is allowed to throw: an error raised inside a handler unwinds
+---into Millennium rather than back to the caller, which loses the call and the
+---reason for it. So both halves answer with a document instead.
 ---@param handler fun(data: table): table|nil
 ---@return fun(payload: string): string
 local function method(handler)
   return function(payload)
-    local result = handler(json.decode(payload))
+    local read, data = pcall(json.decode, payload)
+    if not read or type(data) ~= "table" then
+      return json.encode({ ok = false, error = "Malformed request payload" })
+    end
+
+    local ok, result = pcall(handler, data)
+    if not ok then
+      logger:error("RPC handler failed: " .. tostring(result))
+      return json.encode({ ok = false, error = tostring(result) })
+    end
+
     -- Cannot return nothing or nil alone, because Millennium tries to stoi it.
     if not result then return "null" end
     return json.encode(result)

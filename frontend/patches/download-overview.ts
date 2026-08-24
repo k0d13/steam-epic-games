@@ -1,4 +1,5 @@
 import { logger } from "../index";
+import { once } from "../services/once";
 import * as appIds from "../state/app-ids";
 import * as jobs from "../state/jobs";
 
@@ -37,7 +38,15 @@ function getOverview(): DownloadOverview | undefined {
 /** The appid we last wrote, so we know whether an occupied overview is ours. */
 let claimed: number | undefined;
 
-let verified = false;
+const logClaimed = once((overview: DownloadOverview, appId: number, appName: string) => {
+  logger.debug("Claimed the download overview", {
+    appId,
+    appName,
+    // Different from what we wrote means it's read-only on this build and the
+    // app page's bar will stay empty.
+    got: overview.update_appid,
+  });
+});
 
 /**
  * Point the client's download overview at whichever of our installs is running,
@@ -66,16 +75,7 @@ export function sync() {
     overview.overall_estimated_time_remaining_sec = -1;
     overview.update_network_bytes_per_second = job.progress?.speed ?? 0;
 
-    if (!verified) {
-      verified = true;
-      logger.debug("Claimed the download overview", {
-        appId,
-        appName: job.appName,
-        // Different from what we wrote means it's read-only on this build and
-        // the app page's bar will stay empty.
-        got: overview.update_appid,
-      });
-    }
+    logClaimed(overview, appId, job.appName);
     return;
   }
 

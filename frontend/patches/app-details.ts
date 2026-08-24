@@ -1,5 +1,6 @@
 import { callOriginal, replacePatch } from "@steambrew/client";
 import { logger } from "../index";
+import { once } from "../services/once";
 import * as jobs from "../state/jobs";
 import * as library from "../state/library";
 import * as sizes from "../state/sizes";
@@ -46,7 +47,16 @@ function getApps(): AppsApi {
   return SteamClient.Apps as unknown as AppsApi;
 }
 
-let verified = false;
+const logApplied = once((details: AppDetails, appName: string) => {
+  logger.debug("App details patch applied", {
+    appId: details.unAppID,
+    appName,
+    // Anything else means the fields are read-only or renamed on this build and
+    // none of it is taking effect.
+    gotLocalContent: details.bHasAnyLocalContent,
+    gotRequired: details.lDiskSpaceRequiredBytes,
+  });
+});
 
 /**
  * Rewrite one app's details to match what Epic says. Installed games are left
@@ -77,17 +87,7 @@ function apply(details: AppDetails) {
   // drawn on the pass after it lands.
   else sizes.ensure(game.appName);
 
-  if (!verified) {
-    verified = true;
-    logger.debug("App details patch applied", {
-      appId: details.unAppID,
-      appName: game.appName,
-      // Anything else means the fields are read-only or renamed on this build
-      // and none of it is taking effect.
-      gotLocalContent: details.bHasAnyLocalContent,
-      gotRequired: details.lDiskSpaceRequiredBytes,
-    });
-  }
+  logApplied(details, game.appName);
 }
 
 export function register() {

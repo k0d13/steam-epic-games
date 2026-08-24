@@ -87,6 +87,16 @@ function shell.is_locked(path)
   return not (ok and wrote ~= false)
 end
 
+---@param args (string|number)[]|nil
+---@return string[]
+local function to_strings(args)
+  local result = {}
+  for index, arg in ipairs(args or {}) do
+    result[index] = tostring(arg)
+  end
+  return result
+end
+
 ---Escape a string for a single-quoted PowerShell literal.
 ---@param value string
 ---@return string
@@ -327,6 +337,11 @@ end
 ---
 ---Flashes a window, which is the whole thing this module exists to avoid, but a
 ---plugin that works badly beats one that doesn't work.
+---
+---`options.timeout` cannot be honoured here: `utils.exec` returns only once the
+---command has, and the daemon being down is exactly the case where there is no
+---PowerShell to hang a watchdog off. A command that never exits takes the Lua
+---state with it.
 ---@param exe string
 ---@param args string[]
 ---@return string output
@@ -355,11 +370,7 @@ end
 function shell.start(exe, args, options)
   options = options or {}
 
-  local arguments = {}
-  for index, arg in ipairs(args or {}) do
-    arguments[index] = tostring(arg)
-  end
-
+  local arguments = to_strings(args)
   if not shell.ensure() then return nil, "The command daemon is not running" end
 
   local id = utils.uuid()
@@ -419,11 +430,7 @@ function shell.run(exe, args, options)
   local id, err = shell.start(exe, args, options)
   if not id then
     logger:warn(tostring(err))
-    local arguments = {}
-    for index, arg in ipairs(args or {}) do
-      arguments[index] = tostring(arg)
-    end
-    return fallback(exe, arguments)
+    return fallback(exe, to_strings(args))
   end
 
   local deadline = utils.time_ms() + (options.timeout or TIMEOUT)

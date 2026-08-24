@@ -34,8 +34,11 @@ local PATH = DIR .. "/legendary.exe"
 ---@param path string
 ---@return string|nil
 local function digest(path)
-  local output = shell.run("certutil", { "-hashfile", (path:gsub("/", "\\")), "SHA256" })
-  if not output then return nil end
+  local output, code = shell.run("certutil", { "-hashfile", (path:gsub("/", "\\")), "SHA256" })
+  if code ~= 0 then
+    logger:warn("certutil could not hash " .. path .. ", exited " .. code)
+    return nil
+  end
 
   -- Matched a line at a time: the banner carries the path and the trailer starts
   -- with hex letters of its own, so reading the output as one run of characters

@@ -11,7 +11,7 @@ import { logger } from "./index";
 interface Pending {
   pending: true;
   /** How long the backend wants before the next attempt, in milliseconds. */
-  retry_in?: number;
+  retryIn?: number;
 }
 
 const isPending = (value: unknown): value is Pending =>
@@ -23,6 +23,27 @@ const RETRY_LIMIT_MS = 120_000;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// The backend speaks snake_case, because that's what legendary and Lua both
+// use. Converting every answer here once keeps the rest of the frontend in
+// normal TS casing without a hand-written mapping per document - which was
+// where a renamed backend field used to turn silently into `undefined`.
+//
+// Only answers are converted. Payloads still go out spelled the way the Lua
+// side reads them.
+
+function camelize(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(camelize);
+  if (typeof value !== "object" || value === null) return value;
+
+  const result: Record<string, unknown> = {};
+  for (const [key, nested] of Object.entries(value)) {
+    result[key.replace(/_(.)/g, (_, character: string) => character.toUpperCase())] =
+      camelize(nested);
+  }
+
+  return result;
+}
+
 async function call<R>(route: `RPC.${string}`, payload: object = {}): Promise<R> {
   const name = route.slice(4);
   logger.debug(`-> ${name}`, payload);
@@ -32,7 +53,7 @@ async function call<R>(route: `RPC.${string}`, payload: object = {}): Promise<R>
 
   for (;;) {
     const raw = await Millennium.callServerMethod(name, { payload: body });
-    const parsed = JSON.parse(raw) as R | Pending;
+    const parsed = camelize(JSON.parse(raw)) as R | Pending;
 
     if (!isPending(parsed)) {
       logger.debug(`<- ${name}`, parsed);
@@ -44,8 +65,16 @@ async function call<R>(route: `RPC.${string}`, payload: object = {}): Promise<R>
       return parsed as R;
     }
 
-    await sleep(parsed.retry_in ?? 250);
+    await sleep(parsed.retryIn ?? 250);
   }
+}
+
+/**
+ * Lua has one table type, so an empty list arrives as `{}` - an object with no
+ * `map` on it, and a TypeError on every fresh install.
+ */
+function asArray<T>(value: T[] | undefined): T[] {
+  return Array.isArray(value) ? value : [];
 }
 
 /** Whether legendary is usable, and whether an Epic account is signed in. */
@@ -98,7 +127,6 @@ export interface JobProgress {
   elapsed?: string;
   /** MiB/s, raw off the wire. */
   speed?: number;
-  updatedAt: number;
 }
 
 /** One detached legendary install or uninstall. */
@@ -113,76 +141,6 @@ export interface Job {
   error?: string;
 }
 
-// The backend speaks snake_case because that's what legendary and Lua both use.
-// Converting once here keeps the rest of the frontend in normal TS casing.
-
-interface RawStatus {
-  available: boolean;
-  authenticated: boolean;
-  account?: string;
-  login_url: string;
-  error?: string;
-}
-
-function toStatus(raw: RawStatus): EpicStatus {
-  return {
-    available: raw.available,
-    authenticated: raw.authenticated,
-    account: raw.account,
-    loginUrl: raw.login_url,
-    error: raw.error,
-  };
-}
-
-interface RawAuthResult {
-  ok: boolean;
-  error?: string;
-  status?: RawStatus;
-}
-
-function toAuthResult(raw: RawAuthResult) {
-  return {
-    ok: raw.ok,
-    error: raw.error,
-    status: raw.status ? toStatus(raw.status) : undefined,
-  };
-}
-
-interface RawGame {
-  app_name: string;
-  title: string;
-  installed: boolean;
-  install_path?: string;
-  install_size?: number;
-  version?: string;
-  needs_update: boolean;
-  folder_name?: string;
-  art_portrait?: string;
-  art_hero?: string;
-}
-
-function toGame(raw: RawGame): EpicGame {
-  return {
-    appName: raw.app_name,
-    title: raw.title,
-    installed: raw.installed,
-    installPath: raw.install_path,
-    installSize: raw.install_size,
-    version: raw.version,
-    needsUpdate: raw.needs_update,
-    folderName: raw.folder_name,
-    artPortrait: raw.art_portrait,
-    artHero: raw.art_hero,
-  };
-}
-
-interface RawLibrary {
-  ok: boolean;
-  error?: string;
-  games?: RawGame[];
-  refreshed_at?: number;
-}
-
 export interface LibraryResult {
   ok: boolean;
   error?: string;
@@ -191,63 +149,24 @@ export interface LibraryResult {
   refreshedAt: number;
 }
 
-function toLibrary(raw: RawLibrary): LibraryResult {
-  return {
-    ok: raw.ok,
-    error: raw.error,
-    // Lua has one table type, so an empty library arrives as `{}`: an object
-    // with no `map` on it, and a TypeError on every fresh install.
-    games: (Array.isArray(raw.games) ? raw.games : []).map(toGame),
-    refreshedAt: raw.refreshed_at ?? 0,
-  };
-}
-
-interface RawJob {
-  app_name: string;
-  kind: "install" | "uninstall";
-  state: "running" | "paused" | "done" | "failed";
-  started_at: number;
-  exit_code?: number;
+interface RawLibrary {
+  ok: boolean;
   error?: string;
-  progress?: {
-    percent: number;
-    downloaded: number;
-    total: number;
-    eta?: string;
-    elapsed?: string;
-    speed?: number;
-    updated_at: number;
-  };
+  games?: EpicGame[];
+  refreshedAt?: number;
 }
 
-function toJob(raw: RawJob): Job {
-  return {
-    appName: raw.app_name,
-    kind: raw.kind,
-    state: raw.state,
-    startedAt: raw.started_at,
-    exitCode: raw.exit_code,
-    error: raw.error,
-    progress: raw.progress && {
-      percent: raw.progress.percent,
-      downloaded: raw.progress.downloaded,
-      total: raw.progress.total,
-      eta: raw.progress.eta,
-      elapsed: raw.progress.elapsed,
-      speed: raw.progress.speed,
-      updatedAt: raw.progress.updated_at,
-    },
-  };
+function toLibrary(raw: RawLibrary): LibraryResult {
+  return { ...raw, games: asArray(raw.games), refreshedAt: raw.refreshedAt ?? 0 };
 }
 
 export class RPC {
   /**
-   * Is legendary usable, and is an Epic account signed in? Cached in the backend
-   * because answering costs a subprocess launch; pass `refresh` after anything
-   * that could have changed the answer.
+   * Cached in the backend, because answering costs a subprocess launch; pass
+   * `refresh` after anything that could have changed the answer.
    */
   async GetStatus(refresh = false) {
-    return toStatus(await call<RawStatus>("RPC.GetStatus", { refresh }));
+    return call<EpicStatus>("RPC.GetStatus", { refresh });
   }
 
   /**
@@ -255,17 +174,17 @@ export class RPC {
    * The browser half happens in the panel - this is only the exchange.
    */
   async SignIn(code: string) {
-    return toAuthResult(await call<RawAuthResult>("RPC.SignIn", { code }));
+    return call<{ ok: boolean; error?: string; status?: EpicStatus }>("RPC.SignIn", { code });
   }
 
   async SignOut() {
-    return toAuthResult(await call<RawAuthResult>("RPC.SignOut"));
+    return call<{ ok: boolean; error?: string; status?: EpicStatus }>("RPC.SignOut");
   }
 
   /**
-   * Everything the account owns, merged with what's installed on disk. Answered
-   * from the backend's cache unless `refresh` is set; `force` also bypasses
-   * legendary's catalog cache, which is what picks up a newly bought game.
+   * Answered from the backend's cache unless `refresh` is set; `force` also
+   * bypasses legendary's catalog cache, which is what picks up a newly bought
+   * game.
    */
   async GetLibrary(refresh = false, force = false): Promise<LibraryResult> {
     return toLibrary(await call<RawLibrary>("RPC.GetLibrary", { refresh, force }));
@@ -280,21 +199,18 @@ export class RPC {
     return toLibrary(await call<RawLibrary>("RPC.GetLibrary", { installed: true }));
   }
 
-  /** What a shortcut for this game should run. */
   async GetLaunchCommand(appName: string): Promise<LaunchCommand | undefined> {
-    const raw = await call<{ ok: boolean; exe?: string; arguments?: string; start_dir?: string }>(
-      "RPC.GetLaunchCommand",
-      { app_name: appName },
-    );
+    const raw = await call<{ ok: boolean } & Partial<LaunchCommand>>("RPC.GetLaunchCommand", {
+      app_name: appName,
+    });
 
     if (!raw.ok || !raw.exe) return undefined;
-    return { exe: raw.exe, arguments: raw.arguments ?? "", startDir: raw.start_dir ?? "" };
+    return { exe: raw.exe, arguments: raw.arguments ?? "", startDir: raw.startDir ?? "" };
   }
 
   /**
-   * How much room one game needs on disk. Slow the first time it's asked for a
-   * given game - it fetches that game's manifest from Epic - and cached in the
-   * backend from then on.
+   * Slow the first time it's asked for a given game - it fetches that game's
+   * manifest from Epic - and cached in the backend from then on.
    */
   async GetGameSize(appName: string, refresh = false): Promise<GameSize | undefined> {
     const raw = await call<{ ok: boolean; disk?: number; download?: number; error?: string }>(
@@ -311,57 +227,48 @@ export class RPC {
   }
 
   /**
-   * Start installing, updating or resuming a game. Returns as soon as the job
-   * is spawned - watch it with `GetJobs`. `basePath` is the parent directory,
-   * `gameFolder` the directory name inside it, matching legendary's own split.
+   * Returns as soon as the job is spawned - watch it with `GetJobs`. `basePath`
+   * is the parent directory, `gameFolder` the directory name inside it,
+   * matching legendary's own split.
    */
   async StartInstall(appName: string, basePath?: string, gameFolder?: string) {
-    const raw = await call<{ ok: boolean; job?: RawJob; error?: string }>("RPC.StartInstall", {
+    return this.startJob("RPC.StartInstall", {
       app_name: appName,
       base_path: basePath,
       game_folder: gameFolder,
     });
-
-    if (!raw.ok || !raw.job) {
-      logger.warn("Could not start the install", { appName, error: raw.error });
-      return undefined;
-    }
-
-    return toJob(raw.job);
   }
 
-  /** Remove a game from disk, leaving its Steam shortcut in place. */
   async StartUninstall(appName: string) {
-    const raw = await call<{ ok: boolean; job?: RawJob; error?: string }>("RPC.StartUninstall", {
-      app_name: appName,
-    });
+    return this.startJob("RPC.StartUninstall", { app_name: appName });
+  }
+
+  private async startJob(
+    route: `RPC.${string}`,
+    payload: { app_name: string; base_path?: string; game_folder?: string },
+  ) {
+    const raw = await call<{ ok: boolean; job?: Job; error?: string }>(route, payload);
 
     if (!raw.ok || !raw.job) {
-      logger.warn("Could not start the uninstall", { appName, error: raw.error });
+      logger.warn(`${route.slice(4)} failed`, { appName: payload.app_name, error: raw.error });
       return undefined;
     }
 
-    return toJob(raw.job);
+    return raw.job;
   }
 
   /** Every install and uninstall the backend knows about. Cheap enough to poll. */
   async GetJobs(): Promise<Job[]> {
-    const raw = await call<{ ok: boolean; jobs?: RawJob[] }>("RPC.GetJobs");
-
-    // Lua has one table type, so no jobs at all arrives as `{}`, not `[]`.
-    return Array.isArray(raw.jobs) ? raw.jobs.map(toJob) : [];
+    const raw = await call<{ ok: boolean; jobs?: Job[] }>("RPC.GetJobs");
+    return asArray(raw.jobs);
   }
 
-  /** Stop an install, keeping the partial download. `StartInstall` resumes it. */
   async PauseJob(appName: string) {
-    const raw = await call<{ ok: boolean }>("RPC.PauseJob", { app_name: appName });
-    return raw.ok;
+    return (await call<{ ok: boolean }>("RPC.PauseJob", { app_name: appName })).ok;
   }
 
-  /** Stop a job and forget it. Whatever is on disk stays there. */
   async CancelJob(appName: string) {
-    const raw = await call<{ ok: boolean }>("RPC.CancelJob", { app_name: appName });
-    return raw.ok;
+    return (await call<{ ok: boolean }>("RPC.CancelJob", { app_name: appName })).ok;
   }
 
   /**

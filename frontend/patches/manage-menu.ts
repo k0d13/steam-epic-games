@@ -4,6 +4,7 @@ import { Steam } from "steambrew-utils";
 import { onPopupCreate } from "steambrew-utils/watchers";
 import { logger } from "../index";
 import { findExport } from "../services/modules";
+import { memo } from "../services/once";
 import * as jobs from "../state/jobs";
 import * as library from "../state/library";
 
@@ -96,8 +97,11 @@ function isUninstallDialog(value: unknown): value is UninstallDialog {
   return source.includes("#UninstallDialog_Title") && source.includes("small_mode");
 }
 
-let uninstallDialog: UninstallDialog | undefined;
-let searched = false;
+const getUninstallDialog = memo(() => {
+  const dialog = findExport("#UninstallDialog_Title", isUninstallDialog);
+  if (!dialog) logger.warn("Steam's uninstall dialog wasn't found, using our own");
+  return dialog;
+});
 
 /**
  * Our own dialog, for the day Steam's stops being findable. It calls the job
@@ -118,13 +122,8 @@ function fallbackConfirm(appName: string, name: string) {
 }
 
 function confirmUninstall(appId: number, appName: string, name: string) {
-  if (!searched) {
-    searched = true;
-    uninstallDialog = findExport("#UninstallDialog_Title", isUninstallDialog);
-    if (!uninstallDialog) logger.warn("Steam's uninstall dialog wasn't found, using our own");
-  }
-
-  if (uninstallDialog) uninstallDialog([appId], Steam.MainPopup?.window, false);
+  const dialog = getUninstallDialog();
+  if (dialog) dialog([appId], Steam.MainPopup?.window, false);
   else fallbackConfirm(appName, name);
 }
 

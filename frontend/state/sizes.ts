@@ -9,6 +9,9 @@ import { createEmitter } from "./emitter";
 const known = new Map<string, GameSize | null>();
 const pending = new Set<string>();
 
+/** Games whose next read has to go past the backend's cache too. See `forget`. */
+const stale = new Set<string>();
+
 /** Fires when a size arrives, so whatever is showing it can repaint. */
 const emitter = createEmitter();
 export const subscribe = emitter.subscribe;
@@ -26,8 +29,9 @@ export function ensure(appName: string) {
   if (known.has(appName) || pending.has(appName)) return;
   pending.add(appName);
 
-  void rpc.GetGameSize(appName).then((size) => {
+  void rpc.GetGameSize(appName, stale.has(appName)).then((size) => {
     pending.delete(appName);
+    stale.delete(appName);
 
     // Misses are recorded too: retrying every render is a subprocess a frame.
     known.set(appName, size ?? null);
@@ -36,9 +40,15 @@ export function ensure(appName: string) {
 }
 
 /**
- * Drop what we know about a game, for after an install or update has changed
- * the build it was measured against.
+ * Drop what we know about a game, here and in the backend.
+ *
+ * The backend caches sizes by app name with no way to tell that Epic has
+ * shipped a new build since - knowing which build one was measured against
+ * costs the manifest fetch the cache exists to avoid - so a finished job is the
+ * signal, and state/jobs.ts calls this on one. Clearing only the map here would
+ * refetch the backend's stale answer, hence the flag.
  */
 export function forget(appName: string) {
   known.delete(appName);
+  stale.add(appName);
 }

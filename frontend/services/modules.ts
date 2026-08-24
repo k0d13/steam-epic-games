@@ -8,16 +8,14 @@
 // Only modules whose source proves they're the right one are required, since
 // requiring an unrelated one can have side effects.
 
+import { memo } from "./once";
+
 interface WebpackRequire {
   (id: string): Record<string, unknown>;
   m: Record<string, unknown>;
 }
 
-let cached: WebpackRequire | undefined;
-
-function getRequire(): WebpackRequire | undefined {
-  if (cached) return cached;
-
+const getRequire = memo((): WebpackRequire | undefined => {
   let webpackRequire: WebpackRequire | undefined;
   const id = Symbol("epic-games");
   const chunks = Reflect.get(globalThis, "webpackChunksteamui") as
@@ -25,9 +23,8 @@ function getRequire(): WebpackRequire | undefined {
     | undefined;
   chunks?.push([[id], {}, (r: WebpackRequire) => void (webpackRequire = r)]);
 
-  cached = webpackRequire;
   return webpackRequire;
-}
+});
 
 /**
  * The first export of a Steam module that matches, out of the modules whose

@@ -1,6 +1,7 @@
 import { beforePatch, EDisplayStatus } from "@steambrew/client";
 import { forceFakeLocationChange, NON_STEAM_APP_APPID_MASK, Steam } from "steambrew-utils";
 import { logger } from "../index";
+import { once } from "../services/once";
 import * as jobs from "../state/jobs";
 import * as library from "../state/library";
 
@@ -13,8 +14,6 @@ import * as library from "../state/library";
 // CollectionStore.OnAppOverviewChange is the funnel every overview passes
 // through before the grid, the filters and the sort read it, so correcting
 // install state there gets all three natively.
-
-let verified = false;
 
 /**
  * States Steam sets while it is running the shortcut itself. The game is
@@ -41,6 +40,18 @@ interface MutableOverview {
   size_on_disk?: string;
 }
 
+const logApplied = once((app: MutableOverview, appName: string, wanted: boolean) => {
+  logger.debug("Install state patch applied", {
+    appId: app.appid,
+    appName,
+    wanted,
+    // Different from `wanted` means these are read-only on this Steam build and
+    // none of it is taking effect.
+    gotLocal: app.local_per_client_data?.installed,
+    gotSize: app.size_on_disk,
+  });
+});
+
 /**
  * Rewrite one overview to match what Epic says. Install state lives in three
  * places that have to agree: `local_per_client_data` drives the app page, the
@@ -63,7 +74,12 @@ function applyInstallState(overview: Steam.AppOverview) {
   // An uninstall is a directory delete, so there's no percentage to show.
   const uninstalling = job?.kind === "uninstall" && job.state === "running";
 
-  for (const data of [app.local_per_client_data, ...(app.per_client_data ?? [])]) {
+  // Defensive about the array: everything else in this file finds Steam's
+  // shapes rather than trusting them, and a spread is what turns a field that
+  // isn't a list on some build into a thrown TypeError on the render path.
+  const perClient = Array.isArray(app.per_client_data) ? app.per_client_data : [];
+
+  for (const data of [app.local_per_client_data, ...perClient]) {
     if (!data) continue;
 
     if (uninstalling) {
@@ -103,18 +119,7 @@ function applyInstallState(overview: Steam.AppOverview) {
   // leaving it set shows an uninstalled game there anyway.
   app.size_on_disk = game.installed ? `${game.installSize ?? 0}` : undefined;
 
-  if (!verified) {
-    verified = true;
-    logger.debug("Install state patch applied", {
-      appId: app.appid,
-      appName: game.appName,
-      wanted: game.installed,
-      // Different from `wanted` means these are read-only on this Steam build
-      // and none of it is taking effect.
-      gotLocal: app.local_per_client_data?.installed,
-      gotSize: app.size_on_disk,
-    });
-  }
+  logApplied(app, game.appName, game.installed);
 }
 
 export function register() {

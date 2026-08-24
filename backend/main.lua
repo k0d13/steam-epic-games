@@ -6,7 +6,7 @@ local shell = require("shell")
 
 -- Millennium resolves RPC method names in _G, so every method has to be a
 -- global. Copied by name so a method added to rpc.lua can't be forgotten here.
-RPC = require("rpc").RPC
+local RPC = require("rpc").RPC
 for name, handler in pairs(RPC) do
   _G[name] = handler
 end

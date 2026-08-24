@@ -80,6 +80,9 @@ end
 --- Reads what's on disk. Local, so no round trip to Epic.
 local LIST_INSTALLED = { "list-installed", "--check-updates", "--json" }
 
+--- Per `legendary import`. One manifest refetch, not a download.
+local IMPORT_TIMEOUT = 30000
+
 ---Index one `list-installed` output by app name, so merging stays linear rather
 ---than a nested scan over 300+ titles.
 ---@param output string
@@ -137,7 +140,10 @@ local function import_leftover_egl_installs(owned, installed_by_name)
   logger:info("Importing Epic Games Launcher installs egl-sync skipped: " .. utils.join(titles, ", "))
 
   for _, args in ipairs(commands) do
-    legendary.run(args)
+    -- These run one after another and each blocks the Lua state, so they get a
+    -- short leash: a handful of manifests legendary can't resolve shouldn't add
+    -- up to minutes of frozen plugin on a refresh.
+    legendary.run(args, IMPORT_TIMEOUT)
   end
 
   -- Re-read: the list only picks the imports up once they have happened.
@@ -185,7 +191,8 @@ end
 ---@return string? error
 function library.refresh(force)
   -- Without this a missing binary reads as an empty library.
-  if not legendary.get_binary() then return nil, "legendary binary not found" end
+  local binary, binary_error = legendary.get_binary()
+  if not binary then return nil, binary_error end
 
   local list_args = { "list", "--json" }
   if force then table.insert(list_args, "--force-refresh") end
@@ -224,7 +231,8 @@ end
 ---@return EpicGame[]|nil games
 ---@return string? error
 function library.refresh_installed()
-  if not legendary.get_binary() then return nil, "legendary binary not found" end
+  local binary, binary_error = legendary.get_binary()
+  if not binary then return nil, binary_error end
 
   local installed_by_name = index_installed(legendary.run(LIST_INSTALLED))
   if not installed_by_name then return nil, "legendary returned no installed games" end
