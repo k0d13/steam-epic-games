@@ -23,6 +23,7 @@ on:
       - ".github/workflows/**"
       - ".github/actions/**"
       - ".github/scripts/**"
+      - "mise.toml"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
