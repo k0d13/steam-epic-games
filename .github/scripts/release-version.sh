@@ -20,4 +20,4 @@ mv "$tmp" plugin.json
 # --- Refresh lockfile and format --------------------------------------------
 
 pnpm install --lockfile-only
-pnpm format plugin.json package.json --write
+pnpm exec oxfmt plugin.json package.json

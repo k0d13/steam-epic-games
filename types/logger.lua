@@ -9,7 +9,7 @@ local logger = {}
 ---@param message string The message to log
 function logger:info(message) end
 
----Log a warning message  
+---Log a warning message
 ---@param message string The warning message to log
 function logger:warn(message) end
 

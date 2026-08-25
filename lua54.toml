@@ -1,0 +1,84 @@
+# selene ships no lua54 standard library, and its bundled lua52/lua53 ones make
+# the release binary bail out ("lua version lua52 ... feature not enabled"), so
+# 5.1 is the base and everything Lua 5.2-5.4 added on top is listed here.
+[selene]
+base = "lua51"
+name = "lua54"
+
+[warn]
+args = [{ type = "..." }]
+
+[rawlen]
+args = [{ type = "any" }]
+
+[coroutine.close]
+args = [{ type = "any" }]
+
+[table.pack]
+args = [{ type = "..." }]
+
+[table.unpack]
+args = [
+  { type = "any" },
+  { type = "number", required = false },
+  { type = "number", required = false },
+]
+
+[table.move]
+args = [
+  { type = "any" },
+  { type = "number" },
+  { type = "number" },
+  { type = "number" },
+  { type = "any", required = false },
+]
+
+[math.type]
+args = [{ type = "any" }]
+
+[math.tointeger]
+args = [{ type = "any" }]
+
+[math.ult]
+args = [{ type = "number" }, { type = "number" }]
+
+[math.maxinteger]
+property = true
+
+[math.mininteger]
+property = true
+
+[string.pack]
+args = [{ type = "string" }, { type = "..." }]
+
+[string.unpack]
+args = [{ type = "string" }, { type = "string" }, { type = "number", required = false }]
+
+[string.packsize]
+args = [{ type = "string" }]
+
+[utf8.char]
+args = [{ type = "..." }]
+
+[utf8.codepoint]
+args = [
+  { type = "string" },
+  { type = "number", required = false },
+  { type = "number", required = false },
+]
+
+[utf8.codes]
+args = [{ type = "string" }]
+
+[utf8.len]
+args = [
+  { type = "string" },
+  { type = "number", required = false },
+  { type = "number", required = false },
+]
+
+[utf8.offset]
+args = [{ type = "string" }, { type = "number" }, { type = "number", required = false }]
+
+[utf8.charpattern]
+property = true

@@ -20,11 +20,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Setup Node.js
-        uses: ./.github/actions/node
+      - name: Setup toolchain
+        uses: ./.github/actions/toolchain
 
       - name: Build plugin
-        run: pnpm build
+        run: mise run build
 
       # The release jobs consume this rather than rebuilding, so what ships is
       # the exact tree that passed the gate.
@@ -43,11 +43,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Setup Node.js
-        uses: ./.github/actions/node
+      - name: Setup toolchain
+        uses: ./.github/actions/toolchain
 
-      - name: Run the type checker
-        run: pnpm check
+      # Split per language so a red job names the half that broke.
+      - name: Type check the frontend
+        run: mise run check:ts
+
+      - name: Type check the backend
+        run: mise run check:lua
 
   lint:
     name: Linting
@@ -56,11 +60,17 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Setup Node.js
-        uses: ./.github/actions/node
+      - name: Setup toolchain
+        uses: ./.github/actions/toolchain
 
-      - name: Run the linter
-        run: pnpm lint
+      - name: Lint the frontend
+        run: mise run lint:ts
 
-      - name: Check formatting
-        run: pnpm format --check
+      - name: Lint the backend
+        run: mise run lint:lua
+
+      - name: Check frontend formatting
+        run: mise run format-check:ts
+
+      - name: Check backend formatting
+        run: mise run format-check:lua

@@ -2,3 +2,4 @@
 node_modules/
 .millennium/
 backend/vendor/
+.deployed/

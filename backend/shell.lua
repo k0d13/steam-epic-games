@@ -81,7 +81,9 @@ end
 ---@param path string
 ---@return boolean
 function shell.is_locked(path)
-  if not fs.is_file(path) then return false end
+  if not fs.is_file(path) then
+    return false
+  end
 
   local ok, wrote = pcall(utils.write_file, path, "")
   return not (ok and wrote ~= false)
@@ -245,7 +247,9 @@ local FINGERPRINT = fingerprint(DAEMON)
 
 ---@return string
 local function stamp()
-  if not fs.is_file(STAMP) then return "" end
+  if not fs.is_file(STAMP) then
+    return ""
+  end
   return utils.trim(utils.read_file(STAMP) or "")
 end
 
@@ -263,11 +267,11 @@ local function launch()
   fs.create_directories(RESPONSES)
 
   local script = "$Root = "
-      .. shell.ps_quote(ROOT_WIN)
-      .. "\n$MutexName = "
-      .. shell.ps_quote(MUTEX)
-      .. "\n"
-      .. DAEMON
+    .. shell.ps_quote(ROOT_WIN)
+    .. "\n$MutexName = "
+    .. shell.ps_quote(MUTEX)
+    .. "\n"
+    .. DAEMON
 
   local ok, err = utils.write_file(ROOT .. "/daemon.ps1", script)
   if not ok then
@@ -306,7 +310,9 @@ end
 ---@return boolean available
 function shell.ensure()
   if shell.is_locked(LOCK) then
-    if stamp() == FINGERPRINT then return true end
+    if stamp() == FINGERPRINT then
+      return true
+    end
 
     -- The script has been edited since that daemon started, which only happens
     -- while developing. It polls for this file and exits when it sees it.
@@ -320,7 +326,9 @@ function shell.ensure()
     fs.remove(STOP)
   end
 
-  if utils.time_ms() < retry_after then return false end
+  if utils.time_ms() < retry_after then
+    return false
+  end
   return launch()
 end
 
@@ -371,7 +379,9 @@ function shell.start(exe, args, options)
   options = options or {}
 
   local arguments = to_strings(args)
-  if not shell.ensure() then return nil, "The command daemon is not running" end
+  if not shell.ensure() then
+    return nil, "The command daemon is not running"
+  end
 
   local id = utils.uuid()
   local payload = json.encode({ exe = exe, arguments = arguments, cwd = options.cwd })
@@ -395,12 +405,16 @@ end
 function shell.poll(id)
   local out_path = RESPONSES .. "/" .. id .. ".out"
   local code_path = RESPONSES .. "/" .. id .. ".code"
-  if not fs.is_file(code_path) then return nil end
+  if not fs.is_file(code_path) then
+    return nil
+  end
 
   local output = utils.read_file(out_path) or ""
   local code = tonumber(utils.trim(utils.read_file(code_path) or "")) or -1
 
-  if fs.is_file(out_path) then fs.remove(out_path) end
+  if fs.is_file(out_path) then
+    fs.remove(out_path)
+  end
   fs.remove(code_path)
 
   return output, code
@@ -414,7 +428,9 @@ function shell.forget(id)
     RESPONSES .. "/" .. id .. ".out",
     RESPONSES .. "/" .. id .. ".code",
   }) do
-    if fs.is_file(path) then fs.remove(path) end
+    if fs.is_file(path) then
+      fs.remove(path)
+    end
   end
 end
 
@@ -436,7 +452,9 @@ function shell.run(exe, args, options)
   local deadline = utils.time_ms() + (options.timeout or TIMEOUT)
   while true do
     local output, code = shell.poll(id)
-    if output then return output, code or -1 end
+    if output then
+      return output, code or -1
+    end
 
     if utils.time_ms() > deadline then
       logger:warn("Command timed out: " .. exe)

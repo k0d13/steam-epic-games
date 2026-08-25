@@ -8,6 +8,7 @@ local shell = require("shell")
 -- global. Copied by name so a method added to rpc.lua can't be forgotten here.
 local RPC = require("rpc").RPC
 for name, handler in pairs(RPC) do
+  -- selene: allow(global_usage)
   _G[name] = handler
 end
 

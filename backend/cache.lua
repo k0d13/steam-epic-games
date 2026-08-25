@@ -13,7 +13,9 @@ local cache = {}
 ---@param label string Used in the log line when the file is unreadable
 ---@return table|nil
 function cache.read(path, label)
-  if not fs.is_file(path) then return nil end
+  if not fs.is_file(path) then
+    return nil
+  end
 
   local ok, decoded = pcall(json.decode, utils.read_file(path) or "")
   if not ok or type(decoded) ~= "table" then
@@ -42,7 +44,9 @@ function cache.write(path, value, label)
 
   -- rename() won't replace an existing file on Windows. Losing the cache in the
   -- window between the two is survivable; the next refresh rebuilds it.
-  if fs.is_file(path) then fs.remove(path) end
+  if fs.is_file(path) then
+    fs.remove(path)
+  end
   if not fs.rename(temp_path, path) then
     logger:error("Could not replace the " .. label .. " cache")
     return false

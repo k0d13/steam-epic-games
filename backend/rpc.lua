@@ -28,7 +28,9 @@ local function method(handler)
     end
 
     -- Cannot return nothing or nil alone, because Millennium tries to stoi it.
-    if not result then return "null" end
+    if not result then
+      return "null"
+    end
     return json.encode(result)
   end
 end
@@ -48,7 +50,9 @@ end)
 ---the code for its own tokens and stores them.
 RPC.SignIn = method(function(data)
   local ok, err = legendary.authenticate(data.code)
-  if not ok then return { ok = false, error = err } end
+  if not ok then
+    return { ok = false, error = err }
+  end
 
   -- authenticate() already re-read the status to decide whether it worked.
   return { ok = true, status = legendary.get_status() }
@@ -78,7 +82,9 @@ RPC.GetLibrary = method(function(data)
     games = library.get()
   end
 
-  if not games then return { ok = false, error = err } end
+  if not games then
+    return { ok = false, error = err }
+  end
   return { ok = true, games = games, refreshed_at = library.get_refreshed_at() }
 end)
 
@@ -89,7 +95,9 @@ end)
 ---Epic moving the exe, and it can exist before the game is installed.
 RPC.GetLaunchCommand = method(function(data)
   local binary = legendary.get_binary()
-  if not binary then return { ok = false } end
+  if not binary then
+    return { ok = false }
+  end
 
   return {
     ok = true,
@@ -106,8 +114,12 @@ RPC.GetGameSize = method(function(data)
   local size, err, still_running = legendary.get_size(data.app_name, data.refresh == true)
   -- Answered rather than waited for: the frontend asks again after retry_in
   -- milliseconds, and everything else keeps working meanwhile.
-  if still_running then return { pending = true, retry_in = 500 } end
-  if not size then return { ok = false, error = err } end
+  if still_running then
+    return { pending = true, retry_in = 500 }
+  end
+  if not size then
+    return { ok = false, error = err }
+  end
   return { ok = true, disk = size.disk, download = size.download }
 end)
 
@@ -117,8 +129,12 @@ end)
 RPC.GetAchievements = method(function(data)
   local result, err, still_running = legendary.get_achievements(data.app_name, data.refresh == true)
   -- Answered rather than waited for, the same way GetGameSize is.
-  if still_running then return { pending = true, retry_in = 500 } end
-  if not result then return { ok = false, error = err } end
+  if still_running then
+    return { pending = true, retry_in = 500 }
+  end
+  if not result then
+    return { ok = false, error = err }
+  end
 
   -- Copied rather than flagged in place: the table is legendary's cache entry,
   -- and an `ok` written into it would be persisted with it.
@@ -138,7 +154,9 @@ end)
 ---already installing returns the running job.
 RPC.StartInstall = method(function(data)
   local job, err = legendary.install(data.app_name, data.base_path, data.game_folder)
-  if not job then return { ok = false, error = err } end
+  if not job then
+    return { ok = false, error = err }
+  end
   return { ok = true, job = job }
 end)
 
@@ -146,7 +164,9 @@ end)
 ---uninstalled games in the library is the point of the plugin.
 RPC.StartUninstall = method(function(data)
   local job, err = legendary.uninstall(data.app_name)
-  if not job then return { ok = false, error = err } end
+  if not job then
+    return { ok = false, error = err }
+  end
   return { ok = true, job = job }
 end)
 
@@ -173,7 +193,9 @@ end)
 ---The frontend hands Steam the bytes; this is the part Steam leaves undone.
 RPC.PlaceIcon = method(function(data)
   local path, err = grid.place_icon(data.app_id, data.account_id)
-  if not path then return { ok = false, error = err } end
+  if not path then
+    return { ok = false, error = err }
+  end
   return { ok = true, path = path }
 end)
 

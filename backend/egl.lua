@@ -40,7 +40,9 @@ end
 function egl.manifests_path()
   -- On the system drive, but not always C:.
   local program_data = utils.getenv("PROGRAMDATA")
-  if not program_data or program_data == "" then program_data = "C:/ProgramData" end
+  if not program_data or program_data == "" then
+    program_data = "C:/ProgramData"
+  end
 
   return program_data .. "/Epic/EpicGamesLauncher/Data/Manifests"
 end
@@ -63,7 +65,9 @@ function egl.get_manifests()
       if not ok or type(decoded) ~= "table" then
         logger:warn("Unreadable Epic Games Launcher manifest: " .. entry.name)
       elseif decoded.bIsIncompleteInstall == true then
-        logger:info("Skipping incomplete Epic Games Launcher install: " .. tostring(decoded.DisplayName))
+        logger:info(
+          "Skipping incomplete Epic Games Launcher install: " .. tostring(decoded.DisplayName)
+        )
       elseif type(decoded.AppName) == "string" and type(decoded.InstallLocation) == "string" then
         table.insert(manifests, {
           app_name = decoded.AppName,

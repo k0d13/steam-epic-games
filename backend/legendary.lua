@@ -25,14 +25,18 @@ local BINARY = nil
 ---@return string|nil path
 ---@return string? error
 function legendary.get_binary()
-  if BINARY and fs.is_file(BINARY) then return BINARY end
+  if BINARY and fs.is_file(BINARY) then
+    return BINARY
+  end
 
   local path, err = vendor.ensure()
   BINARY = path
 
   -- Always with a reason, so every caller can hand the error straight on
   -- rather than inventing wording of its own.
-  if not path then return nil, err or "legendary binary not found" end
+  if not path then
+    return nil, err or "legendary binary not found"
+  end
   return path
 end
 
@@ -43,7 +47,9 @@ end
 ---@return string
 local function subcommand(args)
   for _, arg in ipairs(args) do
-    if arg:sub(1, 1) ~= "-" then return arg end
+    if arg:sub(1, 1) ~= "-" then
+      return arg
+    end
   end
   return "?"
 end
@@ -105,7 +111,9 @@ function legendary.decode_json(output)
       end
 
       local ok, decoded = pcall(json.decode, table.concat(lines, "\n", index, last))
-      if ok then return decoded end
+      if ok then
+        return decoded
+      end
       return nil, "could not decode legendary output: " .. tostring(decoded)
     end
   end
@@ -119,7 +127,9 @@ end
 function legendary.last_error(output)
   local last
   for line in output:gmatch("[^\r\n]+") do
-    if line:find("ERROR:") or line:find("CRITICAL:") then last = utils.trim(line) end
+    if line:find("ERROR:") or line:find("CRITICAL:") then
+      last = utils.trim(line)
+    end
   end
   return last
 end
@@ -141,7 +151,9 @@ local status = nil
 ---@param refresh boolean|nil Re-read rather than using the cached answer
 ---@return LegendaryStatus
 function legendary.get_status(refresh)
-  if status and not refresh then return status end
+  if status and not refresh then
+    return status
+  end
 
   local binary, err = legendary.get_binary()
   if not binary then
@@ -160,7 +172,9 @@ function legendary.get_status(refresh)
   local decoded, decode_error = legendary.decode_json(output)
 
   local account = type(decoded) == "table" and decoded.account or nil
-  if account == json.null or account == "<not logged in>" then account = nil end
+  if account == json.null or account == "<not logged in>" then
+    account = nil
+  end
 
   status = {
     available = true,
@@ -183,7 +197,9 @@ end
 ---@return string? error
 function legendary.start(args)
   local binary, err = legendary.get_binary()
-  if not binary then return nil, err end
+  if not binary then
+    return nil, err
+  end
 
   return shell.start(binary, args)
 end
@@ -232,26 +248,36 @@ local sizing = {}
 ---@return string? error
 ---@return boolean? still_running The command has been started, ask again shortly
 function legendary.get_size(app_name, refresh)
-  if type(app_name) ~= "string" or app_name == "" then return nil, "No app name provided" end
+  if type(app_name) ~= "string" or app_name == "" then
+    return nil, "No app name provided"
+  end
 
   sizes = sizes or disk.read(SIZES_PATH, "sizes") or {}
-  if sizes[app_name] and not refresh then return sizes[app_name] end
+  if sizes[app_name] and not refresh then
+    return sizes[app_name]
+  end
 
   local id = sizing[app_name]
   if not id then
     local started, err = legendary.start({ "info", app_name, "--json" })
-    if not started then return nil, err end
+    if not started then
+      return nil, err
+    end
 
     sizing[app_name] = started
     return nil, nil, true
   end
 
   local output = legendary.collect(id)
-  if not output then return nil, nil, true end
+  if not output then
+    return nil, nil, true
+  end
   sizing[app_name] = nil
 
   local decoded, err = legendary.decode_json(output)
-  if type(decoded) ~= "table" then return nil, err or "legendary returned no info" end
+  if type(decoded) ~= "table" then
+    return nil, err or "legendary returned no info"
+  end
 
   -- No manifest means legendary could not reach Epic, which is the offline
   -- answer rather than a failure worth showing.
@@ -310,7 +336,9 @@ local achieving = {}
 ---@param entries table[]|nil
 ---@param out Achievement[]
 local function collect_achievements(entries, out)
-  if type(entries) ~= "table" then return end
+  if type(entries) ~= "table" then
+    return
+  end
 
   for _, entry in ipairs(entries) do
     table.insert(out, {
@@ -357,24 +385,32 @@ end
 ---@return string? error
 ---@return boolean? still_running The command has been started, ask again shortly
 function legendary.get_achievements(app_name, refresh)
-  if type(app_name) ~= "string" or app_name == "" then return nil, "No app name provided" end
+  if type(app_name) ~= "string" or app_name == "" then
+    return nil, "No app name provided"
+  end
 
   achievements = achievements or disk.read(ACHIEVEMENTS_PATH, "achievements") or {}
-  if achievements[app_name] and not refresh then return achievements[app_name] end
+  if achievements[app_name] and not refresh then
+    return achievements[app_name]
+  end
 
   local id = achieving[app_name]
   if not id then
     -- --hidden, because Steam draws undiscovered achievements itself, blurred,
     -- and dropping them here would leave its counts short of the total.
     local started, err = legendary.start({ "achievements", app_name, "--json", "--hidden" })
-    if not started then return nil, err end
+    if not started then
+      return nil, err
+    end
 
     achieving[app_name] = started
     return nil, nil, true
   end
 
   local output = legendary.collect(id)
-  if not output then return nil, nil, true end
+  if not output then
+    return nil, nil, true
+  end
   achieving[app_name] = nil
 
   local decoded, err = legendary.decode_json(output)
@@ -392,7 +428,9 @@ function legendary.get_achievements(app_name, refresh)
   achievements[app_name] = result
   disk.write(ACHIEVEMENTS_PATH, achievements, "achievements")
 
-  logger:info("Read achievements for " .. app_name .. ": " .. result.unlocked .. "/" .. result.total)
+  logger:info(
+    "Read achievements for " .. app_name .. ": " .. result.unlocked .. "/" .. result.total
+  )
   return result
 end
 
@@ -409,7 +447,9 @@ end
 ---@return string? error
 function legendary.install(app_name, base_path, game_folder)
   local binary, err = legendary.get_binary()
-  if not binary then return nil, err end
+  if not binary then
+    return nil, err
+  end
 
   local args = { "-y", "install", app_name }
 
@@ -430,7 +470,9 @@ end
 ---@return string? error
 function legendary.uninstall(app_name)
   local binary, err = legendary.get_binary()
-  if not binary then return nil, err end
+  if not binary then
+    return nil, err
+  end
 
   return jobs.start(app_name, "uninstall", binary, { "-y", "uninstall", app_name })
 end
@@ -452,15 +494,19 @@ end
 ---@return boolean success
 ---@return string? error
 function legendary.authenticate(code)
-  if type(code) ~= "string" or utils.trim(code) == "" then return false, "No code provided" end
+  if type(code) ~= "string" or utils.trim(code) == "" then
+    return false, "No code provided"
+  end
 
   local output = legendary.run({ "auth", "--code", utils.trim(code) })
-  if legendary.get_status(true).authenticated then return true end
+  if legendary.get_status(true).authenticated then
+    return true
+  end
 
   -- A failed attempt is not a no-op: legendary clears the stored login before
   -- trying the new code, so a bad code signs the user out. Hence the wording.
   return false,
-      legendary.last_error(output)
+    legendary.last_error(output)
       or "That code didn't work, it may have expired or already been used. Press Sign in for a fresh one."
 end
 

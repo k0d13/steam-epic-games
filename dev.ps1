@@ -43,6 +43,23 @@ function Copy-PluginFiles {
   Copy-Item -Path "backend" -Destination $Destination -Recurse -Force
 }
 
+function Set-DeployedLink {
+  param ([string]$Path, [string]$Target)
+
+  # A junction rather than a symlink, because that needs no elevation, and
+  # deleted through .Delete() so only the link goes and never the plugin behind it.
+  $existing = Get-Item -Path $Path -Force -ErrorAction SilentlyContinue
+  if ($existing -and (@($existing.Target)[0] -ne $Target)) {
+    $existing.Delete()
+    $existing = $null
+  }
+
+  if (-not $existing) {
+    Write-Host "Linking $Path to the deployed plugin..."
+    New-Item -ItemType Junction -Path $Path -Target $Target | Out-Null
+  }
+}
+
 function Toggle-Plugin {
   param ([string]$Path, [string]$Name, [bool]$Enable)
 
@@ -75,6 +92,8 @@ try {
 } finally {
   Set-PluginName -Path "plugin.json" -Name $PluginName -CommonName $PluginCommonName
 }
+
+Set-DeployedLink -Path ".deployed" -Target "$SteamPath\millennium\plugins\$PluginName-dev"
 
 Toggle-Plugin -Path $ConfigPath -Name $PluginName -Enable $false
 Toggle-Plugin -Path $ConfigPath -Name $PluginName-dev -Enable $true

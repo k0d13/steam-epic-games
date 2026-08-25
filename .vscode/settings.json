@@ -1,16 +1,77 @@
 {
+  // Explorer
   "explorer.compactFolders": true,
   "explorer.fileNesting.enabled": true,
   "explorer.fileNesting.patterns": {
-    "package.json": "pnpm-lock.yaml, pnpm-workspace.yaml",
+    "package.json": "pnpm-lock.yaml, pnpm-workspace.yaml, tsconfig.json, .oxfmtrc.json, .npmrc",
+    ".luarc.json": ".stylua.toml, selene.toml, lua54.toml",
     "*.js": "$(capture).js.map, $(capture).d.ts, $(capture).d.ts.map, $(capture).cjs",
     "*.cjs": "$(capture).cjs.map, $(capture).d.cts, $(capture).d.cts.map"
   },
+
+  // .deployed is a junction into Steam, so everything under it is this repo a
+  // second time — watching it doubles every file event.
+  "files.watcherExclude": {
+    "**/.deployed": true
+  },
+  // Same reason, plus build output and the vendored legendary tree.
+  "search.exclude": {
+    "**/.deployed": true,
+    "**/.ignore": true,
+    "**/.millennium": true,
+    "**/backend/vendor": true
+  },
+
+  // Editor
   "editor.insertSpaces": true,
   "editor.tabSize": 2,
+  // Both formatters write LF; without this a fresh checkout on Windows reopens
+  // every file as CRLF and the first save churns the whole thing.
+  "files.eol": "\n",
+
+  // TypeScript
+  "js/ts.tsdk.path": "node_modules/typescript/lib",
+  "js/ts.tsdk.promptToUseWorkspaceVersion": true,
+  "js/ts.preferences.importModuleSpecifierEnding": "js",
   "[typescript]": {
     "editor.formatOnSave": true,
     "editor.defaultFormatter": "oxc.oxc-vscode",
-    "js/ts.preferences.importModuleSpecifierEnding": "js"
+    "editor.codeActionsOnSave": { "source.fixAll.oxc": "explicit" }
+  },
+  "[typescriptreact]": {
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "oxc.oxc-vscode",
+    "editor.codeActionsOnSave": { "source.fixAll.oxc": "explicit" }
+  },
+  "[json]": {
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "oxc.oxc-vscode"
+  },
+
+  // Lua — stylua formats, lua-language-server reads .luarc.json, selene lints.
+  "[lua]": {
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "JohnnyMorganz.stylua",
+    "editor.rulers": [100]
+  },
+  "stylua.searchParentDirectories": true,
+
+  // Spelling — cspell ships no en-AU dictionary; AU spelling follows en-GB.
+  "cSpell.language": "en,en-GB",
+  "cSpell.words": [
+    "appid",
+    "appids",
+    "legendary",
+    "millennium",
+    "oxfmt",
+    "oxlint",
+    "selene",
+    "steambrew",
+    "stylua"
+  ],
+
+  // mise — shims first on PATH, so a terminal opens on the pinned tool versions.
+  "terminal.integrated.env.windows": {
+    "PATH": "${env:LOCALAPPDATA}\\mise\\shims;${env:PATH}"
   }
 }

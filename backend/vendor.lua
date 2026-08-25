@@ -21,7 +21,10 @@ local VERSION = "0.21.0"
 local ASSET = "legendary_windows_x64.exe"
 local SHA256 = "4c01a14c0acb0c46069b197ae7212ea4ea6b861661126ca0593cdac31658fb01"
 
-local URL = "https://github.com/legendary-gl/legendary/releases/download/" .. VERSION .. "/" .. ASSET
+local URL = "https://github.com/legendary-gl/legendary/releases/download/"
+  .. VERSION
+  .. "/"
+  .. ASSET
 
 --- Where the binary is kept. The name has no version in it because every Steam
 --- shortcut points at this path: an upgrade replaces the file in place, which
@@ -46,7 +49,9 @@ local function digest(path)
   -- because older certutil builds print the hash in byte pairs.
   for line in output:gmatch("[^\r\n]+") do
     local hash = line:gsub("%s", ""):match("^%x+$")
-    if hash and #hash == 64 then return hash:lower() end
+    if hash and #hash == 64 then
+      return hash:lower()
+    end
   end
 
   return nil
@@ -56,7 +61,9 @@ end
 ---@param path string
 ---@return boolean
 local function verified(path)
-  if not fs.is_file(path) then return false end
+  if not fs.is_file(path) then
+    return false
+  end
   return digest(path) == SHA256
 end
 
@@ -70,7 +77,9 @@ local function fetch(destination)
   -- Five minutes: this is a 30MB download over whatever connection the machine
   -- has, and the usual timeout would give up on a slow one.
   shell.run("curl.exe", { "-fsSL", "--retry", "2", "-o", target, URL }, { timeout = 300000 })
-  if fs.is_file(destination) then return true end
+  if fs.is_file(destination) then
+    return true
+  end
 
   logger:info("curl did not produce a file, falling back to PowerShell")
   shell.run("powershell", {
@@ -79,10 +88,10 @@ local function fetch(destination)
     "Bypass",
     "-Command",
     "$ProgressPreference='SilentlyContinue'; Invoke-WebRequest -UseBasicParsing -Uri '"
-    .. URL
-    .. "' -OutFile '"
-    .. target
-    .. "'",
+      .. URL
+      .. "' -OutFile '"
+      .. target
+      .. "'",
   }, { timeout = 300000 })
 
   return fs.is_file(destination)
@@ -94,7 +103,9 @@ end
 ---@return string|nil path
 ---@return string? error
 function vendor.ensure()
-  if verified(PATH) then return PATH end
+  if verified(PATH) then
+    return PATH
+  end
 
   if fs.is_file(PATH) then
     logger:warn("Vendored legendary does not match the pin, refetching")
@@ -106,7 +117,9 @@ function vendor.ensure()
   -- Downloaded under a temporary name and moved into place once verified, so an
   -- interrupted download is never mistaken for a usable binary.
   local partial = PATH .. ".part"
-  if fs.is_file(partial) then fs.remove(partial) end
+  if fs.is_file(partial) then
+    fs.remove(partial)
+  end
 
   logger:info("Fetching legendary " .. VERSION .. " from " .. URL)
   local started = utils.time_ms()
@@ -126,7 +139,15 @@ function vendor.ensure()
     return nil, "Could not move the downloaded legendary into " .. PATH
   end
 
-  logger:info("Vendored legendary " .. VERSION .. " to " .. PATH .. " in " .. (utils.time_ms() - started) .. "ms")
+  logger:info(
+    "Vendored legendary "
+      .. VERSION
+      .. " to "
+      .. PATH
+      .. " in "
+      .. (utils.time_ms() - started)
+      .. "ms"
+  )
   return PATH
 end
 

@@ -62,7 +62,9 @@ end
 ---@param path string
 ---@return string|nil
 local function read(path)
-  if not fs.is_file(path) then return nil end
+  if not fs.is_file(path) then
+    return nil
+  end
   return utils.read_file(path)
 end
 
@@ -139,27 +141,33 @@ local function spawn(dir, exe, args)
   end
 
   local script = "$Dir = "
-      .. shell.ps_quote(dir)
-      .. "\n$Exe = "
-      .. shell.ps_quote(exe)
-      -- Not $Args: that's a PowerShell automatic variable and can't be assigned.
-      .. "\n$Arguments = @("
-      .. table.concat(quoted, ", ")
-      .. ")\n"
-      .. RUNNER
+    .. shell.ps_quote(dir)
+    .. "\n$Exe = "
+    .. shell.ps_quote(exe)
+    -- Not $Args: that's a PowerShell automatic variable and can't be assigned.
+    .. "\n$Arguments = @("
+    .. table.concat(quoted, ", ")
+    .. ")\n"
+    .. RUNNER
 
   local script_path = dir .. "/run.ps1"
   local ok, err = utils.write_file(script_path, script)
-  if not ok then return false, "Could not write the job script: " .. tostring(err) end
+  if not ok then
+    return false, "Could not write the job script: " .. tostring(err)
+  end
 
   local launcher_path = dir .. "/run.vbs"
   ok, err = utils.write_file(
     launcher_path,
     shell.vbs_launcher(
-      'powershell -NoProfile -ExecutionPolicy Bypass -File "' .. (script_path:gsub("/", "\\")) .. '"'
+      'powershell -NoProfile -ExecutionPolicy Bypass -File "'
+        .. (script_path:gsub("/", "\\"))
+        .. '"'
     )
   )
-  if not ok then return false, "Could not write the job launcher: " .. tostring(err) end
+  if not ok then
+    return false, "Could not write the job launcher: " .. tostring(err)
+  end
 
   -- Returns as soon as wscript has handed the runner off, which is the point:
   -- nothing here waits for a download.
@@ -197,14 +205,18 @@ end
 ---@return JobProgress|nil
 local function read_progress(dir)
   local text = read(dir .. "/status.txt")
-  if not text then return nil end
+  if not text then
+    return nil
+  end
 
   local fields = {}
   -- Underscores included: a key pattern of `%w+` reads `updated_at` as `at`.
   for key, value in text:gmatch("([%w_]+)=([^\r\n]*)") do
     fields[key] = value
   end
-  if not fields.percent then return nil end
+  if not fields.percent then
+    return nil
+  end
 
   return {
     percent = tonumber(fields.percent) or 0,
@@ -220,10 +232,14 @@ end
 ---@return table|nil
 local function read_meta(dir)
   local text = read(dir .. "/job.json")
-  if not text then return nil end
+  if not text then
+    return nil
+  end
 
   local ok, meta = pcall(json.decode, text)
-  if not ok or type(meta) ~= "table" then return nil end
+  if not ok or type(meta) ~= "table" then
+    return nil
+  end
   return meta
 end
 
@@ -271,7 +287,9 @@ end
 function jobs.get(app_name)
   local dir = job_dir(app_name)
   local meta = read_meta(dir)
-  if not meta then return nil end
+  if not meta then
+    return nil
+  end
 
   meta.app_name = meta.app_name or app_name
   return build(dir, meta)
@@ -281,12 +299,16 @@ end
 ---@return Job[]
 function jobs.list()
   local result = {}
-  if not fs.is_directory(ROOT) then return result end
+  if not fs.is_directory(ROOT) then
+    return result
+  end
 
   for _, entry in ipairs(fs.list(ROOT) or {}) do
     -- The directory name is a slug, so the app name comes out of the metadata.
     local meta = entry.is_directory and read_meta(entry.path)
-    if meta and meta.app_name then table.insert(result, build(entry.path, meta)) end
+    if meta and meta.app_name then
+      table.insert(result, build(entry.path, meta))
+    end
   end
 
   return result
@@ -302,25 +324,35 @@ end
 ---@return Job|nil job
 ---@return string? error
 function jobs.start(app_name, kind, exe, args)
-  if type(app_name) ~= "string" or app_name == "" then return nil, "No app name provided" end
+  if type(app_name) ~= "string" or app_name == "" then
+    return nil, "No app name provided"
+  end
 
   local existing = jobs.get(app_name)
-  if existing and existing.state == "running" then return existing end
+  if existing and existing.state == "running" then
+    return existing
+  end
 
   -- Everything from a previous run goes, or a fresh install reports the
   -- percentage the old one stopped at until its first progress line.
   local dir = job_dir(app_name)
-  if fs.is_directory(dir) then fs.remove_all(dir) end
+  if fs.is_directory(dir) then
+    fs.remove_all(dir)
+  end
   fs.create_directories(dir)
 
   local ok, err = utils.write_file(
     dir .. "/job.json",
     json.encode({ app_name = app_name, kind = kind, started_at = math.floor(utils.time()) })
   )
-  if not ok then return nil, "Could not write the job: " .. tostring(err) end
+  if not ok then
+    return nil, "Could not write the job: " .. tostring(err)
+  end
 
   local started, spawn_error = spawn(dir, exe, args)
-  if not started then return nil, spawn_error end
+  if not started then
+    return nil, spawn_error
+  end
 
   logger:info("Started " .. kind .. " for " .. app_name)
   return jobs.get(app_name)
@@ -334,7 +366,9 @@ end
 ---@param job Job
 ---@return boolean stopped
 local function stop(app_name, job)
-  if not job.pid or job.state ~= "running" then return false end
+  if not job.pid or job.state ~= "running" then
+    return false
+  end
 
   -- Before the kill: a read landing in the gap would otherwise see a runner
   -- that vanished on its own and call the job failed.
@@ -349,7 +383,9 @@ end
 ---@return boolean stopped
 function jobs.pause(app_name)
   local job = jobs.get(app_name)
-  if not job or not stop(app_name, job) then return false end
+  if not job or not stop(app_name, job) then
+    return false
+  end
 
   logger:info("Paused " .. app_name)
   return true
@@ -361,7 +397,9 @@ end
 ---@return boolean cancelled
 function jobs.cancel(app_name)
   local job = jobs.get(app_name)
-  if not job then return false end
+  if not job then
+    return false
+  end
 
   stop(app_name, job)
   fs.remove_all(job_dir(app_name))

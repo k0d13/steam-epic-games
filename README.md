@@ -1,6 +1,7 @@
 # Epic Games <a href='https://ko-fi.com/X8X554X28' target='_blank'>☕</a>
 
-A Millennium plugin that brings your Epic Games library into Steam - install, launch and track playtime without leaving the client.
+A Millennium plugin that brings your Epic Games library into Steam - install, launch and track
+playtime without leaving the client.
 
 > [!IMPORTANT]
 > Work in progress. The pieces below work, but this hasn't been tested on many
@@ -9,10 +10,11 @@ A Millennium plugin that brings your Epic Games library into Steam - install, la
 
 ## What it does
 
-- Every game you own on Epic appears in your Steam library
+- Every game you own on Epic appears in your Steam library, with an Epic badge on the tile
 - Install, update, pause and uninstall from Steam, with progress on the library tile
 - Launch from Steam, with playtime tracking, "Currently playing" and the overlay
 - Full artwork: box art, heroes, headers and icons
+- Epic achievements in the app details page and Steam's achievements page
 - Uninstalled games behave like uninstalled Steam games - greyed out, with an Install button
 
 ## Prerequisites
@@ -40,8 +42,9 @@ up what's changed.
 
 ## Notes & Troubleshooting
 
-### Why does a terminal flash on screen?
+### Why does a terminal flash on screen when Steam starts?
 
-Legendary is a console application and Steam has no console, so every command
-pops up a terminal window for as long as it runs. Millennium gives no way to
-start a process without one.
+Steam gives Legendary nowhere to run, so the plugin starts a hidden background
+helper when Steam loads and runs every command through that instead. Starting it
+is the one thing that can't be hidden, hence the flash. You should only see it
+once per Steam launch.

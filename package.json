@@ -1,14 +1,6 @@
 {
   "name": "epic-games",
   "version": "0.0.0",
-  "scripts": {
-    "format": "oxfmt",
-    "lint": "oxlint",
-    "check": "tsc --noEmit",
-    "build": "millennium-ttc --build prod",
-    "dev": "powershell -ExecutionPolicy Bypass -File dev.ps1",
-    "changeset": "changeset"
-  },
   "dependencies": {
     "@steambrew/client": "^5.8.4",
     "steambrew-utils": "0.0.0-beta-20260816131110"
@@ -17,8 +9,8 @@
     "@changesets/cli": "^3.0.1",
     "@steambrew/ttc": "^2.8.7",
     "@types/react": "19.1.1",
-    "oxfmt": "^0.28.0",
-    "oxlint": "^0.15.0",
+    "oxfmt": "^0.65.0",
+    "oxlint": "^1.80.0",
     "typescript": "^5.9.3"
   },
   "packageManager": "pnpm@10.32.1"

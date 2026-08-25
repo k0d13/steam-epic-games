@@ -45,11 +45,15 @@ local ART_TYPES = {
 ---@param kind "portrait"|"hero"
 ---@return string|nil url
 local function pick_art(key_images, kind)
-  if type(key_images) ~= "table" then return nil end
+  if type(key_images) ~= "table" then
+    return nil
+  end
 
   for _, wanted in ipairs(ART_TYPES[kind]) do
     for _, image in ipairs(key_images) do
-      if image.type == wanted and type(image.url) == "string" then return image.url end
+      if image.type == wanted and type(image.url) == "string" then
+        return image.url
+      end
     end
   end
 
@@ -89,7 +93,9 @@ local IMPORT_TIMEOUT = 30000
 ---@return table<string, table>|nil installed_by_name
 local function index_installed(output)
   local installed = legendary.decode_json(output)
-  if type(installed) ~= "table" then return nil end
+  if type(installed) ~= "table" then
+    return nil
+  end
 
   local by_name = {}
   for _, game in ipairs(installed) do
@@ -109,7 +115,7 @@ local function apply_installed(game, local_game)
   game.version = local_game and local_game.version or nil
   -- legendary reports this under both names depending on its version.
   game.needs_update = local_game ~= nil
-      and (local_game.needs_update == true or local_game.update_available == true)
+    and (local_game.needs_update == true or local_game.update_available == true)
 
   return game
 end
@@ -136,8 +142,12 @@ local function import_leftover_egl_installs(owned, installed_by_name)
     end
   end
 
-  if #commands == 0 then return installed_by_name end
-  logger:info("Importing Epic Games Launcher installs egl-sync skipped: " .. utils.join(titles, ", "))
+  if #commands == 0 then
+    return installed_by_name
+  end
+  logger:info(
+    "Importing Epic Games Launcher installs egl-sync skipped: " .. utils.join(titles, ", ")
+  )
 
   for _, args in ipairs(commands) do
     -- These run one after another and each blocks the Lua state, so they get a
@@ -155,10 +165,14 @@ end
 ---@param entry table
 ---@return boolean
 local function is_game(entry)
-  if entry.is_dlc then return false end
+  if entry.is_dlc then
+    return false
+  end
 
   for _, category in ipairs((entry.metadata or {}).categories or {}) do
-    if category.path == "games" then return true end
+    if category.path == "games" then
+      return true
+    end
   end
 
   return false
@@ -192,10 +206,14 @@ end
 function library.refresh(force)
   -- Without this a missing binary reads as an empty library.
   local binary, binary_error = legendary.get_binary()
-  if not binary then return nil, binary_error end
+  if not binary then
+    return nil, binary_error
+  end
 
   local list_args = { "list", "--json" }
-  if force then table.insert(list_args, "--force-refresh") end
+  if force then
+    table.insert(list_args, "--force-refresh")
+  end
 
   -- The EGL sync goes first: it's what makes launcher installs visible to the
   -- list-installed after it. Its failure is only logged, since not having EGL
@@ -203,10 +221,12 @@ function library.refresh(force)
   logger:info("Epic Games Launcher sync: " .. utils.trim(legendary.run(egl.sync_args())))
 
   local owned, err = legendary.decode_json(legendary.run(list_args))
-  if type(owned) ~= "table" then return nil, err or "legendary returned no library" end
+  if type(owned) ~= "table" then
+    return nil, err or "legendary returned no library"
+  end
 
   local installed_by_name =
-      import_leftover_egl_installs(owned, index_installed(legendary.run(LIST_INSTALLED)) or {})
+    import_leftover_egl_installs(owned, index_installed(legendary.run(LIST_INSTALLED)) or {})
 
   local merged = {}
   for _, entry in ipairs(owned) do
@@ -215,7 +235,9 @@ function library.refresh(force)
     end
   end
 
-  table.sort(merged, function(a, b) return a.title < b.title end)
+  table.sort(merged, function(a, b)
+    return a.title < b.title
+  end)
 
   games = merged
   refreshed_at = math.floor(utils.time())
@@ -232,15 +254,21 @@ end
 ---@return string? error
 function library.refresh_installed()
   local binary, binary_error = legendary.get_binary()
-  if not binary then return nil, binary_error end
+  if not binary then
+    return nil, binary_error
+  end
 
   local installed_by_name = index_installed(legendary.run(LIST_INSTALLED))
-  if not installed_by_name then return nil, "legendary returned no installed games" end
+  if not installed_by_name then
+    return nil, "legendary returned no installed games"
+  end
 
   local count = 0
   for _, game in ipairs(games) do
     apply_installed(game, installed_by_name[game.app_name])
-    if game.installed then count = count + 1 end
+    if game.installed then
+      count = count + 1
+    end
   end
 
   -- refreshed_at means "when did we last ask Epic", which this didn't.

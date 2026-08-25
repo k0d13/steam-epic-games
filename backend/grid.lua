@@ -27,13 +27,17 @@ function grid.path(account_id)
       -- "0" is Steam's placeholder for "no account", and with more than one we
       -- have no business guessing which is signed in.
       if entry.is_directory and entry.name ~= "0" then
-        if account then return nil, "several Steam accounts on this machine" end
+        if account then
+          return nil, "several Steam accounts on this machine"
+        end
         account = entry.name
       end
     end
   end
 
-  if not account then return nil, "no Steam userdata folder" end
+  if not account then
+    return nil, "no Steam userdata folder"
+  end
 
   local path = userdata .. "/" .. account .. "/config/grid"
   fs.create_directories(path)
@@ -52,16 +56,24 @@ end
 ---@return string? error
 function grid.place_icon(app_id, account_id)
   local path, err = grid.path(account_id)
-  if not path then return nil, err end
+  if not path then
+    return nil, err
+  end
 
   local source = path .. "/" .. tostring(app_id) .. ".png"
   local target = path .. "/" .. tostring(app_id) .. "_icon.png"
 
-  if not fs.is_file(source) then return nil, "Steam did not write " .. source end
+  if not fs.is_file(source) then
+    return nil, "Steam did not write " .. source
+  end
 
   -- rename won't replace an existing file on Windows.
-  if fs.is_file(target) then fs.remove(target) end
-  if not fs.rename(source, target) then return nil, "could not rename " .. source end
+  if fs.is_file(target) then
+    fs.remove(target)
+  end
+  if not fs.rename(source, target) then
+    return nil, "could not rename " .. source
+  end
 
   return target
 end
