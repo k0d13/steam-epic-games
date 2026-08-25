@@ -22,6 +22,25 @@ local jobs = {}
 
 local ROOT = utils.get_backend_path() .. "/data/jobs"
 
+--- Everything a job directory holds, named the way `shell.lua` names the
+--- daemon's files: the ones the runner process itself owns carry its name, and
+--- the small ones it writes as it goes say what is in them.
+---
+--- The runner script spells these as `{lock}` and so on rather than repeating
+--- them, so this table stays the only place they're written down.
+local FILES = {
+  lock = "runner.lock",
+  script = "runner.ps1",
+  launcher = "runner.vbs",
+  pid = "runner.pid",
+  meta = "job.json",
+  log = "log.txt",
+  status = "status.txt",
+  error = "error.txt",
+  exit = "exit.txt",
+  paused = "paused.txt",
+}
+
 --- How long a job is allowed to have neither a lock nor a PID before it counts
 --- as a runner that never came up. Only has to cover a wscript launch.
 local SPAWN_GRACE = 15
@@ -57,6 +76,14 @@ local function job_dir(app_name)
   return ROOT .. "/" .. (app_name:gsub("[^%w%-%_]", "_"))
 end
 
+---One of a job directory's files, by its key in `FILES`.
+---@param dir string
+---@param key string
+---@return string
+local function file(dir, key)
+  return dir .. "/" .. FILES[key]
+end
+
 ---Read a file, or nil if it isn't there yet. The runner creates these as it
 ---goes, so missing is normal.
 ---@param path string
@@ -84,14 +111,14 @@ $ErrorActionPreference = 'Continue'
 # whether the runner is still going by trying to open it. Deliberately never
 # closed: the handle goes when the process does, which is after the exit code
 # at the end of this script has been written.
-$Lock = [System.IO.File]::Open("$Dir\lock", 'Create', 'Write', 'None')
+$Lock = [System.IO.File]::Open("$Dir\{lock}", 'Create', 'Write', 'None')
 
-$PID | Out-File -Encoding ascii -FilePath "$Dir\pid.txt"
+$PID | Out-File -Encoding ascii -FilePath "$Dir\{pid}"
 
 # One handle held open for the whole download rather than an open, write and
 # close per line: legendary prints thousands of them, and it is the only work
 # this loop does on every single one.
-$Log = New-Object System.IO.StreamWriter "$Dir\log.txt", $true, (New-Object System.Text.UTF8Encoding $false)
+$Log = New-Object System.IO.StreamWriter "$Dir\{log}", $true, (New-Object System.Text.UTF8Encoding $false)
 $Log.AutoFlush = $true
 
 $percent = 0; $done = 0; $total = 0; $eta = ''; $elapsed = ''; $speed = 0
@@ -107,7 +134,7 @@ $percent = 0; $done = 0; $total = 0; $eta = ''; $elapsed = ''; $speed = 0
     $speed = $matches[1]
   } else {
     if ($line -match '(ERROR|CRITICAL):') {
-      $line | Out-File -Encoding utf8 -FilePath "$Dir\error.txt"
+      $line | Out-File -Encoding utf8 -FilePath "$Dir\{error}"
     }
     return
   }
@@ -115,14 +142,17 @@ $percent = 0; $done = 0; $total = 0; $eta = ''; $elapsed = ''; $speed = 0
   @(
     "percent=$percent", "downloaded=$done", "total=$total",
     "eta=$eta", "elapsed=$elapsed", "speed=$speed"
-  ) -join "`n" | Out-File -Encoding ascii -FilePath "$Dir\status.txt"
+  ) -join "`n" | Out-File -Encoding ascii -FilePath "$Dir\{status}"
 }
 
 $code = $LASTEXITCODE
 $Log.Dispose()
 if ($null -eq $code) { $code = 0 }
-$code | Out-File -Encoding ascii -FilePath "$Dir\exit.txt"
+$code | Out-File -Encoding ascii -FilePath "$Dir\{exit}"
 ]]
+
+--- The script as the runner actually runs it.
+local RUNNER_SCRIPT = (RUNNER:gsub("{(%w+)}", FILES))
 
 ---Start a detached, hidden PowerShell running one legendary command.
 ---
@@ -148,15 +178,15 @@ local function spawn(dir, exe, args)
     .. "\n$Arguments = @("
     .. table.concat(quoted, ", ")
     .. ")\n"
-    .. RUNNER
+    .. RUNNER_SCRIPT
 
-  local script_path = dir .. "/run.ps1"
+  local script_path = file(dir, "script")
   local ok, err = utils.write_file(script_path, script)
   if not ok then
     return false, "Could not write the job script: " .. tostring(err)
   end
 
-  local launcher_path = dir .. "/run.vbs"
+  local launcher_path = file(dir, "launcher")
   ok, err = utils.write_file(
     launcher_path,
     shell.vbs_launcher(
@@ -181,14 +211,15 @@ end
 ---
 ---Asked once a second per job, so it can't cost a subprocess: `tasklist` here
 ---was a console window flashing up and stealing focus for the length of every
----download. The runner holds `lock` open unshared instead, which nothing else
----can open until it has exited.
+---download. The runner holds `runner.lock` open unshared instead, the same way
+---the command daemon holds `daemon.lock`, and nothing else can open it until
+---the process has exited.
 ---@param dir string
 ---@param pid integer|nil
 ---@param started_at integer|nil
 ---@return boolean
 local function is_running(dir, pid, started_at)
-  local lock = dir .. "/lock"
+  local lock = file(dir, "lock")
   if not fs.is_file(lock) then
     -- The runner takes the lock before it writes its PID, so no lock and a PID
     -- is a job that predates the lock or one whose runner died on the way up.
@@ -204,7 +235,7 @@ end
 ---@param dir string
 ---@return JobProgress|nil
 local function read_progress(dir)
-  local text = read(dir .. "/status.txt")
+  local text = read(file(dir, "status"))
   if not text then
     return nil
   end
@@ -231,7 +262,7 @@ end
 ---@param dir string
 ---@return table|nil
 local function read_meta(dir)
-  local text = read(dir .. "/job.json")
+  local text = read(file(dir, "meta"))
   if not text then
     return nil
   end
@@ -253,15 +284,15 @@ end
 ---@param meta table
 ---@return Job
 local function build(dir, meta)
-  local pid = tonumber(read(dir .. "/pid.txt") or "")
-  local exit_code = tonumber(read(dir .. "/exit.txt") or "")
+  local pid = tonumber(read(file(dir, "pid")) or "")
+  local exit_code = tonumber(read(file(dir, "exit")) or "")
   local started_at = meta.started_at or 0
 
   ---@type JobState
   local state
   if exit_code then
     state = exit_code == 0 and "done" or "failed"
-  elseif fs.is_file(dir .. "/paused.txt") then
+  elseif fs.is_file(file(dir, "paused")) then
     -- Pausing is a kill, so this marker is the only evidence that the missing
     -- process was meant to be missing.
     state = "paused"
@@ -277,7 +308,7 @@ local function build(dir, meta)
     started_at = started_at,
     exit_code = exit_code,
     progress = read_progress(dir),
-    error = state == "failed" and utils.trim(read(dir .. "/error.txt") or "") or nil,
+    error = state == "failed" and utils.trim(read(file(dir, "error")) or "") or nil,
   }
 end
 
@@ -342,7 +373,7 @@ function jobs.start(app_name, kind, exe, args)
   fs.create_directories(dir)
 
   local ok, err = utils.write_file(
-    dir .. "/job.json",
+    file(dir, "meta"),
     json.encode({ app_name = app_name, kind = kind, started_at = math.floor(utils.time()) })
   )
   if not ok then
@@ -372,7 +403,7 @@ local function stop(app_name, job)
 
   -- Before the kill: a read landing in the gap would otherwise see a runner
   -- that vanished on its own and call the job failed.
-  utils.write_file(job_dir(app_name) .. "/paused.txt", "1")
+  utils.write_file(file(job_dir(app_name), "paused"), "1")
   shell.run("taskkill", { "/F", "/T", "/PID", tostring(job.pid) })
   return true
 end

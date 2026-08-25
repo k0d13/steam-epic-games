@@ -24,11 +24,29 @@ local shell = {}
 
 local ROOT = utils.get_backend_path() .. "/data/daemon"
 local ROOT_WIN = (ROOT:gsub("/", "\\"))
-local REQUESTS = ROOT .. "/req"
-local RESPONSES = ROOT .. "/res"
-local LOCK = ROOT .. "/daemon.lock"
-local STAMP = ROOT .. "/version"
-local STOP = ROOT .. "/stop"
+
+--- Everything the daemon directory holds, the same shape `jobs.lua` uses for a
+--- job's: the files the daemon process itself owns carry its name, and the ones
+--- it serves out of live in a directory of their own.
+---
+--- The daemon script spells these as `{lock}` and so on rather than repeating
+--- them, so this table stays the only place they're written down.
+local FILES = {
+  requests = "req",
+  responses = "res",
+  lock = "daemon.lock",
+  script = "daemon.ps1",
+  launcher = "daemon.vbs",
+  version = "daemon.version",
+  stop = "daemon.stop",
+}
+
+---One of the daemon directory's files, by its key in `FILES`.
+---@param key string
+---@return string
+local function file(key)
+  return ROOT .. "/" .. FILES[key]
+end
 
 --- Long enough that a slow `legendary list` on a big library finishes, short
 --- enough that a daemon which has wedged doesn't hang Steam forever.
@@ -136,10 +154,10 @@ if (-not $Mutex.WaitOne(0)) { exit }
 
 # Held unshared for as long as this process lives, so the plugin can tell the
 # daemon is up by trying to open it.
-$Lock = [System.IO.File]::Open("$Root\daemon.lock", 'Create', 'Write', 'None')
+$Lock = [System.IO.File]::Open("$Root\{lock}", 'Create', 'Write', 'None')
 
-$Requests = "$Root\req"
-$Responses = "$Root\res"
+$Requests = "$Root\{requests}"
+$Responses = "$Root\{responses}"
 New-Item -ItemType Directory -Force -Path $Requests, $Responses | Out-Null
 
 # No BOM: the plugin reads these back looking for the first character of a JSON
@@ -173,7 +191,7 @@ while ($true) {
   # Nothing to serve once Steam has gone, and nobody left to ask us to stop.
   if (((Get-Date) - $Checked).TotalSeconds -ge 5) {
     $Checked = Get-Date
-    if (Test-Path "$Root\stop") { break }
+    if (Test-Path "$Root\{stop}") { break }
     if (-not (Get-Process -Name steam -ErrorAction SilentlyContinue)) { break }
   }
 
@@ -243,14 +261,19 @@ while ($true) {
 --- both own the request directory.
 local MUTEX = "epic-games-shell-" .. fingerprint(ROOT)
 
-local FINGERPRINT = fingerprint(DAEMON)
+--- The script as the daemon actually runs it, so renaming a file in `FILES` is
+--- an edit like any other: a daemon still watching for the old `stop` would
+--- otherwise never be asked to go.
+local DAEMON_SCRIPT = (DAEMON:gsub("{(%w+)}", FILES))
+
+local FINGERPRINT = fingerprint(DAEMON_SCRIPT)
 
 ---@return string
 local function stamp()
-  if not fs.is_file(STAMP) then
+  if not fs.is_file(file("version")) then
     return ""
   end
-  return utils.trim(utils.read_file(STAMP) or "")
+  return utils.trim(utils.read_file(file("version")) or "")
 end
 
 ---@type integer
@@ -261,38 +284,40 @@ local retry_after = 0
 local function launch()
   -- Whatever the last session left behind. A response nobody is waiting for any
   -- more, from a command that timed out, would otherwise sit there for good.
-  fs.remove_all(REQUESTS)
-  fs.remove_all(RESPONSES)
-  fs.create_directories(REQUESTS)
-  fs.create_directories(RESPONSES)
+  fs.remove_all(file("requests"))
+  fs.remove_all(file("responses"))
+  fs.create_directories(file("requests"))
+  fs.create_directories(file("responses"))
 
   local script = "$Root = "
     .. shell.ps_quote(ROOT_WIN)
     .. "\n$MutexName = "
     .. shell.ps_quote(MUTEX)
     .. "\n"
-    .. DAEMON
+    .. DAEMON_SCRIPT
 
-  local ok, err = utils.write_file(ROOT .. "/daemon.ps1", script)
+  local ok, err = utils.write_file(file("script"), script)
   if not ok then
     logger:error("Could not write the daemon: " .. tostring(err))
     retry_after = utils.time_ms() + RETRY_AFTER
     return false
   end
 
-  utils.write_file(STAMP, FINGERPRINT)
+  utils.write_file(file("version"), FINGERPRINT)
   utils.write_file(
-    ROOT .. "/daemon.vbs",
+    file("launcher"),
     shell.vbs_launcher(
-      'powershell -NoProfile -ExecutionPolicy Bypass -File "' .. ROOT_WIN .. '\\daemon.ps1"'
+      'powershell -NoProfile -ExecutionPolicy Bypass -File "'
+        .. (file("script"):gsub("/", "\\"))
+        .. '"'
     )
   )
 
   -- The one console window left, at startup rather than once a second.
-  utils.exec('wscript "' .. ROOT_WIN .. '\\daemon.vbs"')
+  utils.exec('wscript "' .. (file("launcher"):gsub("/", "\\")) .. '"')
 
   local deadline = utils.time_ms() + 10000
-  while not shell.is_locked(LOCK) do
+  while not shell.is_locked(file("lock")) do
     if utils.time_ms() > deadline then
       logger:warn("Command daemon did not start, falling back to blocking commands")
       retry_after = utils.time_ms() + RETRY_AFTER
@@ -309,7 +334,7 @@ end
 ---front of every command: the usual answer is one failed file open.
 ---@return boolean available
 function shell.ensure()
-  if shell.is_locked(LOCK) then
+  if shell.is_locked(file("lock")) then
     if stamp() == FINGERPRINT then
       return true
     end
@@ -317,13 +342,13 @@ function shell.ensure()
     -- The script has been edited since that daemon started, which only happens
     -- while developing. It polls for this file and exits when it sees it.
     logger:info("Command daemon is out of date, restarting it")
-    utils.write_file(STOP, "1")
+    utils.write_file(file("stop"), "1")
 
     local deadline = utils.time_ms() + 10000
-    while shell.is_locked(LOCK) and utils.time_ms() < deadline do
+    while shell.is_locked(file("lock")) and utils.time_ms() < deadline do
       nap(50)
     end
-    fs.remove(STOP)
+    fs.remove(file("stop"))
   end
 
   if utils.time_ms() < retry_after then
@@ -388,9 +413,9 @@ function shell.start(exe, args, options)
 
   -- Written under another name and renamed in, so the daemon can never pick up
   -- half a request. It only watches for `.json`.
-  local partial = REQUESTS .. "/" .. id .. ".part"
+  local partial = file("requests") .. "/" .. id .. ".part"
   local ok, err = utils.write_file(partial, payload)
-  if not ok or not fs.rename(partial, REQUESTS .. "/" .. id .. ".json") then
+  if not ok or not fs.rename(partial, file("requests") .. "/" .. id .. ".json") then
     return nil, "Could not queue the command: " .. tostring(err)
   end
 
@@ -403,8 +428,8 @@ end
 ---@return string|nil output
 ---@return integer? code
 function shell.poll(id)
-  local out_path = RESPONSES .. "/" .. id .. ".out"
-  local code_path = RESPONSES .. "/" .. id .. ".code"
+  local out_path = file("responses") .. "/" .. id .. ".out"
+  local code_path = file("responses") .. "/" .. id .. ".code"
   if not fs.is_file(code_path) then
     return nil
   end
@@ -424,9 +449,9 @@ end
 ---@param id string
 function shell.forget(id)
   for _, path in ipairs({
-    REQUESTS .. "/" .. id .. ".json",
-    RESPONSES .. "/" .. id .. ".out",
-    RESPONSES .. "/" .. id .. ".code",
+    file("requests") .. "/" .. id .. ".json",
+    file("responses") .. "/" .. id .. ".out",
+    file("responses") .. "/" .. id .. ".code",
   }) do
     if fs.is_file(path) then
       fs.remove(path)
