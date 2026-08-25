@@ -3,6 +3,7 @@ import { useCallback, useState } from "react";
 import { Logger } from "steambrew-utils/logger";
 import { AuthPanel } from "./components/auth-panel";
 import { LibraryPanel } from "./components/library-panel";
+import * as achievementProgress from "./patches/achievement-progress";
 import * as achievementsPatch from "./patches/achievements";
 import * as appDetails from "./patches/app-details";
 import * as downloadOverview from "./patches/download-overview";
@@ -56,6 +57,7 @@ export default definePlugin(async () => {
     ["manage menu", manageMenu.register],
     ["library badge", libraryBadge.register],
     ["achievements", achievementsPatch.register],
+    ["achievement progress", achievementProgress.register],
   ] as const) {
     try {
       unpatches.push(patch());
@@ -92,6 +94,10 @@ export default definePlugin(async () => {
   // Cache only: every shortcut claims to be installed until this resolves, so
   // it can't wait on Epic. The panel asks for the real thing once it's up.
   await library.load();
+
+  // Counts for the games we've already read, so the library home can sort by
+  // completion before anything opens a details page. Cache only, no Epic.
+  void achievements.loadSummaries();
 
   // Installs are detached, so they outlive a Steam restart: pick up anything
   // still running and start polling it again.

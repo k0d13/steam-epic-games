@@ -183,6 +183,14 @@ interface RawLibrary {
   refreshedAt?: number;
 }
 
+/** One game's achievement counts, without the achievements themselves. */
+export interface AchievementSummary {
+  appName: string;
+  total: number;
+  unlocked: number;
+  fetchedAt: number;
+}
+
 type RawAchievement = Omit<Achievement, "unlockedAt"> & { unlockedAt?: string };
 type RawAchievements = Omit<GameAchievements, "achievements"> & {
   achievements?: RawAchievement[];
@@ -294,6 +302,36 @@ export class RPC {
       fetchedAt: raw.fetchedAt ?? 0,
       achievements: asArray(raw.achievements).map(toAchievement),
     };
+  }
+
+  /**
+   * The achievement counts we already have cached, for every game at once.
+   * Never asks Epic, so it's cheap enough to call at startup - which is what
+   * the library home's completion sort needs, since it asks about every game.
+   */
+  async GetCachedAchievements(): Promise<Map<string, AchievementSummary>> {
+    const raw = await call<{
+      ok: boolean;
+      error?: string;
+      games?: AchievementSummary[];
+    }>("RPC.GetCachedAchievements");
+
+    const summaries = new Map<string, AchievementSummary>();
+    if (!raw.ok) {
+      logger.debug("Could not read the cached achievements", { error: raw.error });
+      return summaries;
+    }
+
+    for (const summary of asArray(raw.games)) {
+      summaries.set(summary.appName, {
+        appName: summary.appName,
+        total: summary.total ?? 0,
+        unlocked: summary.unlocked ?? 0,
+        fetchedAt: summary.fetchedAt ?? 0,
+      });
+    }
+
+    return summaries;
   }
 
   /**

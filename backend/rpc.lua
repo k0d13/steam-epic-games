@@ -147,6 +147,25 @@ RPC.GetAchievements = method(function(data)
   }
 end)
 
+---What we already know about every game's achievements, counts only, straight
+---from the cache. Never touches Epic, so the frontend can seed the whole
+---library's completion percentages in one call.
+RPC.GetCachedAchievements = method(function()
+  -- A list rather than a map keyed by app name: the frontend camelises every
+  -- key it gets back, and an app name is not a key it should be rewriting.
+  local games = {}
+  for app_name, summary in pairs(legendary.get_cached_achievements()) do
+    table.insert(games, {
+      app_name = app_name,
+      total = summary.total,
+      unlocked = summary.unlocked,
+      fetched_at = summary.fetched_at,
+    })
+  end
+
+  return { ok = true, games = games }
+end)
+
 -- Installs --------------------------------------------------------------------
 
 ---Start installing, updating or resuming one game. Returns as soon as the job

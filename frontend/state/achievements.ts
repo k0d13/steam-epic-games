@@ -1,4 +1,4 @@
-import rpc, { type GameAchievements } from "../rpc";
+import rpc, { type AchievementSummary, type GameAchievements } from "../rpc";
 import { createEmitter } from "./emitter";
 
 // The same shape as state/sizes.ts, for the same reason: achievements are read
@@ -20,6 +20,34 @@ const pending = new Set<string>();
 /** Fires when achievements arrive, so whatever is showing them can repaint. */
 const emitter = createEmitter();
 export const subscribe = emitter.subscribe;
+
+/**
+ * Counts only, for every game the backend has cached - including ones nothing
+ * has opened the details page for this session. Kept apart from `known` because
+ * the library home asks about every game as it draws and must never start a
+ * fetch, while `known` holds the full achievement lists a details page needs.
+ */
+const summaries = new Map<string, AchievementSummary>();
+
+/**
+ * Seed the counts from the backend's cache. One call for the whole library, no
+ * round trip to Epic, so it's safe at startup.
+ */
+export async function loadSummaries() {
+  const cached = await rpc.GetCachedAchievements();
+  if (cached.size === 0) return;
+
+  for (const [appName, summary] of cached) summaries.set(appName, summary);
+  emitter.emit();
+}
+
+/**
+ * How far through a game's achievements the account is, or undefined for a game
+ * we've never read. Never fetches: this answers a render of the whole library.
+ */
+export function getSummary(appName: string): AchievementSummary | undefined {
+  return summaries.get(appName);
+}
 
 /** A game's achievements, if we already have them. Never blocks, never fetches. */
 export function get(appName: string): GameAchievements | undefined {
@@ -50,6 +78,12 @@ export function ensure(appName: string) {
     // reason to throw away the answer we already have.
     if (result) {
       known.set(appName, result);
+      summaries.set(appName, {
+        appName,
+        total: result.total,
+        unlocked: result.unlocked,
+        fetchedAt: result.fetchedAt,
+      });
       emitter.emit();
     } else if (!stale) {
       known.set(appName, null);

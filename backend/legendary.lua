@@ -434,6 +434,28 @@ function legendary.get_achievements(app_name, refresh)
   return result
 end
 
+---Every game we already have achievements cached for, counts only.
+---
+---Reads nothing from Epic and starts nothing, so the frontend can ask about the
+---whole library at once - which is what the library home's "% of Achievements
+---Completed" sort needs, since it asks about every game as it draws and a
+---command per game would be a subprocess storm.
+---@return table<string, { total: integer, unlocked: integer, fetched_at: integer }>
+function legendary.get_cached_achievements()
+  achievements = achievements or disk.read(ACHIEVEMENTS_PATH, "achievements") or {}
+
+  local summaries = {}
+  for app_name, entry in pairs(achievements) do
+    summaries[app_name] = {
+      total = entry.total,
+      unlocked = entry.unlocked,
+      fetched_at = entry.fetched_at,
+    }
+  end
+
+  return summaries
+end
+
 -- Long-running commands ------------------------------------------------------
 
 ---Install, update or resume a game, as a job rather than a wait.
