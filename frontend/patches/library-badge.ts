@@ -3,23 +3,27 @@ import { onPopupCreate } from "steambrew-utils/watchers";
 import { logger } from "../index";
 import * as library from "../state/library";
 
-// A little Epic mark on the icons in the library list, so an Epic game is
-// tellable from a Steam one at a glance.
+// A little Epic mark on the artwork in the library, so an Epic game is tellable
+// from a Steam one at a glance: on the list's icons, and on the grid capsules
+// the collection views and the home shelves are built from.
 //
-// Steam puts no appid in that list's DOM and neither of the components that
-// could add one can be patched: the icon component is a webpack export behind a
+// Steam puts no appid in that DOM and neither of the components that could add
+// one can be patched: the icon component is a webpack export behind a
 // non-configurable getter, and the row above it is a mobx class whose `render`
 // replaces itself with a non-writable one on the instance the first time it
 // runs. So the appid is read back off the React fiber instead and written onto
-// the icon as an attribute, which leaves the badge itself pure CSS - nothing
+// the artwork as an attribute, which leaves the badge itself pure CSS - nothing
 // here has to change to move it, resize it or redraw it.
 
 /** Everything about how the badge looks, in one place. */
 const BADGE = {
-  /** Share of the icon's width. Steam draws these at around 24px. */
-  size: "55%",
-  /** How far the badge hangs off the icon's bottom-right corner. */
+  /** Share of the icon's width. Steam draws those at around 24px. */
+  iconSize: "55%",
+  /** How far the icon's badge hangs off its bottom-right corner. */
   overhang: "2px",
+  /** Capsules dwarf icons, so theirs is a fixed size sitting inside the art. */
+  capsuleSize: "26px",
+  capsuleInset: "6px",
   radius: "20%",
   background: "#2a2a2a",
   /** Epic's shield, drawn rather than fetched: no network on the render path. */
@@ -43,23 +47,41 @@ const CSS = `
 [${ATTRIBUTE}]::after {
   content: "";
   position: absolute;
-  right: -${BADGE.overhang};
-  bottom: -${BADGE.overhang};
-  width: ${BADGE.size};
-  height: ${BADGE.size};
   border-radius: ${BADGE.radius};
   background: ${BADGE.background} url("${BADGE.logo}") center / ${BADGE.logoScale} no-repeat;
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
   pointer-events: none;
 }
+
+[${ATTRIBUTE}="icon"]::after {
+  right: -${BADGE.overhang};
+  bottom: -${BADGE.overhang};
+  width: ${BADGE.iconSize};
+  height: ${BADGE.iconSize};
+}
+
+[${ATTRIBUTE}="capsule"]::after {
+  right: ${BADGE.capsuleInset};
+  bottom: ${BADGE.capsuleInset};
+  width: ${BADGE.capsuleSize};
+  height: ${BADGE.capsuleSize};
+}
 `;
 
 /**
- * The class Steam gives the icon in the library list. Hashed class names sit
- * beside readable ones, and only the list icon carries this one - the grid's
- * capsules are a different component.
+ * What Steam draws a game's artwork into, and which shape of badge each takes.
+ * Hashed class names sit beside readable ones, and these cover the library
+ * whole: `GameIcon` is the list's icon and `Capsule` every grid tile, in the
+ * collection views and on the home shelves alike. Home's recent-game cards are
+ * a `FeaturedCapsule` instead, which is the whole card, footer included - so
+ * the badge goes on its artwork child, where it lands in the same corner of the
+ * art as everywhere else rather than down in the footer.
  */
-const ICON_SELECTOR = '[class~="GameIcon"]';
+const TARGETS = {
+  '[class~="GameIcon"]': "icon",
+  '[class~="Capsule"]': "capsule",
+  '[class~="FeaturedCapsule"] > [class~="Container"]': "capsule",
+} as const;
 
 interface Fiber {
   memoizedProps: Record<string, unknown> | null;
@@ -74,12 +96,12 @@ function getFiber(node: Element): Fiber | undefined {
 }
 
 /**
- * The appid the icon is drawn for. The icon's own fiber doesn't carry one -
- * it's on components above it, which hold the app either as `appid`, as an
- * overview under `app`, or as the list entry's `item`.
+ * The appid the artwork is drawn for. Its own fiber doesn't carry one - it's on
+ * components above it, which hold the app either as `appid`, as an overview
+ * under `app`, or as the list entry's `item`.
  */
-function findAppId(icon: Element): number | undefined {
-  for (let fiber: Fiber | null | undefined = getFiber(icon); fiber; fiber = fiber.return) {
+function findAppId(element: Element): number | undefined {
+  for (let fiber: Fiber | null | undefined = getFiber(element); fiber; fiber = fiber.return) {
     const props = fiber.memoizedProps;
     if (!props) continue;
 
@@ -95,14 +117,16 @@ function findAppId(icon: Element): number | undefined {
   return undefined;
 }
 
-/** Mark, or unmark, every icon under `root`. */
+/** Mark, or unmark, every piece of artwork under `root`. */
 function stamp(root: Element) {
-  for (const icon of root.querySelectorAll(ICON_SELECTOR)) {
-    const appId = findAppId(icon);
-    // Removed as well as added: the list recycles its rows, so an icon that
-    // was ours a scroll ago is drawn for a Steam game now.
-    if (appId !== undefined && library.getByAppId(appId)) icon.setAttribute(ATTRIBUTE, "");
-    else icon.removeAttribute(ATTRIBUTE);
+  for (const [selector, kind] of Object.entries(TARGETS)) {
+    for (const element of root.querySelectorAll(selector)) {
+      const appId = findAppId(element);
+      // Removed as well as added: the library recycles its rows and its tiles,
+      // so artwork that was ours a scroll ago is drawn for a Steam game now.
+      if (appId !== undefined && library.getByAppId(appId)) element.setAttribute(ATTRIBUTE, kind);
+      else element.removeAttribute(ATTRIBUTE);
+    }
   }
 }
 
@@ -116,9 +140,9 @@ function addStyle(document: Document) {
 }
 
 /**
- * Watch one window: its icons now, and again whenever the list changes. Both
- * kinds of change matter - scrolling adds rows, and a recycled row only has its
- * image swapped.
+ * Watch one window: its artwork now, and again whenever the library changes.
+ * Both kinds of change matter - scrolling adds rows and tiles, and a recycled
+ * one only has its image swapped.
  */
 function watch(root: Element | undefined) {
   if (!root?.ownerDocument) return undefined;
@@ -126,7 +150,7 @@ function watch(root: Element | undefined) {
   addStyle(root.ownerDocument);
 
   // Coalesced, since one scroll is a burst of records and stamping reads
-  // layout-free fiber props for every icon in the list.
+  // layout-free fiber props for every piece of artwork on screen.
   let queued = false;
   const restamp = () => {
     if (queued) return;
@@ -174,7 +198,7 @@ export function register() {
     });
   });
 
-  // A game that's just been synced has an icon on screen already, drawn before
+  // A game that's just been synced has artwork on screen already, drawn before
   // we knew the appid was ours.
   const unsubscribe = library.subscribe(() => {
     for (const watcher of watchers) watcher.restamp();
