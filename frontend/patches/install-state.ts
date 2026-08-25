@@ -72,6 +72,9 @@ function applyInstallState(overview: SteamAppOverview) {
   const job = jobs.get(game.appName);
   const pending = job?.state === "running" || job?.state === "paused" || job?.state === "queued";
   const downloading = job?.kind === "install" && pending;
+  // Separate from a download because the game stays installed and launchable
+  // throughout: it is the old build until the new one lands.
+  const updating = job?.kind === "update" && pending;
   // An uninstall is a directory delete, so there's no percentage to show. A
   // queued one still says Uninstalling: it is going to happen, and there is no
   // other status that means "about to lose these files".
@@ -94,6 +97,15 @@ function applyInstallState(overview: SteamAppOverview) {
       continue;
     }
 
+    if (updating) {
+      data.installed = true;
+      if (job.state === "paused") data.display_status = EDisplayStatus.UpdatePaused;
+      else if (job.state === "queued") data.display_status = EDisplayStatus.UpdateQueued;
+      else data.display_status = EDisplayStatus.Updating;
+      data.status_percentage = job.progress?.percent ?? 0;
+      continue;
+    }
+
     if (downloading) {
       data.installed = false;
       if (job.state === "paused") data.display_status = EDisplayStatus.DownloadPaused;
@@ -105,9 +117,11 @@ function applyInstallState(overview: SteamAppOverview) {
 
     data.installed = game.installed;
     if (!(game.installed && RUNNING_STATUSES.has(data.display_status ?? 0))) {
-      data.display_status = game.installed
-        ? EDisplayStatus.ReadyToLaunch
-        : EDisplayStatus.ReadyToInstall;
+      // UpdateRequired is what turns the play bar's Play into Update, and it's
+      // the only place the flag legendary gives us is ever shown.
+      if (!game.installed) data.display_status = EDisplayStatus.ReadyToInstall;
+      else if (game.needsUpdate) data.display_status = EDisplayStatus.UpdateRequired;
+      else data.display_status = EDisplayStatus.ReadyToLaunch;
     }
     data.status_percentage = 0;
   }

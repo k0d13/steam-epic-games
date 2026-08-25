@@ -52,7 +52,7 @@ local FILES = {
 --- as a runner that never came up. Only has to cover a wscript launch.
 local SPAWN_GRACE = 15
 
----@alias JobKind "install" | "uninstall"
+---@alias JobKind "install" | "update" | "uninstall"
 ---@alias JobState "queued" | "running" | "paused" | "done" | "failed"
 
 ---@class JobProgress

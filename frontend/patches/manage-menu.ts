@@ -157,7 +157,7 @@ function uninstallItem(appId: number): ReactNode {
 function cancelItem(appId: number): ReactNode {
   const game = library.getByAppId(appId);
   const job = game && jobs.get(game.appName);
-  if (job?.kind !== "install") return undefined;
+  if (job?.kind !== "install" && job?.kind !== "update") return undefined;
   if (job.state !== "queued" && job.state !== "running" && job.state !== "paused") {
     return undefined;
   }
@@ -168,7 +168,7 @@ function cancelItem(appId: number): ReactNode {
       key: "epic-cancel",
       onSelected: () => void jobs.cancel(job.appName),
     },
-    "Cancel download",
+    job.kind === "update" ? "Cancel update" : "Cancel download",
   );
 }
 

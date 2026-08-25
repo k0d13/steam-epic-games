@@ -179,6 +179,16 @@ RPC.StartInstall = method(function(data)
   return { ok = true, job = job }
 end)
 
+---Update an installed game to the latest build. The same job machinery as an
+---install, and the same queue - only one legendary runs at a time.
+RPC.StartUpdate = method(function(data)
+  local job, err = legendary.update(data.app_name)
+  if not job then
+    return { ok = false, error = err }
+  end
+  return { ok = true, job = job }
+end)
+
 ---Remove a game from disk. The Steam shortcut is left alone, since keeping
 ---uninstalled games in the library is the point of the plugin.
 RPC.StartUninstall = method(function(data)

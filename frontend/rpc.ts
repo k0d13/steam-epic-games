@@ -95,6 +95,8 @@ export interface EpicGame {
   installPath?: string;
   installSize?: number;
   version?: string;
+  /** What Epic is shipping now. Different from `version` is what an update is. */
+  latestVersion?: string;
   needsUpdate: boolean;
   /** Directory Epic expects the game in, which is what legendary names it. */
   folderName?: string;
@@ -156,10 +158,11 @@ export interface JobProgress {
   speed?: number;
 }
 
-/** One detached legendary install or uninstall. */
+/** One detached legendary install, update or uninstall. */
 export interface Job {
   appName: string;
-  kind: "install" | "uninstall";
+  /** `update` is an install of the changed chunks only, and downloads like one. */
+  kind: "install" | "update" | "uninstall";
   /**
    * `queued` is a job with no process behind it yet: legendary runs one at a
    * time, so the rest wait their turn. `paused` is a killed runner - legendary
@@ -352,6 +355,11 @@ export class RPC {
       base_path: basePath,
       game_folder: gameFolder,
     });
+  }
+
+  /** Update an installed game. Fails on the backend if it isn't installed. */
+  async StartUpdate(appName: string) {
+    return this.startJob("RPC.StartUpdate", { app_name: appName });
   }
 
   async StartUninstall(appName: string) {

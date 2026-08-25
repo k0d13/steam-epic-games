@@ -20,6 +20,7 @@ local CACHE_PATH = utils.get_backend_path() .. "/data/cache/library.json"
 ---@field install_path string|nil
 ---@field install_size integer|nil Bytes on disk
 ---@field version string|nil Installed build version
+---@field latest_version string|nil Build version the catalog is shipping
 ---@field folder_name string|nil Directory Epic expects the game to live in
 ---@field needs_update boolean
 ---@field art_portrait string|nil Tall box art URL
@@ -82,7 +83,12 @@ end
 -- Refresh ---------------------------------------------------------------------
 
 --- Reads what's on disk. Local, so no round trip to Epic.
-local LIST_INSTALLED = { "list-installed", "--check-updates", "--json" }
+---
+--- Without `--check-updates`, which as of legendary 0.21 only prints "Update
+--- available!" in its human-readable output and puts nothing in the JSON, while
+--- costing a login and a round trip to Epic. The build version to compare
+--- against is in the catalog we already fetch, so we do the comparison here.
+local LIST_INSTALLED = { "list-installed", "--json" }
 
 --- Per `legendary import`. One manifest refetch, not a download.
 local IMPORT_TIMEOUT = 30000
@@ -105,17 +111,28 @@ local function index_installed(output)
 end
 
 ---Copy the installed half of a game across from `list-installed`.
+---
+---An update is the installed build version differing from the catalog's, which
+---is the same comparison legendary's own `--check-updates` makes. `latest_version`
+---is kept on the game so this can be redone after an install without the
+---catalog in hand.
 ---@param game table An EpicGame missing its installed fields
 ---@param local_game table|nil
+---@param latest_version string|nil The catalog's build version, `game.latest_version` if nil
 ---@return EpicGame game
-local function apply_installed(game, local_game)
+local function apply_installed(game, local_game, latest_version)
   game.installed = local_game ~= nil
   game.install_path = local_game and local_game.install_path or nil
   game.install_size = local_game and local_game.install_size or nil
   game.version = local_game and local_game.version or nil
-  -- legendary reports this under both names depending on its version.
-  game.needs_update = local_game ~= nil
-    and (local_game.needs_update == true or local_game.update_available == true)
+  game.latest_version = latest_version or game.latest_version
+
+  -- Only ever an update against a build we actually know the name of: a missing
+  -- catalog version would otherwise read as "every installed game is stale".
+  game.needs_update = game.installed
+    and game.latest_version ~= nil
+    and game.version ~= nil
+    and game.version ~= game.latest_version
 
   return game
 end
@@ -178,6 +195,18 @@ local function is_game(entry)
   return false
 end
 
+---The build Epic is currently shipping for a title, which is what an installed
+---game is stale against. Keyed by platform, and we only ever install Windows.
+---@param entry table One element of `legendary list`
+---@return string|nil version
+local function latest_version(entry)
+  local windows = (entry.asset_infos or {}).Windows
+  if type(windows) ~= "table" or type(windows.build_version) ~= "string" then
+    return nil
+  end
+  return windows.build_version
+end
+
 ---Fold one catalog entry together with what's installed on disk for it, if
 ---anything is.
 ---@param entry table One element of `legendary list`
@@ -196,7 +225,7 @@ local function merge_game(entry, local_game)
     art_hero = pick_art(metadata.keyImages, "hero"),
   }
 
-  return apply_installed(game, local_game)
+  return apply_installed(game, local_game, latest_version(entry))
 end
 
 ---Ask legendary for the whole library and rebuild from it.

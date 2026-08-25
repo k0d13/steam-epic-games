@@ -57,7 +57,9 @@ export function sync() {
   const overview = getOverview();
   if (!overview) return;
 
-  const job = jobs.active().find((candidate) => candidate.kind === "install");
+  const job = jobs
+    .active()
+    .find((candidate) => candidate.kind === "install" || candidate.kind === "update");
   const appId = job && appIds.getAppId(job.appName);
 
   if (job && appId !== undefined) {
@@ -68,7 +70,8 @@ export function sync() {
     claimed = appId;
     overview.update_appid = appId;
     overview.update_state = "Downloading";
-    overview.update_is_install = true;
+    // What the downloads page labels the row with: an update isn't an install.
+    overview.update_is_install = job.kind === "install";
     overview.update_is_upload = false;
     overview.paused = false;
     overview.overall_percent_complete = job.progress?.percent ?? 0;

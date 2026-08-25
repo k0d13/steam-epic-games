@@ -487,6 +487,23 @@ function legendary.install(app_name, base_path, game_folder)
   return jobs.start(app_name, "install", binary, args)
 end
 
+---Update an already installed game, as a job.
+---
+---The same `install` underneath, since legendary fetches only the chunks that
+---changed, but `--update-only` makes it refuse a game that isn't installed
+---rather than quietly installing the whole thing.
+---@param app_name string
+---@return Job|nil job
+---@return string? error
+function legendary.update(app_name)
+  local binary, err = legendary.get_binary()
+  if not binary then
+    return nil, err
+  end
+
+  return jobs.start(app_name, "update", binary, { "-y", "install", app_name, "--update-only" })
+end
+
 ---@param app_name string
 ---@return Job|nil job
 ---@return string? error

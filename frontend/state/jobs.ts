@@ -169,6 +169,20 @@ export async function install(appName: string, basePath?: string, gameFolder?: s
   return track(appName, await rpc.StartInstall(appName, basePath, gameFolder));
 }
 
+/** Update an installed game to Epic's latest build. */
+export async function update(appName: string) {
+  return track(appName, await rpc.StartUpdate(appName));
+}
+
+/**
+ * Restart a paused job as whatever it was. Resuming is re-running the command,
+ * and an update re-run as a plain install would reinstall the game from nothing
+ * the moment legendary decided the partial download wasn't usable.
+ */
+export async function resume(appName: string) {
+  return get(appName)?.kind === "update" ? update(appName) : install(appName);
+}
+
 export async function uninstall(appName: string) {
   return track(appName, await rpc.StartUninstall(appName));
 }

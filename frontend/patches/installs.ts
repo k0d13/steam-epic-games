@@ -92,13 +92,17 @@ export function register() {
       },
     ),
 
-    // Resume, and the Download button on an update. legendary has no resume:
-    // `install` against a partial download continues it.
+    // Resume, and the Update button on a game with a newer build waiting.
+    // legendary has no resume: re-running the command continues it, so the only
+    // question is which command this game wants.
     replacePatch(bridge.Downloads, "ResumeAppUpdate", ([appId]: [number, string?]) => {
-      const appName = epicAppName(appId);
-      if (!appName) return callOriginal;
+      const game = epicGame(appId);
+      if (!game) return callOriginal;
 
-      void jobs.install(appName);
+      if (jobs.get(game.appName)) void jobs.resume(game.appName);
+      else if (game.installed && game.needsUpdate) void jobs.update(game.appName);
+      else void jobs.install(game.appName);
+
       return undefined;
     }),
 
@@ -117,7 +121,7 @@ export function register() {
     // button called it. So ours pause together and Steam's are left to Steam.
     replacePatch(bridge.Downloads, "EnableAllDownloads", ([enabled]: [boolean, string?]) => {
       if (enabled) {
-        for (const job of jobs.paused()) void jobs.install(job.appName);
+        for (const job of jobs.paused()) void jobs.resume(job.appName);
       } else {
         void jobs.pauseAll();
       }

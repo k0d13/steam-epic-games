@@ -122,6 +122,11 @@ export default definePlugin(async () => {
   // still running and start polling it again.
   await jobs.refresh();
 
+  // legendary only spots a new build by comparing what's installed against a
+  // catalog it has already fetched, so a cached library never grows an update.
+  // Not awaited: it costs a round trip to Epic, and nothing here waits on it.
+  void library.load(true, true);
+
   logger.info("Plugin loaded");
 
   return {
