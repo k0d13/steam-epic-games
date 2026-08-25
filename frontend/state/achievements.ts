@@ -1,4 +1,5 @@
 import rpc, { type AchievementSummary, type GameAchievements } from "../rpc";
+import { getLastPlayed } from "../services/playtime";
 import { createEmitter } from "./emitter";
 
 // The same shape as state/sizes.ts, for the same reason: achievements are read
@@ -39,6 +40,37 @@ export async function loadSummaries() {
 
   for (const [appName, summary] of cached) summaries.set(appName, summary);
   emitter.emit();
+
+  await refreshPlayed();
+}
+
+/**
+ * Re-read every game that has been played since we last asked Epic about it.
+ * One at a time: each is a legendary run, and a machine that has been away for
+ * a while would otherwise start a dozen of them at once.
+ */
+async function refreshPlayed() {
+  for (const [appName, summary] of summaries) {
+    if (pending.has(appName) || !isStale(appName, summary)) continue;
+    pending.add(appName);
+
+    const result = await rpc.GetAchievements(appName, true);
+    pending.delete(appName);
+    if (result) record(appName, result);
+  }
+}
+
+/**
+ * Ask Epic again for one game, whatever we already hold - for a session just
+ * ending, where the whole point is that what we hold is now short.
+ */
+export async function refresh(appName: string) {
+  if (pending.has(appName)) return;
+  pending.add(appName);
+
+  const result = await rpc.GetAchievements(appName, true);
+  pending.delete(appName);
+  if (result) record(appName, result);
 }
 
 /**
@@ -49,15 +81,37 @@ export function getSummary(appName: string): AchievementSummary | undefined {
   return summaries.get(appName);
 }
 
+/** Keep both maps on one answer, whichever read brought it back. */
+function record(appName: string, result: GameAchievements) {
+  known.set(appName, result);
+  summaries.set(appName, {
+    appName,
+    total: result.total,
+    unlocked: result.unlocked,
+    fetchedAt: result.fetchedAt,
+  });
+  emitter.emit();
+}
+
 /** A game's achievements, if we already have them. Never blocks, never fetches. */
 export function get(appName: string): GameAchievements | undefined {
   return known.get(appName) ?? undefined;
 }
 
-function isStale(entry: GameAchievements | null | undefined): boolean {
+/** Enough of an answer to date it, which both a full read and a summary are. */
+type Dated = { total: number; fetchedAt: number } | null | undefined;
+
+function isStale(appName: string, entry: Dated): boolean {
   // A game with none at all is never worth asking about again - plenty of Epic
   // titles simply don't have any, and that can't change under us.
   if (!entry || entry.total === 0) return false;
+
+  // Played since we asked, so whatever it unlocked is missing from what we
+  // hold. This is Steam's own rule for its achievement cache, and it only sees
+  // launches through Steam - the age check below is what catches a session
+  // started from the Epic launcher instead.
+  if (getLastPlayed(appName) > entry.fetchedAt) return true;
+
   return Date.now() - entry.fetchedAt * 1000 > STALE_AFTER_MS;
 }
 
@@ -66,7 +120,11 @@ function isStale(entry: GameAchievements | null | undefined): boolean {
  * Called from a render path, so it has to be safe to call constantly.
  */
 export function ensure(appName: string) {
-  const stale = isStale(known.get(appName));
+  // The summary stands in for a game nothing has opened this session: it dates
+  // the backend's cache just as well, and without it a game played since that
+  // cache was written would be answered from it.
+  const entry = known.get(appName) ?? summaries.get(appName);
+  const stale = isStale(appName, entry);
   if ((known.has(appName) && !stale) || pending.has(appName)) return;
   pending.add(appName);
 
@@ -77,14 +135,7 @@ export function ensure(appName: string) {
     // Except a refresh that came back empty - Epic being unreachable is no
     // reason to throw away the answer we already have.
     if (result) {
-      known.set(appName, result);
-      summaries.set(appName, {
-        appName,
-        total: result.total,
-        unlocked: result.unlocked,
-        fetchedAt: result.fetchedAt,
-      });
-      emitter.emit();
+      record(appName, result);
     } else if (!stale) {
       known.set(appName, null);
     }

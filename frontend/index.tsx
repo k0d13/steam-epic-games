@@ -13,6 +13,7 @@ import * as installs from "./patches/installs";
 import * as libraryBadge from "./patches/library-badge";
 import * as manageMenu from "./patches/manage-menu";
 import { type EpicStatus } from "./rpc";
+import { onGameStopped } from "./services/playtime";
 import * as achievements from "./state/achievements";
 import * as jobs from "./state/jobs";
 import * as library from "./state/library";
@@ -81,7 +82,16 @@ export default definePlugin(async () => {
   // Achievements land a round trip to Epic after the page asking for them drew.
   const unsubscribeAchievements = achievements.subscribe(repaint);
 
+  // A session just ended is the one moment an achievement cache is certain to
+  // be short, so the game that ended is re-read there and then rather than
+  // waiting for something to draw it.
+  const unsubscribeSessions = onGameStopped((appId) => {
+    const game = library.getByAppId(appId);
+    if (game) void achievements.refresh(game.appName);
+  });
+
   window.addEventListener("beforeunload", () => {
+    unsubscribeSessions();
     unsubscribeLibrary();
     unsubscribeJobs();
     unsubscribeAchievements();
