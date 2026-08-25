@@ -11,6 +11,7 @@ import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { logger } from "../index";
 import { type EpicGame } from "../rpc";
 import * as artwork from "../services/artwork";
+import * as collection from "../services/collection";
 import * as hidden from "../services/hidden";
 import * as shortcuts from "../services/shortcuts";
 import * as library from "../state/library";
@@ -109,6 +110,7 @@ export function LibraryPanel() {
       // both of these without the panel hearing about it.
       const hideable = games ? hidden.hideableCount(games) : 0;
       const alreadyHidden = hidden.hiddenCount();
+      const uncollected = games ? collection.missingCount(games) : 0;
 
       showContextMenu(
         <Menu label="Steam shortcuts">
@@ -120,6 +122,29 @@ export function LibraryPanel() {
             }}
           >
             Redownload artwork
+          </MenuItem>
+          <MenuSeparator />
+          <MenuItem
+            onSelected={() => {
+              if (!games) return;
+              void collection.addAll(games).then((result) => {
+                if (!result.ok) {
+                  setNote(result.error);
+                } else if (result.added > 0) {
+                  setNote(
+                    `Added ${result.added} to the "${collection.COLLECTION_NAME}" collection.`,
+                  );
+                } else {
+                  setNote(
+                    `All ${result.total} games are already in "${collection.COLLECTION_NAME}".`,
+                  );
+                }
+              });
+            }}
+          >
+            {uncollected > 0
+              ? `Add ${uncollected} to an "${collection.COLLECTION_NAME}" collection`
+              : `"${collection.COLLECTION_NAME}" collection is up to date`}
           </MenuItem>
           <MenuSeparator />
           <MenuItem
