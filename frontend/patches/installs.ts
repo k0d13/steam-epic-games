@@ -43,6 +43,7 @@ interface Installs {
 
 interface Downloads {
   ResumeAppUpdate(appId: number, clientId?: string): void;
+  RemoveFromDownloadList(appId: number, clientId?: string): void;
   EnableAllDownloads(enabled: boolean, clientId?: string): void;
 }
 
@@ -98,6 +99,17 @@ export function register() {
       if (!appName) return callOriginal;
 
       void jobs.install(appName);
+      return undefined;
+    }),
+
+    // Cancel, on a download running or queued. Steam drops what it downloaded;
+    // we keep it, since Install against a partial download is legendary's
+    // resume and there's nothing else that would pick those bytes back up.
+    replacePatch(bridge.Downloads, "RemoveFromDownloadList", ([appId]: [number, string?]) => {
+      const appName = epicAppName(appId);
+      if (!appName) return callOriginal;
+
+      void jobs.cancel(appName);
       return undefined;
     }),
 

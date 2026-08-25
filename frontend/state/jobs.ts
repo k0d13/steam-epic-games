@@ -5,7 +5,7 @@ import * as library from "./library";
 import * as sizes from "./sizes";
 
 // The frontend's view of the backend's installs. The backend can't push, so
-// this polls, but only while something is running - an idle Steam makes no
+// this polls, but only while something is running or queued - an idle Steam makes no
 // calls at all. Everything that shows an install reads from here.
 
 const POLL_MS = 1000;
@@ -30,6 +30,13 @@ export function getByAppId(appId: number): Job | undefined {
 
 export function active(): Job[] {
   return [...byAppName.values()].filter((job) => job.state === "running");
+}
+
+/** Waiting on the one legendary run the backend allows, oldest request first. */
+export function queued(): Job[] {
+  return [...byAppName.values()]
+    .filter((job) => job.state === "queued")
+    .sort((a, b) => a.startedAt - b.startedAt);
 }
 
 export function paused(): Job[] {
@@ -107,13 +114,16 @@ async function poll() {
 }
 
 /**
- * Keep polling while anything is running, and stop when nothing is. Idle is the
- * normal state, and a timer firing every second behind an idle Steam is how a
- * plugin gets blamed for someone's frame rate.
+ * Keep polling while anything is running or waiting to, and stop when nothing
+ * is. Idle is the normal state, and a timer firing every second behind an idle
+ * Steam is how a plugin gets blamed for someone's frame rate.
+ *
+ * Queued counts: the backend starts the next job off this very poll, so letting
+ * the timer stop with a queue behind it would leave it there forever.
  */
 function schedule() {
   if (timer !== undefined) return;
-  if (active().length === 0) return;
+  if (active().length === 0 && queued().length === 0) return;
 
   timer = setTimeout(() => void poll(), POLL_MS);
 }
@@ -147,11 +157,14 @@ async function track(appName: string, job: Job | undefined) {
   emitter.emit();
   schedule();
 
-  logger.info(`Started ${job.kind}`, { appName });
+  logger.info(job.state === "queued" ? `Queued ${job.kind}` : `Started ${job.kind}`, { appName });
   return job;
 }
 
-/** Start, or resume, an install - legendary's `install` is both. */
+/**
+ * Start, or resume, an install - legendary's `install` is both. Comes back
+ * queued rather than running if one of ours is already going.
+ */
 export async function install(appName: string, basePath?: string, gameFolder?: string) {
   return track(appName, await rpc.StartInstall(appName, basePath, gameFolder));
 }
@@ -169,7 +182,9 @@ export async function pause(appName: string) {
 
 /** Pause everything of ours. What Steam's global "pause all downloads" maps to. */
 export async function pauseAll() {
-  for (const job of active()) await rpc.PauseJob(job.appName);
+  // The queue too, or "pause all downloads" stops the one that's running and
+  // the backend immediately starts the next.
+  for (const job of [...active(), ...queued()]) await rpc.PauseJob(job.appName);
   await refresh();
 }
 

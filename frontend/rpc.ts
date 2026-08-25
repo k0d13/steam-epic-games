@@ -160,9 +160,16 @@ export interface JobProgress {
 export interface Job {
   appName: string;
   kind: "install" | "uninstall";
-  /** `paused` is a killed runner - legendary has no pause, so resuming re-runs install. */
-  state: "running" | "paused" | "done" | "failed";
+  /**
+   * `queued` is a job with no process behind it yet: legendary runs one at a
+   * time, so the rest wait their turn. `paused` is a killed runner - legendary
+   * has no pause, so resuming re-runs install.
+   */
+  state: "queued" | "running" | "paused" | "done" | "failed";
+  /** When the job was asked for, which is also its place in the queue. */
   startedAt: number;
+  /** When its runner was launched, absent while it is still queued. */
+  spawnedAt?: number;
   exitCode?: number;
   progress?: JobProgress;
   error?: string;

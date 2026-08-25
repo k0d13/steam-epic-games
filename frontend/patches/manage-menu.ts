@@ -131,9 +131,9 @@ function uninstallItem(appId: number): ReactNode {
   const game = library.getByAppId(appId);
   if (!game?.installed) return undefined;
 
-  // A job of either kind is already touching these files.
+  // A job of either kind is already touching these files, or is about to.
   const job = jobs.get(game.appName);
-  if (job?.state === "running") return undefined;
+  if (job?.state === "running" || job?.state === "queued") return undefined;
 
   return createElement(
     MenuItem,
@@ -143,6 +143,32 @@ function uninstallItem(appId: number): ReactNode {
       onSelected: () => confirmUninstall(appId, game.appName, game.title),
     },
     "Uninstall",
+  );
+}
+
+/**
+ * Steam offers Cancel on anything in its download queue, running or waiting, so
+ * ours does too - it's the only way out of a queued install otherwise.
+ *
+ * Unlike Steam's, this leaves what was already downloaded where it is: that's
+ * what lets Install resume it, and legendary has no notion of a partial install
+ * to uninstall.
+ */
+function cancelItem(appId: number): ReactNode {
+  const game = library.getByAppId(appId);
+  const job = game && jobs.get(game.appName);
+  if (job?.kind !== "install") return undefined;
+  if (job.state !== "queued" && job.state !== "running" && job.state !== "paused") {
+    return undefined;
+  }
+
+  return createElement(
+    MenuItem,
+    {
+      key: "epic-cancel",
+      onSelected: () => void jobs.cancel(job.appName),
+    },
+    "Cancel download",
   );
 }
 
@@ -160,12 +186,12 @@ function patchPrototype(instance: ManageMenuInstance) {
     const app = apps?.length === 1 ? apps[0] : undefined;
     if (!ret || !app) return ret;
 
-    const item = uninstallItem(app.appid);
-    if (!item) return ret;
+    const items = [cancelItem(app.appid), uninstallItem(app.appid)].filter(Boolean);
+    if (items.length === 0) return ret;
 
     const children = Children.toArray((ret.props as { children?: ReactNode }).children);
 
-    return cloneElement(ret, undefined, ...children, item);
+    return cloneElement(ret, undefined, ...children, ...items);
   }).unpatch;
 }
 

@@ -70,10 +70,12 @@ function applyInstallState(overview: SteamAppOverview) {
   // the status the progress bar reads a percentage for; Installing draws an
   // indeterminate spinner.
   const job = jobs.get(game.appName);
-  const downloading =
-    job?.kind === "install" && (job.state === "running" || job.state === "paused");
-  // An uninstall is a directory delete, so there's no percentage to show.
-  const uninstalling = job?.kind === "uninstall" && job.state === "running";
+  const pending = job?.state === "running" || job?.state === "paused" || job?.state === "queued";
+  const downloading = job?.kind === "install" && pending;
+  // An uninstall is a directory delete, so there's no percentage to show. A
+  // queued one still says Uninstalling: it is going to happen, and there is no
+  // other status that means "about to lose these files".
+  const uninstalling = job?.kind === "uninstall" && pending;
 
   // Defensive about the array: everything else in this file finds Steam's
   // shapes rather than trusting them, and a spread is what turns a field that
@@ -94,8 +96,9 @@ function applyInstallState(overview: SteamAppOverview) {
 
     if (downloading) {
       data.installed = false;
-      data.display_status =
-        job.state === "paused" ? EDisplayStatus.DownloadPaused : EDisplayStatus.Downloading;
+      if (job.state === "paused") data.display_status = EDisplayStatus.DownloadPaused;
+      else if (job.state === "queued") data.display_status = EDisplayStatus.DownloadQueued;
+      else data.display_status = EDisplayStatus.Downloading;
       data.status_percentage = job.progress?.percent ?? 0;
       continue;
     }

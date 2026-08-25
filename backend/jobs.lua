@@ -15,6 +15,12 @@ local utils = require("utils")
 -- legendary's, but the caller supplies the program and the arguments, and
 -- `legendary.lua` is what turns "install this game" into either of those.
 --
+-- legendary refuses to run two of these at once, so only one job ever has a
+-- runner. The rest sit in the directory with everything needed to start them
+-- and no process, and `jobs.list()` starts the next one as soon as it sees the
+-- previous finish. The queue is therefore on disk like the rest of it, and a
+-- Steam restart mid-queue loses nothing.
+--
 -- The frontend polls `jobs.list()` about once a second, so that path stays
 -- cheap: it only reads files, and nothing it reads grows with the download.
 
@@ -39,6 +45,7 @@ local FILES = {
   error = "error.txt",
   exit = "exit.txt",
   paused = "paused.txt",
+  spawned = "spawned.txt",
 }
 
 --- How long a job is allowed to have neither a lock nor a PID before it counts
@@ -46,7 +53,7 @@ local FILES = {
 local SPAWN_GRACE = 15
 
 ---@alias JobKind "install" | "uninstall"
----@alias JobState "running" | "paused" | "done" | "failed"
+---@alias JobState "queued" | "running" | "paused" | "done" | "failed"
 
 ---@class JobProgress
 ---@field percent number 0-100
@@ -61,7 +68,8 @@ local SPAWN_GRACE = 15
 ---@field kind JobKind
 ---@field state JobState
 ---@field pid integer|nil PID of the runner, which owns legendary as a child
----@field started_at integer
+---@field started_at integer When the job was asked for, which is its place in the queue
+---@field spawned_at integer|nil When its runner was actually launched, nil while queued
 ---@field exit_code integer|nil Set once the runner has finished
 ---@field progress JobProgress|nil
 ---@field error string|nil Last error line legendary printed, when it failed
@@ -199,6 +207,10 @@ local function spawn(dir, exe, args)
     return false, "Could not write the job launcher: " .. tostring(err)
   end
 
+  -- Before the launch, not after: this is what stops the job reading as queued,
+  -- and a read landing in between would otherwise start a second runner.
+  utils.write_file(file(dir, "spawned"), tostring(math.floor(utils.time())))
+
   -- Returns as soon as wscript has handed the runner off, which is the point:
   -- nothing here waits for a download.
   shell.run("wscript", { (launcher_path:gsub("/", "\\")) })
@@ -216,9 +228,9 @@ end
 ---the process has exited.
 ---@param dir string
 ---@param pid integer|nil
----@param started_at integer|nil
+---@param spawned_at integer|nil
 ---@return boolean
-local function is_running(dir, pid, started_at)
+local function is_running(dir, pid, spawned_at)
   local lock = file(dir, "lock")
   if not fs.is_file(lock) then
     -- The runner takes the lock before it writes its PID, so no lock and a PID
@@ -226,7 +238,7 @@ local function is_running(dir, pid, started_at)
     -- No lock and no PID is the first moments of a job - but only for a moment:
     -- a wscript that never got the runner up would otherwise leave a job that
     -- reads as running forever, polled once a second with nothing behind it.
-    return pid == nil and (utils.time() - (started_at or 0)) < SPAWN_GRACE
+    return pid == nil and (utils.time() - (spawned_at or 0)) < SPAWN_GRACE
   end
 
   return shell.is_locked(lock)
@@ -279,13 +291,15 @@ end
 ---State is derived rather than stored, since the runner can die without getting
 ---to record anything: an exit code means finished, a held lock means running,
 ---and a lock nobody holds with no exit code means the runner died - deliberately
----if pause left its marker behind, otherwise not.
+---if pause left its marker behind, otherwise not. A job that was never spawned
+---at all is one still waiting its turn.
 ---@param dir string
 ---@param meta table
 ---@return Job
 local function build(dir, meta)
   local pid = tonumber(read(file(dir, "pid")) or "")
   local exit_code = tonumber(read(file(dir, "exit")) or "")
+  local spawned_at = tonumber(read(file(dir, "spawned")) or "")
   local started_at = meta.started_at or 0
 
   ---@type JobState
@@ -296,8 +310,10 @@ local function build(dir, meta)
     -- Pausing is a kill, so this marker is the only evidence that the missing
     -- process was meant to be missing.
     state = "paused"
+  elseif not spawned_at then
+    state = "queued"
   else
-    state = is_running(dir, pid, started_at) and "running" or "failed"
+    state = is_running(dir, pid, spawned_at) and "running" or "failed"
   end
 
   return {
@@ -306,6 +322,7 @@ local function build(dir, meta)
     state = state,
     pid = pid,
     started_at = started_at,
+    spawned_at = spawned_at,
     exit_code = exit_code,
     progress = read_progress(dir),
     error = state == "failed" and utils.trim(read(file(dir, "error")) or "") or nil,
@@ -326,28 +343,87 @@ function jobs.get(app_name)
   return build(dir, meta)
 end
 
----Every job we know about, running or finished.
+---Launch the runner a queued job has been waiting for, if it is that job's turn.
+---
+---Called off `jobs.list()`, which the frontend polls, so the queue moves on
+---roughly a second after the job ahead of it ends. There is no timer behind
+---this and nothing in memory holding the order: the oldest `started_at` with no
+---runner goes next.
+---@param entries { dir: string, meta: table, job: Job }[]
+local function promote(entries)
+  ---@type { dir: string, meta: table, job: Job }|nil
+  local next_up
+
+  for _, entry in ipairs(entries) do
+    if entry.job.state == "running" then
+      return
+    end
+    if
+      entry.job.state == "queued" and (not next_up or entry.job.started_at < next_up.job.started_at)
+    then
+      next_up = entry
+    end
+  end
+
+  if not next_up then
+    return
+  end
+
+  -- Written by `jobs.start`, which is the only thing that knows what legendary
+  -- call the job stands for. Without them there is nothing to run.
+  local meta = next_up.meta
+  if type(meta.exe) ~= "string" or type(meta.args) ~= "table" then
+    logger:warn("Dropping a queued job with nothing to run: " .. tostring(meta.app_name))
+    fs.remove_all(next_up.dir)
+    return
+  end
+
+  local started, err = spawn(next_up.dir, meta.exe, meta.args)
+  if not started then
+    logger:error("Could not start the queued " .. tostring(meta.kind) .. ": " .. tostring(err))
+    return
+  end
+
+  logger:info("Started the queued " .. tostring(meta.kind) .. " for " .. tostring(meta.app_name))
+  next_up.job = build(next_up.dir, meta)
+end
+
+---Every job we know about, queued, running or finished.
+---
+---Also where the queue moves: reading the jobs is the only thing that happens
+---often enough to notice one of them ending.
 ---@return Job[]
 function jobs.list()
-  local result = {}
+  local entries = {}
   if not fs.is_directory(ROOT) then
-    return result
+    return {}
   end
 
   for _, entry in ipairs(fs.list(ROOT) or {}) do
     -- The directory name is a slug, so the app name comes out of the metadata.
     local meta = entry.is_directory and read_meta(entry.path)
     if meta and meta.app_name then
-      table.insert(result, build(entry.path, meta))
+      table.insert(entries, { dir = entry.path, meta = meta, job = build(entry.path, meta) })
     end
   end
 
+  promote(entries)
+
+  local result = {}
+  for _, entry in ipairs(entries) do
+    table.insert(result, entry.job)
+  end
   return result
 end
 
 -- Starting and stopping -------------------------------------------------------
 
----Start one job for a game, replacing whatever it last ran.
+---Queue one job for a game, replacing whatever it last ran, and start it if
+---nothing else is running.
+---
+---Nothing here spawns: writing the job down is enough, and `promote` picks it
+---up on the same call. So a second install while the first is downloading takes
+---exactly this path and simply waits.
 ---@param app_name string
 ---@param kind JobKind
 ---@param exe string
@@ -360,7 +436,7 @@ function jobs.start(app_name, kind, exe, args)
   end
 
   local existing = jobs.get(app_name)
-  if existing and existing.state == "running" then
+  if existing and (existing.state == "running" or existing.state == "queued") then
     return existing
   end
 
@@ -372,20 +448,26 @@ function jobs.start(app_name, kind, exe, args)
   end
   fs.create_directories(dir)
 
+  -- The command goes in with the rest of it, since whatever eventually runs
+  -- this job may be a poll minutes from now with no memory of the request.
   local ok, err = utils.write_file(
     file(dir, "meta"),
-    json.encode({ app_name = app_name, kind = kind, started_at = math.floor(utils.time()) })
+    json.encode({
+      app_name = app_name,
+      kind = kind,
+      started_at = math.floor(utils.time()),
+      exe = exe,
+      args = args,
+    })
   )
   if not ok then
     return nil, "Could not write the job: " .. tostring(err)
   end
 
-  local started, spawn_error = spawn(dir, exe, args)
-  if not started then
-    return nil, spawn_error
-  end
+  logger:info("Queued " .. kind .. " for " .. app_name)
 
-  logger:info("Started " .. kind .. " for " .. app_name)
+  -- Starts it too, if its turn is now.
+  jobs.list()
   return jobs.get(app_name)
 end
 
@@ -397,14 +479,18 @@ end
 ---@param job Job
 ---@return boolean stopped
 local function stop(app_name, job)
-  if not job.pid or job.state ~= "running" then
+  if job.state ~= "running" and job.state ~= "queued" then
     return false
   end
 
   -- Before the kill: a read landing in the gap would otherwise see a runner
-  -- that vanished on its own and call the job failed.
+  -- that vanished on its own and call the job failed. For a queued job it is
+  -- the whole of the work - the marker is what takes it out of the queue.
   utils.write_file(file(job_dir(app_name), "paused"), "1")
-  shell.run("taskkill", { "/F", "/T", "/PID", tostring(job.pid) })
+
+  if job.state == "running" and job.pid then
+    shell.run("taskkill", { "/F", "/T", "/PID", tostring(job.pid) })
+  end
   return true
 end
 
