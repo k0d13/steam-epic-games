@@ -1,7 +1,8 @@
-import { beforePatch, EDisplayStatus } from "@steambrew/client";
-import { forceFakeLocationChange, NON_STEAM_APP_APPID_MASK, Steam } from "steambrew-utils";
+import { beforePatch, EDisplayStatus, type SteamAppOverview } from "@steambrew/client";
 import { logger } from "../index";
 import { once } from "../services/once";
+import { forceFakeLocationChange } from "../services/popups";
+import { NON_STEAM_APP_APPID_MASK } from "../state/app-ids";
 import * as jobs from "../state/jobs";
 import * as library from "../state/library";
 
@@ -58,7 +59,7 @@ const logApplied = once((app: MutableOverview, appName: string, wanted: boolean)
  * `per_client_data` array drives the grid tile, and `size_on_disk` is what the
  * filters and collections test.
  */
-function applyInstallState(overview: Steam.AppOverview) {
+function applyInstallState(overview: SteamAppOverview) {
   const game = library.getByAppId(overview.appid);
   if (!game) return;
 
@@ -124,9 +125,9 @@ function applyInstallState(overview: Steam.AppOverview) {
 
 export function register() {
   const patch = beforePatch(
-    Steam.CollectionStore,
+    collectionStore,
     "OnAppOverviewChange",
-    ([apps]: [Steam.AppOverview[]]) => {
+    ([apps]: [SteamAppOverview[]]) => {
       for (const app of apps) {
         if (app.appid < NON_STEAM_APP_APPID_MASK) continue;
         applyInstallState(app);
@@ -147,7 +148,7 @@ export function register() {
  * objects throws "t is not iterable" out of UpdateApps.
  */
 export function refreshAll() {
-  const apps = Steam.AppStore.allApps.filter(
+  const apps = appStore.allApps.filter(
     (app) => app.appid >= NON_STEAM_APP_APPID_MASK && library.getByAppId(app.appid) !== undefined,
   );
 

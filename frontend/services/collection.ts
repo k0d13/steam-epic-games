@@ -1,4 +1,4 @@
-import { Steam } from "steambrew-utils";
+import { type SteamAppOverview } from "@steambrew/client";
 import { logger } from "../index";
 import { type EpicGame } from "../rpc";
 import * as appIds from "../state/app-ids";
@@ -8,20 +8,20 @@ import * as appIds from "../state/app-ids";
 //
 // Collections are Steam's own, stored in cloud storage and edited through the
 // collection store: a manual ("drag drop") collection holds an explicit list of
-// apps, which is what this builds. None of it is in steambrew-utils' types and
+// apps, which is what this builds. None of it is in @steambrew/client's types and
 // none of it is guaranteed to exist on a given client build, so every call is
 // feature tested and a missing one costs only this feature.
 
 export const COLLECTION_NAME = "Epic Games";
 
 interface DragDropCollection {
-  AddApps(apps: Steam.AppOverview[]): void;
+  AddApps(apps: SteamAppOverview[]): void;
 }
 
 interface Collection {
   id: string;
   displayName: string;
-  allApps: Steam.AppOverview[];
+  allApps: SteamAppOverview[];
   AsDragDropCollection?(): DragDropCollection | undefined;
   Save?(): Promise<unknown> | void;
 }
@@ -31,11 +31,11 @@ interface Collections {
   NewUnsavedCollection?(
     name: string,
     source: Collection | undefined,
-    apps: Steam.AppOverview[],
+    apps: SteamAppOverview[],
   ): Collection | undefined;
 }
 
-const collections = () => Steam.CollectionStore as unknown as Collections;
+const collections = () => collectionStore as unknown as Collections;
 
 function findCollection(): Collection | undefined {
   return collections().userCollections?.find(
@@ -44,7 +44,7 @@ function findCollection(): Collection | undefined {
 }
 
 /** The overviews behind our shortcuts, skipping any Steam doesn't know about. */
-function overviews(games: EpicGame[]): Steam.AppOverview[] {
+function overviews(games: EpicGame[]): SteamAppOverview[] {
   const wanted = new Set<number>();
 
   for (const game of games) {
@@ -52,7 +52,7 @@ function overviews(games: EpicGame[]): Steam.AppOverview[] {
     if (appId !== undefined) wanted.add(appId);
   }
 
-  return Steam.AppStore.allApps.filter((app) => wanted.has(app.appid));
+  return appStore.allApps.filter((app) => wanted.has(app.appid));
 }
 
 export interface CollectionResult {

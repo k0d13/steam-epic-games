@@ -1,13 +1,13 @@
-import { NON_STEAM_APP_APPID_MASK, Steam } from "steambrew-utils";
 import { logger } from "../index";
 import { type EpicGame } from "../rpc";
 import * as appIds from "../state/app-ids";
+import { NON_STEAM_APP_APPID_MASK } from "../state/app-ids";
 
 // Owning a game on both stores puts it in the library twice. Steam's own answer
 // is the per-game "Hide this game", so that's what this drives - in bulk, over
 // the Epic shortcuts whose title already belongs to a real Steam game.
 //
-// Neither hiding call is in steambrew-utils' types and neither exists on every
+// Neither hiding call is in @steambrew/client's types and neither exists on every
 // client build, so both are found by feature test and a missing one costs only
 // this feature.
 
@@ -16,7 +16,7 @@ interface Hiding {
   SetAppsAsHidden?(appIds: number[], hidden: boolean): void;
 }
 
-const collections = () => Steam.CollectionStore as unknown as Hiding;
+const collections = () => collectionStore as unknown as Hiding;
 
 /**
  * Titles compared with everything a store could disagree about removed:
@@ -34,7 +34,7 @@ function normalize(title: string) {
 function steamTitles(): Set<string> {
   const titles = new Set<string>();
 
-  for (const app of Steam.AppStore.allApps) {
+  for (const app of appStore.allApps) {
     if (app.appid >= NON_STEAM_APP_APPID_MASK) continue;
     if (app.display_name) titles.add(normalize(app.display_name));
   }

@@ -1,10 +1,9 @@
 import { afterPatch, ConfirmModal, MenuItem, showModal } from "@steambrew/client";
 import { createElement, cloneElement, Children, type ReactElement, type ReactNode } from "react";
-import { Steam } from "steambrew-utils";
-import { onPopupCreate } from "steambrew-utils/watchers";
 import { logger } from "../index";
 import { findExport } from "../services/modules";
 import { memo } from "../services/once";
+import { mainPopup, onPopupCreate } from "../services/popups";
 import * as jobs from "../state/jobs";
 import * as library from "../state/library";
 
@@ -117,13 +116,13 @@ function fallbackConfirm(appName: string, name: string) {
       onOK: () => void jobs.uninstall(appName),
     }),
     // Explicit because showModal's default, findSP(), throws on this build.
-    Steam.MainPopup?.window,
+    mainPopup()?.window,
   );
 }
 
 function confirmUninstall(appId: number, appName: string, name: string) {
   const dialog = getUninstallDialog();
-  if (dialog) dialog([appId], Steam.MainPopup?.window, false);
+  if (dialog) dialog([appId], mainPopup()?.window, false);
   else fallbackConfirm(appName, name);
 }
 
@@ -243,12 +242,12 @@ export function register() {
     };
   }
 
-  observe(Steam.MainPopup?.root_element);
+  observe(mainPopup()?.root_element);
 
   // Every popup, whatever it says it is. The window is empty at create time, so
   // the observer is what finds the menu; the immediate attempt is for one that
   // has already rendered.
-  const unwatch = onPopupCreate((popup, _type, handlers) => {
+  const unwatch = onPopupCreate((popup, handlers) => {
     if (unpatch) return;
 
     const disconnect = observe(popup.root_element);

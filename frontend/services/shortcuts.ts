@@ -1,7 +1,7 @@
-import { NON_STEAM_APP_APPID_MASK, Steam } from "steambrew-utils";
 import { logger } from "../index";
 import rpc, { type EpicGame } from "../rpc";
 import * as appIds from "../state/app-ids";
+import { NON_STEAM_APP_APPID_MASK } from "../state/app-ids";
 import { createEmitter } from "../state/emitter";
 import * as library from "../state/library";
 import * as artwork from "./artwork";
@@ -57,9 +57,7 @@ const yieldToUi = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 function existingShortcutIds(): Set<number> {
   return new Set(
-    Steam.AppStore.allApps
-      .filter((app) => app.appid >= NON_STEAM_APP_APPID_MASK)
-      .map((app) => app.appid),
+    appStore.allApps.filter((app) => app.appid >= NON_STEAM_APP_APPID_MASK).map((app) => app.appid),
   );
 }
 

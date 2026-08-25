@@ -1,6 +1,6 @@
-import { Steam } from "steambrew-utils";
-import { onPopupCreate } from "steambrew-utils/watchers";
+import { type SteamAppOverview } from "@steambrew/client";
 import { logger } from "../index";
+import { mainPopup, onPopupCreate } from "../services/popups";
 import * as library from "../state/library";
 
 // A little Epic mark on the artwork in the library, so an Epic game is tellable
@@ -107,8 +107,8 @@ function findAppId(element: Element): number | undefined {
 
     for (const value of [
       props.appid,
-      (props.app as Steam.AppOverview)?.appid,
-      (props.item as Steam.AppOverview)?.appid,
+      (props.app as SteamAppOverview)?.appid,
+      (props.item as SteamAppOverview)?.appid,
     ]) {
       if (typeof value === "number") return value;
     }
@@ -183,11 +183,11 @@ export function register() {
     return watcher;
   };
 
-  add(Steam.MainPopup?.root_element);
+  add(mainPopup()?.root_element);
 
   // The library lives in the desktop window, but a detached one is a popup of
   // its own, so every window gets the same treatment.
-  const unwatch = onPopupCreate((popup, _type, handlers) => {
+  const unwatch = onPopupCreate((popup, handlers) => {
     const watcher = add(popup.root_element);
     if (!watcher) return;
 

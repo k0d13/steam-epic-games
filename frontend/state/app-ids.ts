@@ -1,5 +1,8 @@
 import { createStore } from "./storage";
 
+/** Steam hands out appids above this to non-Steam shortcuts, which ours are. */
+export const NON_STEAM_APP_APPID_MASK = 2147483648;
+
 // Epic app names to the Steam appids their shortcuts were given. Artwork,
 // install state and launching are all keyed off it, so losing it orphans every
 // shortcut. Versioned, so a change to how shortcuts are made starts fresh.

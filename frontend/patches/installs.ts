@@ -1,6 +1,6 @@
 import { callOriginal, replacePatch } from "@steambrew/client";
-import { NON_STEAM_APP_APPID_MASK } from "steambrew-utils";
 import { logger } from "../index";
+import { NON_STEAM_APP_APPID_MASK } from "../state/app-ids";
 import * as jobs from "../state/jobs";
 import * as library from "../state/library";
 import * as wizard from "./install-wizard";

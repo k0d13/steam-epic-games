@@ -1,4 +1,3 @@
-import { Steam } from "steambrew-utils";
 import * as appIds from "../state/app-ids";
 
 // Steam times a shortcut's last launch the same way it times a real game, so
@@ -7,15 +6,6 @@ import * as appIds from "../state/app-ids";
 // date after a session. Only launches through Steam count; a game started from
 // the Epic launcher leaves this untouched, which is what the age check in
 // state/achievements.ts is still there for.
-
-interface PlayedOverview {
-  rt_last_time_played?: number;
-}
-
-/** Not in steambrew-utils' AppStore typing, though every build has it. */
-interface OverviewLookup {
-  GetAppOverviewByAppID(appId: number): PlayedOverview | undefined;
-}
 
 /**
  * Unix seconds of the last time Steam launched a game, 0 if it never has. The
@@ -26,10 +16,9 @@ export function getLastPlayed(appName: string): number {
   const appId = appIds.getAppId(appName);
   if (appId === undefined) return 0;
 
-  const store = Steam.AppStore as unknown as Partial<OverviewLookup>;
-  if (typeof store.GetAppOverviewByAppID !== "function") return 0;
+  if (typeof appStore?.GetAppOverviewByAppID !== "function") return 0;
 
-  return store.GetAppOverviewByAppID(appId)?.rt_last_time_played ?? 0;
+  return appStore.GetAppOverviewByAppID(appId)?.rt_last_time_played ?? 0;
 }
 
 interface LifetimeNotification {
