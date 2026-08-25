@@ -11,6 +11,7 @@ import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { logger } from "../index";
 import { type EpicGame } from "../rpc";
 import * as artwork from "../services/artwork";
+import * as hidden from "../services/hidden";
 import * as shortcuts from "../services/shortcuts";
 import * as library from "../state/library";
 
@@ -104,6 +105,11 @@ export function LibraryPanel() {
 
   const onManage = useCallback(
     (event: React.MouseEvent<HTMLButtonElement>) => {
+      // Counted as the menu opens: hiding a game anywhere else in Steam changes
+      // both of these without the panel hearing about it.
+      const hideable = games ? hidden.hideableCount(games) : 0;
+      const alreadyHidden = hidden.hiddenCount();
+
       showContextMenu(
         <Menu label="Steam shortcuts">
           <MenuItem onSelected={() => void onSync()}>Sync now</MenuItem>
@@ -114,6 +120,30 @@ export function LibraryPanel() {
             }}
           >
             Redownload artwork
+          </MenuItem>
+          <MenuSeparator />
+          <MenuItem
+            disabled={hideable === 0}
+            onSelected={() => {
+              if (!games) return;
+              const count = hidden.hideDuplicates(games);
+              setNote(
+                count > 0
+                  ? `Hid ${count} game${count === 1 ? "" : "s"} you also own on Steam.`
+                  : "Nothing to hide.",
+              );
+            }}
+          >
+            {hideable > 0 ? `Hide ${hideable} duplicates of Steam games` : "No duplicates to hide"}
+          </MenuItem>
+          <MenuItem
+            disabled={alreadyHidden === 0}
+            onSelected={() => {
+              const count = hidden.showAll();
+              setNote(`Unhid ${count} game${count === 1 ? "" : "s"}.`);
+            }}
+          >
+            Show all hidden Epic games
           </MenuItem>
           <MenuSeparator />
           <MenuItem
@@ -131,7 +161,7 @@ export function LibraryPanel() {
         event.currentTarget ?? undefined,
       );
     },
-    [onSync],
+    [onSync, games],
   );
 
   // A sync that finished while this panel was closed still has to update the
