@@ -4,6 +4,7 @@ import { AuthPanel } from "./components/auth-panel";
 import { LibraryPanel } from "./components/library-panel";
 import * as achievementProgress from "./patches/achievement-progress";
 import * as achievementsPatch from "./patches/achievements";
+import * as activity from "./patches/activity";
 import * as appDetails from "./patches/app-details";
 import * as downloadOverview from "./patches/download-overview";
 import * as installState from "./patches/install-state";
@@ -66,6 +67,7 @@ export default definePlugin(async () => {
     ["install wizard", installWizard.register],
     ["manage menu", manageMenu.register],
     ["library badge", libraryBadge.register],
+    ["activity", activity.register],
     ["achievements", achievementsPatch.register],
     ["achievement progress", achievementProgress.register],
   ] as const) {
@@ -81,6 +83,7 @@ export default definePlugin(async () => {
   const repaint = () => {
     downloadOverview.sync();
     installState.refreshAll();
+    activity.refreshAll();
     appDetails.refreshAll();
   };
 

@@ -102,6 +102,8 @@ export interface EpicGame {
   folderName?: string;
   artPortrait?: string;
   artHero?: string;
+  /** Unix seconds Epic granted the account the game, its purchase date. */
+  purchasedAt?: number;
 }
 
 /** How much room a game takes, in bytes. */

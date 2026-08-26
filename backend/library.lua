@@ -1,5 +1,6 @@
 local cache = require("cache")
 local egl = require("egl")
+local entitlements = require("entitlements")
 local legendary = require("legendary")
 local logger = require("logger")
 local utils = require("utils")
@@ -25,6 +26,7 @@ local CACHE_PATH = utils.get_backend_path() .. "/data/cache/library.json"
 ---@field needs_update boolean
 ---@field art_portrait string|nil Tall box art URL
 ---@field art_hero string|nil Wide art URL
+---@field purchased_at integer|nil Unix seconds the account was granted the game
 
 ---@type EpicGame[]
 local games = {}
@@ -207,12 +209,28 @@ local function latest_version(entry)
   return windows.build_version
 end
 
+---The Epic namespace a catalog entry belongs to, which is what an entitlement is
+---keyed by. On the entry itself for most titles, on the Windows asset for the
+---rest.
+---@param entry table One element of `legendary list`
+---@return string|nil namespace
+local function namespace(entry)
+  local from_metadata = (entry.metadata or {}).namespace
+  if type(from_metadata) == "string" then
+    return from_metadata
+  end
+
+  local windows = (entry.asset_infos or {}).Windows
+  return type(windows) == "table" and windows.namespace or nil
+end
+
 ---Fold one catalog entry together with what's installed on disk for it, if
 ---anything is.
 ---@param entry table One element of `legendary list`
 ---@param local_game table|nil The matching element of `legendary list-installed`
+---@param granted table<string, integer> Grant dates by namespace, per entitlements.lua
 ---@return EpicGame
-local function merge_game(entry, local_game)
+local function merge_game(entry, local_game, granted)
   local metadata = entry.metadata or {}
 
   local game = {
@@ -223,6 +241,7 @@ local function merge_game(entry, local_game)
     folder_name = ((metadata.customAttributes or {}).FolderName or {}).value,
     art_portrait = pick_art(metadata.keyImages, "portrait"),
     art_hero = pick_art(metadata.keyImages, "hero"),
+    purchased_at = granted[namespace(entry) or ""],
   }
 
   return apply_installed(game, local_game, latest_version(entry))
@@ -257,10 +276,12 @@ function library.refresh(force)
   local installed_by_name =
     import_leftover_egl_installs(owned, index_installed(legendary.run(LIST_INSTALLED)) or {})
 
+  local granted = entitlements.get_granted()
+
   local merged = {}
   for _, entry in ipairs(owned) do
     if is_game(entry) then
-      table.insert(merged, merge_game(entry, installed_by_name[entry.app_name]))
+      table.insert(merged, merge_game(entry, installed_by_name[entry.app_name], granted))
     end
   end
 
