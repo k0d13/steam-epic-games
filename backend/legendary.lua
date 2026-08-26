@@ -118,7 +118,11 @@ function legendary.decode_json(output)
     end
   end
 
-  return nil, utils.trim(output)
+  -- Only the last error line, never the whole output: a legendary that fell over
+  -- prints a Python traceback, and handing kilobytes of it back as an error
+  -- string tells nobody anything and travels through the whole RPC path.
+  local trimmed = utils.trim(output)
+  return nil, legendary.last_error(output) or trimmed:sub(1, 200)
 end
 
 ---The last error line in some legendary output, if it printed one.

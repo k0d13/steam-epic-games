@@ -258,6 +258,14 @@ function library.refresh(force)
     return nil, binary_error
   end
 
+  -- Signed out, `legendary list` exits 1 with "ValueError: No saved
+  -- credentials" and a traceback under it. Asked anyway, that is two failed
+  -- subprocesses and a page of Python handed back as an error on every refresh.
+  local status = legendary.get_status()
+  if not status.authenticated then
+    return nil, "Not signed in to Epic."
+  end
+
   local list_args = { "list", "--json" }
   if force then
     table.insert(list_args, "--force-refresh")
