@@ -4,5 +4,6 @@
   "common_name": "Epic Games",
   "description": "Browse, install and launch your Epic Games library from Steam.",
   "version": "0.0.0",
-  "backendType": "lua"
+  "backendType": "lua",
+  "webkitApiVersion": "2.0.0"
 }
