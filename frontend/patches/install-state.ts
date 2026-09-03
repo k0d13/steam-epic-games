@@ -165,9 +165,12 @@ export function register() {
  * objects throws "t is not iterable" out of UpdateApps.
  */
 export function refreshAll() {
-  const apps = appStore.allApps.filter(
-    (app) => app.appid >= NON_STEAM_APP_APPID_MASK && library.getByAppId(app.appid) !== undefined,
-  );
+  // By appid rather than filtered out of `allApps`: this runs on every library
+  // and job change, and `allApps` is thousands of overviews for our handful.
+  const apps = library
+    .appIdsWithGames()
+    .map((appId) => appStore.GetAppOverviewByAppID(appId))
+    .filter((app): app is SteamAppOverview => app !== undefined);
 
   if (apps.length === 0) return;
 

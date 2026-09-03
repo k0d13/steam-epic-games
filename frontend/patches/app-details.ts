@@ -138,7 +138,7 @@ export function register() {
  */
 export function refreshAll() {
   const store = getStore();
-  if (!store) return;
+  if (!store || library.isEmpty()) return;
 
   for (const data of store.m_mapAppData.values()) {
     const details = data.details;
@@ -146,6 +146,25 @@ export function refreshAll() {
 
     const updated = { ...details };
     apply(updated);
+
+    // Only when the pass wrote something new: a repaint happens on every jobs
+    // poll, and re-submitting unchanged details re-renders the app page for
+    // nothing. Against what we last sent, since the store's copy is Steam's.
+    const signature = sign(updated);
+    if (applied.get(details.unAppID) === signature) continue;
+
+    applied.set(details.unAppID, signature);
     store.AppDetailsChanged(updated);
   }
 }
+
+/** What we last sent for an app, so an unchanged pass costs no re-render. */
+const applied = new Map<number, string>();
+
+const sign = (details: AppDetails) =>
+  [
+    details.bHasAnyLocalContent,
+    details.lDiskSpaceRequiredBytes,
+    details.achievements?.nAchieved,
+    details.achievements?.nTotal,
+  ].join("|");
