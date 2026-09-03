@@ -119,6 +119,15 @@ function findAppId(element: Element): number | undefined {
 
 /** Mark, or unmark, every piece of artwork under `root`. */
 function stamp(root: Element) {
+  // Nothing signed in means nothing can match, and the observer sees every
+  // mutation in the window - a theme loading is thousands of them.
+  if (library.isEmpty()) {
+    for (const element of root.querySelectorAll(`[${ATTRIBUTE}]`)) {
+      element.removeAttribute(ATTRIBUTE);
+    }
+    return;
+  }
+
   for (const [selector, kind] of Object.entries(TARGETS)) {
     for (const element of root.querySelectorAll(selector)) {
       const appId = findAppId(element);

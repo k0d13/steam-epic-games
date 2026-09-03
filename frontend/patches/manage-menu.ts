@@ -199,9 +199,15 @@ function patchPrototype(instance: ManageMenuInstance) {
  * A cheap test for "worth walking a fiber tree over", since the walk searches
  * the whole tree and DOM mutations are constant.
  */
-function looksLikeMenu(node: Element): boolean {
+function looksLikeMenu(node: Element, shallow: boolean): boolean {
   const className = typeof node.className === "string" ? node.className : "";
-  return /contextmenu/i.test(className) || node.querySelector('[class*="ontextMenu"]') !== null;
+  if (/contextmenu/i.test(className)) return true;
+
+  // The subtree search only for a node mounted at the top of the tree, which is
+  // where a menu's portal goes. Everything else added to a window is a render -
+  // a theme loading is thousands of them, and each would cost a query over its
+  // own subtree.
+  return shallow && node.querySelector('[class*="ontextMenu"]') !== null;
 }
 
 export function register() {
@@ -209,8 +215,8 @@ export function register() {
   let missed = false;
   const observers: MutationObserver[] = [];
 
-  function capture(root: Element | undefined, retries = 3) {
-    if (unpatch || !root || !looksLikeMenu(root)) return;
+  function capture(root: Element | undefined, retries = 3, shallow = true) {
+    if (unpatch || !root || !looksLikeMenu(root, shallow)) return;
 
     const instance = findManageMenu(root);
     if (!instance) {
@@ -218,7 +224,7 @@ export function register() {
       // the fiber tree, and there are no more mutations once it has opened - so
       // without the retries we'd be waiting for the next menu.
       if (retries > 0) {
-        setTimeout(() => capture(root, retries - 1), 100);
+        setTimeout(() => capture(root, retries - 1, shallow), 100);
         return;
       }
 
@@ -252,7 +258,7 @@ export function register() {
         for (const node of record.addedNodes) {
           // `node instanceof Element` is always false: the menu belongs to
           // another window, and instanceof doesn't cross realms.
-          if (node.nodeType === 1) capture(node as Element);
+          if (node.nodeType === 1) capture(node as Element, 3, record.target === root);
           if (unpatch) return;
         }
       }
