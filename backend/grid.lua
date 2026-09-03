@@ -45,11 +45,17 @@ function grid.path(account_id)
   return path
 end
 
+---Extensions an icon can arrive as. Ours is a PNG we draw ourselves, but the
+---grid folder is shared with anything else that writes icons and SteamGridDB's
+---are usually `.ico`. Deliberately not jpg: `<app_id>.jpg` is the header image,
+---and looking for one would rename that into an icon.
+local ICON_EXTENSIONS = { "png", "ico" }
+
 ---Move the icon Steam just wrote to the name Steam actually reads it back from.
 ---
----SetCustomArtworkForApp writes `<grid>/<app_id>.png`, but a shortcut's icon
----comes from `<app_id>_icon.png`. Renamed rather than copied, or the stray file
----is left competing with the `<app_id>.jpg` header.
+---SetCustomArtworkForApp writes `<grid>/<app_id>.<ext>`, but a shortcut's icon
+---comes from `<app_id>_icon.<ext>`. Renamed rather than copied, or the stray
+---file is left competing with the `<app_id>.jpg` header.
 ---@param app_id integer|string
 ---@param account_id integer|string|nil
 ---@return string|nil path Where the icon ended up
@@ -60,17 +66,32 @@ function grid.place_icon(app_id, account_id)
     return nil, err
   end
 
-  local source = path .. "/" .. tostring(app_id) .. ".png"
-  local target = path .. "/" .. tostring(app_id) .. "_icon.png"
+  local id = tostring(app_id)
 
-  if not fs.is_file(source) then
-    return nil, "Steam did not write " .. source
+  local source, extension
+  for _, candidate in ipairs(ICON_EXTENSIONS) do
+    local file = path .. "/" .. id .. "." .. candidate
+    if fs.is_file(file) then
+      source, extension = file, candidate
+      break
+    end
   end
 
+  if not source then
+    return nil, "Steam wrote no icon for " .. id .. " in " .. path
+  end
+
+  -- Every extension, not just the one we're about to write: an icon left from
+  -- another source is what Steam would go on reading otherwise. Also because
   -- rename won't replace an existing file on Windows.
-  if fs.is_file(target) then
-    fs.remove(target)
+  for _, candidate in ipairs(ICON_EXTENSIONS) do
+    local existing = path .. "/" .. id .. "_icon." .. candidate
+    if fs.is_file(existing) then
+      fs.remove(existing)
+    end
   end
+
+  local target = path .. "/" .. id .. "_icon." .. extension
   if not fs.rename(source, target) then
     return nil, "could not rename " .. source
   end
