@@ -73,8 +73,25 @@ export function onPopupCreate(
  * Nudge the library window's router hash so everything keyed off the location
  * re-renders. Steam builds its app overviews once and keeps them, so a
  * corrected one is only drawn after something asks for a repaint.
+ *
+ * Coalesced, because a repaint runs several patches and each asks for one. A
+ * hash change re-renders the library and everything else keyed off the
+ * location, Millennium re-applying a theme's patches included.
  */
+let nudgeQueued = false;
+
 export function forceFakeLocationChange() {
+  if (nudgeQueued) return;
+  nudgeQueued = true;
+
+  // A timer, not a frame: SharedJSContext has none of its own.
+  setTimeout(() => {
+    nudgeQueued = false;
+    nudge();
+  }, 16);
+}
+
+function nudge() {
   if (MainWindowBrowserManager?.m_lastLocation) {
     MainWindowBrowserManager.m_lastLocation.hash = `#${Math.random()}`;
     return;

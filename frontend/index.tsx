@@ -80,11 +80,21 @@ export default definePlugin(async () => {
 
   // Steam builds its overviews once and keeps them, so every change to the
   // library has to ask for a repaint.
+  //
+  // Coalesced: the sources of one fire together, an install poll landing a jobs
+  // change and a library change on the same tick.
+  let repaintQueued = false;
   const repaint = () => {
-    downloadOverview.sync();
-    installState.refreshAll();
-    activity.refreshAll();
-    appDetails.refreshAll();
+    if (repaintQueued) return;
+    repaintQueued = true;
+
+    setTimeout(() => {
+      repaintQueued = false;
+      downloadOverview.sync();
+      installState.refreshAll();
+      activity.refreshAll();
+      appDetails.refreshAll();
+    }, 16);
   };
 
   // A running install repaints once a second, since its progress bar is read
@@ -113,22 +123,28 @@ export default definePlugin(async () => {
     for (const unpatch of unpatches) unpatch();
   });
 
-  // Cache only: every shortcut claims to be installed until this resolves, so
-  // it can't wait on Epic. The panel asks for the real thing once it's up.
-  await library.load();
+  // Not awaited: Millennium brings up plugins and themes off this same startup,
+  // and the first backend call can be a legendary download. Awaiting it held up
+  // the client, themes included, and left this panel unreachable meanwhile.
+  void (async () => {
+    // Cache only: every shortcut claims to be installed until this resolves, so
+    // it can't wait on Epic. The panel asks for the real thing once it's up.
+    await library.load();
 
-  // Counts for the games we've already read, so the library home can sort by
-  // completion before anything opens a details page. Cache only, no Epic.
-  void achievements.loadSummaries();
+    // Installs are detached, so they outlive a Steam restart: pick up anything
+    // still running and start polling it again.
+    await jobs.refresh();
 
-  // Installs are detached, so they outlive a Steam restart: pick up anything
-  // still running and start polling it again.
-  await jobs.refresh();
+    // Counts for the games we've already read, so the library home can sort by
+    // completion before anything opens a details page. Last, because the cached
+    // read is followed by a round trip per game that has been played since.
+    void achievements.loadSummaries();
 
-  // legendary only spots a new build by comparing what's installed against a
-  // catalog it has already fetched, so a cached library never grows an update.
-  // Not awaited: it costs a round trip to Epic, and nothing here waits on it.
-  void library.load(true, true);
+    // legendary only spots a new build by comparing what's installed against a
+    // catalog it has already fetched, so a cached library never grows an
+    // update. Costs a round trip to Epic, so nothing waits on it.
+    void library.load(true, true);
+  })();
 
   logger.info("Plugin loaded");
 

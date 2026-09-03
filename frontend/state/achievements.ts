@@ -14,6 +14,9 @@ import { createEmitter } from "./emitter";
 /** How old an answer can get before the next read goes back to Epic. */
 const STALE_AFTER_MS = 10 * 60 * 1000;
 
+/** How long the catch-up read waits for the client to finish starting up. */
+const STARTUP_GRACE_MS = 30_000;
+
 /** `null` records a game we asked about and got nothing for, so we stop asking. */
 const known = new Map<string, GameAchievements | null>();
 const pending = new Set<string>();
@@ -41,7 +44,9 @@ export async function loadSummaries() {
   for (const [appName, summary] of cached) summaries.set(appName, summary);
   emitter.emit();
 
-  await refreshPlayed();
+  // Held back: each game it re-reads is a legendary run, and those go through
+  // the one Lua state every other RPC needs.
+  setTimeout(() => void refreshPlayed(), STARTUP_GRACE_MS);
 }
 
 /**
