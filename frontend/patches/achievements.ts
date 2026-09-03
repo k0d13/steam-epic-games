@@ -105,11 +105,21 @@ function listFor(appName: string): SteamAchievement[] | undefined {
   return list;
 }
 
-/** One game's achievements in the shape the app details store holds. */
+/** Kept against the converted list, for the same reason `converted` is. */
+const bucketed = new WeakMap<SteamAchievement[], SteamAchievements>();
+
+/**
+ * One game's achievements in the shape the app details store holds. Memoised
+ * as well as the conversion: this is called for every Epic game on every
+ * repaint, and a fresh object is also a fresh prop to re-render on.
+ */
 export function getAchievements(appName: string): SteamAchievements | undefined {
   const list = listFor(appName);
   const result = achievements.get(appName);
   if (!list || !result) return undefined;
+
+  const cached = bucketed.get(list);
+  if (cached) return cached;
 
   const highlight: SteamAchievement[] = [];
   const unachieved: SteamAchievement[] = [];
@@ -121,13 +131,16 @@ export function getAchievements(appName: string): SteamAchievements | undefined 
     else highlight.push(achievement);
   }
 
-  return {
+  const built = {
     nAchieved: result.unlocked,
     nTotal: result.total,
     vecHighlight: highlight,
     vecUnachieved: unachieved,
     vecAchievedHidden: achievedHidden,
   };
+
+  bucketed.set(list, built);
+  return built;
 }
 
 // The full achievements page - the one "View all achievements" opens - reads
@@ -200,7 +213,18 @@ function findAchievementStore(): AchievementStore | undefined {
  * The store's grouping. `withHidden` is off for the player page, which has no
  * hidden bucket of its own - a locked hidden achievement is only locked there.
  */
+const grouping = {
+  true: new WeakMap<SteamAchievement[], MyAchievements>(),
+  false: new WeakMap<SteamAchievement[], MyAchievements>(),
+};
+
 function group(list: SteamAchievement[], withHidden: boolean): MyAchievements {
+  // The page asks its getters on every render, and a game with a few hundred
+  // achievements is a few hundred object writes each time.
+  const memo = grouping[withHidden ? "true" : "false"];
+  const cached = memo.get(list);
+  if (cached) return cached;
+
   const grouped: MyAchievements = { achieved: {}, unachieved: {}, hidden: {} };
 
   for (const achievement of list) {
@@ -209,6 +233,7 @@ function group(list: SteamAchievement[], withHidden: boolean): MyAchievements {
     else grouped.unachieved[achievement.strID] = achievement;
   }
 
+  memo.set(list, grouped);
   return grouped;
 }
 

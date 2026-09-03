@@ -50,9 +50,11 @@ export function register() {
 
 /** Correct the overviews Steam built before the library loaded. */
 export function refreshAll() {
-  const apps = appStore.allApps.filter(
-    (app) => app.appid >= NON_STEAM_APP_APPID_MASK && library.getByAppId(app.appid) !== undefined,
-  );
+  // By appid, not by sifting `allApps`: see the same call in install-state.
+  const apps = library
+    .appIdsWithGames()
+    .map((appId) => appStore.GetAppOverviewByAppID(appId))
+    .filter((app): app is SteamAppOverview => app !== undefined);
 
   if (apps.length === 0) return;
 
