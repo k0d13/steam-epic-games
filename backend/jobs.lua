@@ -359,7 +359,8 @@ local function promote(entries)
       return
     end
     if
-      entry.job.state == "queued" and (not next_up or entry.job.started_at < next_up.job.started_at)
+      entry.job.state == "queued"
+      and (not next_up or entry.job.started_at < next_up.job.started_at)
     then
       next_up = entry
     end

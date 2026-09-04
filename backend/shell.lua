@@ -1,6 +1,8 @@
 local fs = require("fs")
 local json = require("json")
 local logger = require("logger")
+local text = require("text")
+local trace = require("trace")
 local utils = require("utils")
 
 -- Somewhere to run a command that isn't `utils.exec`.
@@ -38,6 +40,7 @@ local FILES = {
   script = "daemon.ps1",
   launcher = "daemon.vbs",
   version = "daemon.version",
+  kept = "kept",
   stop = "daemon.stop",
 }
 
@@ -62,14 +65,14 @@ local RETRY_AFTER = 30000
 ---
 ---Used on the daemon script, so a daemon still running from before an edit is
 ---replaced rather than left quietly serving the old code.
----@param text string
+---@param value string
 ---@return string
-local function fingerprint(text)
+local function fingerprint(value)
   local sum = 0
-  for index = 1, #text do
-    sum = (sum * 31 + text:byte(index)) % 4294967291
+  for index = 1, #value do
+    sum = (sum * 31 + value:byte(index)) % 4294967291
   end
-  return #text .. "-" .. sum
+  return #value .. "-" .. sum
 end
 
 --- What to multiply milliseconds by to get whatever unit `utils.sleep` takes,
@@ -296,6 +299,7 @@ local function launch()
     .. "\n"
     .. DAEMON_SCRIPT
 
+  trace.event("daemon.write")
   local ok, err = utils.write_file(file("script"), script)
   if not ok then
     logger:error("Could not write the daemon: " .. tostring(err))
@@ -314,6 +318,7 @@ local function launch()
   )
 
   -- The one console window left, at startup rather than once a second.
+  trace.event("daemon.spawn")
   utils.exec('wscript "' .. (file("launcher"):gsub("/", "\\")) .. '"')
 
   local deadline = utils.time_ms() + 10000
@@ -326,6 +331,7 @@ local function launch()
     nap(20)
   end
 
+  trace.event("daemon.ready")
   logger:info("Command daemon ready")
   return true
 end
@@ -341,6 +347,7 @@ function shell.ensure()
 
     -- The script has been edited since that daemon started, which only happens
     -- while developing. It polls for this file and exits when it sees it.
+    trace.event("daemon.stale", { want = FINGERPRINT, have = stamp() })
     logger:info("Command daemon is out of date, restarting it")
     utils.write_file(file("stop"), "1")
 
@@ -422,6 +429,48 @@ function shell.start(exe, args, options)
   return id
 end
 
+--- How many broken responses to hold on to. Enough that the one which caused
+--- trouble is still there a few commands later, few enough to not quietly
+--- become a second copy of the library on disk.
+local KEEP = 10
+
+---Drop all but the newest kept responses.
+---@param dir string
+local function prune(dir)
+  local entries = fs.list(dir) or {}
+  if #entries <= KEEP then
+    return
+  end
+
+  table.sort(entries, function(a, b)
+    return (fs.last_write_time(a.path) or 0) > (fs.last_write_time(b.path) or 0)
+  end)
+  for index = KEEP + 1, #entries do
+    fs.remove(entries[index].path)
+  end
+end
+
+---Move one command's output somewhere it outlives the call.
+---
+---A response that isn't valid UTF-8 is the shape that used to take Millennium
+---down, and the bytes are the only thing that says which command produced them.
+---They can't be read back out of a crash dump, so they are kept as a file.
+---@param id string
+---@param out_path string
+---@param output string
+---@param position integer
+local function keep(id, out_path, output, position)
+  local dir = file("kept")
+  fs.create_directories(dir)
+
+  if not fs.rename(out_path, dir .. "/" .. id .. ".out") then
+    return
+  end
+
+  trace.anomaly("shell.invalid_utf8", { id = id, bytes = text.window(output, position) })
+  prune(dir)
+end
+
 ---Has the command finished? Nil while it is still going, and the files are
 ---cleaned up by the read that collects them, so an id answers once.
 ---@param id string
@@ -437,7 +486,10 @@ function shell.poll(id)
   local output = utils.read_file(out_path) or ""
   local code = tonumber(utils.trim(utils.read_file(code_path) or "")) or -1
 
-  if fs.is_file(out_path) then
+  local invalid = text.first_invalid(output)
+  if invalid then
+    keep(id, out_path, output, invalid)
+  elseif fs.is_file(out_path) then
     fs.remove(out_path)
   end
   fs.remove(code_path)
@@ -471,6 +523,7 @@ function shell.run(exe, args, options)
   local id, err = shell.start(exe, args, options)
   if not id then
     logger:warn(tostring(err))
+    trace.anomaly("shell.fallback", { exe = exe, error = tostring(err) })
     return fallback(exe, to_strings(args))
   end
 
@@ -483,6 +536,7 @@ function shell.run(exe, args, options)
 
     if utils.time_ms() > deadline then
       logger:warn("Command timed out: " .. exe)
+      trace.anomaly("shell.timeout", { exe = exe, ms = options.timeout or TIMEOUT })
       shell.forget(id)
       return "", -1
     end
