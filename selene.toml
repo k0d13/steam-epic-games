@@ -1,2 +1,2 @@
-std = "lua54"
+std = "lua51"
 exclude = ["types/**"]
