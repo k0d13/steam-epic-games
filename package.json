@@ -1,6 +1,6 @@
 {
   "name": "epic-games",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "dependencies": {
     "@steambrew/client": "^5.8.4",
     "@steambrew/webkit": "^5.8.4"
