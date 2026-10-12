@@ -1,5 +1,6 @@
+local DATA = require("data")
 local fs = require("fs")
-local logger = require("logger")
+local log = require("log")
 local shell = require("shell")
 local utils = require("utils")
 
@@ -29,7 +30,7 @@ local URL = "https://github.com/legendary-gl/legendary/releases/download/"
 --- Where the binary is kept. The name has no version in it because every Steam
 --- shortcut points at this path: an upgrade replaces the file in place, which
 --- the hash check notices on its own.
-local DIR = utils.get_backend_path() .. "/vendor"
+local DIR = DATA .. "/vendor"
 local PATH = DIR .. "/legendary.exe"
 
 ---The SHA-256 of a file, lowercase hex, or nil if it couldn't be hashed.
@@ -39,7 +40,7 @@ local PATH = DIR .. "/legendary.exe"
 local function digest(path)
   local output, code = shell.run("certutil", { "-hashfile", (path:gsub("/", "\\")), "SHA256" })
   if code ~= 0 then
-    logger:warn("certutil could not hash " .. path .. ", exited " .. code)
+    log.warn("certutil could not hash " .. path .. ", exited " .. code)
     return nil
   end
 
@@ -71,7 +72,7 @@ local function fetch(destination)
     return true
   end
 
-  logger:info("curl did not produce a file, falling back to PowerShell")
+  log.info("curl did not produce a file, falling back to PowerShell")
   shell.run("powershell", {
     "-NoProfile",
     "-ExecutionPolicy",
@@ -97,7 +98,7 @@ function vendor.ensure()
     if digest(PATH) == SHA256 then
       return PATH
     end
-    logger:warn("Vendored legendary does not match the pin, refetching")
+    log.warn("Vendored legendary does not match the pin, refetching")
     fs.remove(PATH)
   end
 
@@ -110,7 +111,7 @@ function vendor.ensure()
     fs.remove(partial)
   end
 
-  logger:info("Fetching legendary " .. VERSION .. " from " .. URL)
+  log.info("Fetching legendary " .. VERSION .. " from " .. URL)
   local started = utils.time_ms()
   if not fetch(partial) then
     return nil, "Could not download legendary. Check your connection and try again."
@@ -119,7 +120,7 @@ function vendor.ensure()
   local actual = digest(partial)
   if actual ~= SHA256 then
     fs.remove(partial)
-    logger:error("Checksum mismatch: expected " .. SHA256 .. ", got " .. tostring(actual))
+    log.error("Checksum mismatch: expected " .. SHA256 .. ", got " .. tostring(actual))
     return nil, "The downloaded legendary did not match its checksum, so it was discarded."
   end
 
@@ -128,7 +129,7 @@ function vendor.ensure()
     return nil, "Could not move the downloaded legendary into " .. PATH
   end
 
-  logger:info(
+  log.info(
     "Vendored legendary "
       .. VERSION
       .. " to "

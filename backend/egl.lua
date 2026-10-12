@@ -1,6 +1,6 @@
 local cache = require("cache")
 local fs = require("fs")
-local logger = require("logger")
+local log = require("log")
 local utils = require("utils")
 
 -- Games installed by the Epic Games Launcher are invisible to legendary until
@@ -27,7 +27,7 @@ function egl.get_manifests()
   local path = program_data .. "/Epic/EpicGamesLauncher/Data/Manifests"
 
   if not fs.is_directory(path) then
-    logger:info("No Epic Games Launcher manifests at " .. path)
+    log.info("No Epic Games Launcher manifests at " .. path)
     return {}
   end
 
@@ -38,7 +38,7 @@ function egl.get_manifests()
       local decoded = cache.read(entry.path, "Epic Games Launcher manifest") or {}
 
       if decoded.bIsIncompleteInstall == true then
-        logger:info(
+        log.info(
           "Skipping incomplete Epic Games Launcher install: " .. tostring(decoded.DisplayName)
         )
       elseif type(decoded.AppName) == "string" and type(decoded.InstallLocation) == "string" then

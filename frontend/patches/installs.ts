@@ -1,5 +1,4 @@
-import { callOriginal, replacePatch } from "@steambrew/client";
-import { logger } from "../logger";
+import { callOriginal, replacePatch } from "millennium";
 import * as jobs from "../state/jobs";
 import * as library from "../state/library";
 import * as downloads from "./downloads";
@@ -56,7 +55,7 @@ export function register() {
       // only open it for the first. `ours` is non-empty by the check above.
       const [first] = ours as [number, ...number[]];
       const game = library.getByAppId(first);
-      if (game) void wizard.open(first, game.appName, game.folderName);
+      if (game) void wizard.open(first, game.app_name, game.folder_name ?? undefined);
 
       return undefined;
     }),
@@ -74,7 +73,7 @@ export function register() {
 
         for (const appId of ours) {
           const game = library.getByAppId(appId);
-          if (game) void jobs.uninstall(game.appName);
+          if (game) void jobs.uninstall(game.app_name);
         }
 
         return undefined;
@@ -88,9 +87,9 @@ export function register() {
       const game = library.getByAppId(appId);
       if (!game) return callOriginal;
 
-      if (jobs.get(game.appName)) void jobs.resume(game.appName);
-      else if (game.installed && game.needsUpdate) void jobs.update(game.appName);
-      else void jobs.install(game.appName);
+      if (jobs.get(game.app_name)) void jobs.resume(game.app_name);
+      else if (game.installed && game.needs_update) void jobs.update(game.app_name);
+      else void jobs.install(game.app_name);
 
       return undefined;
     }),
@@ -105,7 +104,7 @@ export function register() {
       const game = library.getByAppId(appId);
       if (!game) return callOriginal;
 
-      void jobs.cancel(game.appName);
+      void jobs.cancel(game.app_name);
       return undefined;
     }),
 
@@ -113,7 +112,7 @@ export function register() {
     // button called it. So ours pause together and Steam's are left to Steam.
     replacePatch(bridge.Downloads, "EnableAllDownloads", ([enabled]: [boolean, string?]) => {
       if (enabled) {
-        for (const job of jobs.paused()) void jobs.resume(job.appName);
+        for (const job of jobs.paused()) void jobs.resume(job.app_name);
       } else {
         void jobs.pauseAll();
       }
@@ -122,7 +121,7 @@ export function register() {
     }),
   ];
 
-  logger.debug("Registered the install patches");
+  console.debug("Registered the install patches");
   return () => {
     for (const patch of patches) patch.unpatch();
   };

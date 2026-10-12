@@ -9,17 +9,9 @@
     "*.cjs": "$(capture).cjs.map, $(capture).d.cts, $(capture).d.cts.map"
   },
 
-  // .deployed is a junction into Steam, so everything under it is this repo a
-  // second time — watching it doubles every file event.
-  "files.watcherExclude": {
-    "**/.deployed": true
-  },
-  // Same reason, plus build output and the vendored legendary tree.
   "search.exclude": {
-    "**/.deployed": true,
     "**/.ignore": true,
-    "**/.millennium": true,
-    "**/backend/vendor": true
+    "**/.millennium": true
   },
 
   // Editor

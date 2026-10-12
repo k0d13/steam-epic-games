@@ -1,12 +1,28 @@
 local fs = require("fs")
 local json = require("json")
-local logger = require("logger")
+local log = require("log")
 local utils = require("utils")
 
 -- Small JSON documents on disk. The ones written here are all caches: losing
 -- one costs a refresh, so nothing here tries harder than that.
 
 local cache = {}
+
+---Decode a JSON document, or nil if it plainly isn't one.
+---
+---A cjson error takes down Millennium's whole Lua VM, `pcall` or not, so
+---anything that doesn't even open and close like a document is turned away
+---before cjson sees it.
+---@param text string|nil
+---@return any|nil
+function cache.decode(text)
+  local trimmed = utils.trim(text or "")
+  local first, last = trimmed:sub(1, 1), trimmed:sub(-1)
+  if (first == "{" and last == "}") or (first == "[" and last == "]") then
+    return json.decode(trimmed)
+  end
+  return nil
+end
 
 ---Decode a JSON file, or nil if it isn't there or can't be read.
 ---@param path string
@@ -17,9 +33,9 @@ function cache.read(path, label)
     return nil
   end
 
-  local ok, decoded = pcall(json.decode, utils.read_file(path) or "")
-  if not ok or type(decoded) ~= "table" then
-    logger:warn("Unreadable " .. label .. " at " .. path)
+  local decoded = cache.decode(utils.read_file(path))
+  if type(decoded) ~= "table" then
+    log.warn("Unreadable " .. label .. " at " .. path)
     return nil
   end
 
@@ -38,7 +54,7 @@ function cache.write(path, value, label)
   local temp_path = path .. ".tmp"
   local ok, err = utils.write_file(temp_path, json.encode(value))
   if not ok then
-    logger:error("Could not write the " .. label .. " cache: " .. tostring(err))
+    log.error("Could not write the " .. label .. " cache: " .. tostring(err))
     return false
   end
 
@@ -48,7 +64,7 @@ function cache.write(path, value, label)
     fs.remove(path)
   end
   if not fs.rename(temp_path, path) then
-    logger:error("Could not replace the " .. label .. " cache")
+    log.error("Could not replace the " .. label .. " cache")
     return false
   end
 

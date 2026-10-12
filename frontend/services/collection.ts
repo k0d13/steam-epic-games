@@ -1,6 +1,4 @@
-import { type SteamAppOverview } from "@steambrew/client";
-import { logger } from "../logger";
-import { type EpicGame } from "../rpc";
+import { type SteamAppOverview } from "millennium";
 import * as appIds from "../state/app-ids";
 
 // Every Epic shortcut in one Steam collection, so the library has an "Epic
@@ -48,7 +46,7 @@ function overviews(games: EpicGame[]): SteamAppOverview[] {
   const wanted = new Set<number>();
 
   for (const game of games) {
-    const appId = appIds.getAppId(game.appName);
+    const appId = appIds.getAppId(game.app_name);
     if (appId !== undefined) wanted.add(appId);
   }
 
@@ -83,12 +81,12 @@ export async function addAll(games: EpicGame[]): Promise<CollectionResult> {
   if (!existing) {
     const created = collections().NewUnsavedCollection?.(COLLECTION_NAME, undefined, apps);
     if (!created?.Save) {
-      logger.warn("This Steam build exposes no way to create a collection");
+      console.warn("This Steam build exposes no way to create a collection");
       return { ok: false, error: "Steam wouldn't create the collection." };
     }
 
     await created.Save();
-    logger.info("Created the Epic Games collection", { apps: apps.length });
+    console.info("Created the Epic Games collection", { apps: apps.length });
     return { ok: true, added: apps.length, total: apps.length };
   }
 
@@ -96,7 +94,7 @@ export async function addAll(games: EpicGame[]): Promise<CollectionResult> {
   // to, and overwriting the user's filter would be worse than doing nothing.
   const editable = existing.AsDragDropCollection?.();
   if (!editable || !existing.Save) {
-    logger.warn("The Epic Games collection isn't one we can add to", { id: existing.id });
+    console.warn("The Epic Games collection isn't one we can add to", { id: existing.id });
     return {
       ok: false,
       error: `A collection named "${COLLECTION_NAME}" already exists and can't be edited.`,
@@ -110,7 +108,7 @@ export async function addAll(games: EpicGame[]): Promise<CollectionResult> {
     await existing.Save();
   }
 
-  logger.info("Filled the Epic Games collection", { added: missing.length, total: apps.length });
+  console.info("Filled the Epic Games collection", { added: missing.length, total: apps.length });
   return { ok: true, added: missing.length, total: apps.length };
 }
 

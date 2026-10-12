@@ -1,5 +1,3 @@
-import { logger } from "../logger";
-import { type Job } from "../rpc";
 import * as appIds from "../state/app-ids";
 import * as jobs from "../state/jobs";
 import * as sizes from "../state/sizes";
@@ -98,7 +96,7 @@ function stages(bytesInProgress: number, bytesTotal: number, eta: number): Updat
 }
 
 /** "01:02:03" to seconds, -1 for anything legendary didn't say. */
-export function etaSeconds(eta: string | undefined) {
+export function etaSeconds(eta: string | null | undefined) {
   if (!eta) return -1;
 
   const parts = eta.split(":").map(Number);
@@ -115,8 +113,8 @@ export function etaSeconds(eta: string | undefined) {
 export function bytesFor(job: Job) {
   if (job.kind !== "install") return [0, 0] as const;
 
-  sizes.ensure(job.appName);
-  const total = sizes.get(job.appName)?.download ?? 0;
+  sizes.ensure(job.app_name);
+  const total = sizes.get(job.app_name)?.download ?? 0;
   return [Math.round((total * (job.progress?.percent ?? 0)) / 100), total] as const;
 }
 
@@ -154,7 +152,7 @@ function ours(theirs: DownloadItem[]): DownloadItem[] {
   let next = Math.max(-1, ...theirs.map((transfer) => transfer.queue_index)) + 1;
 
   for (const job of [...jobs.active(), ...jobs.queued()].filter(isDownload)) {
-    const appId = appIds.getAppId(job.appName);
+    const appId = appIds.getAppId(job.app_name);
     if (appId === undefined) continue;
 
     const [done, total] = bytesFor(job);
@@ -170,7 +168,7 @@ function ours(theirs: DownloadItem[]): DownloadItem[] {
   // Paused is "removed from the queue" to Steam, which is also where its own
   // paused downloads go, with a button to put them back.
   for (const job of jobs.paused().filter(isDownload)) {
-    const appId = appIds.getAppId(job.appName);
+    const appId = appIds.getAppId(job.app_name);
     if (appId === undefined) continue;
 
     const [done, total] = bytesFor(job);
@@ -207,7 +205,7 @@ function track() {
   downloading = new Set(
     [...jobs.active(), ...jobs.queued(), ...jobs.paused()]
       .filter(isDownload)
-      .map((job) => job.appName),
+      .map((job) => job.app_name),
   );
 }
 
@@ -243,7 +241,7 @@ export function register() {
   const getter =
     store && Object.getOwnPropertyDescriptor(Object.getPrototypeOf(store), "AllTransfers")?.get;
   if (!store || !getter) {
-    logger.warn("Steam's downloads store wasn't found, Epic downloads stay off its page");
+    console.warn("Steam's downloads store wasn't found, Epic downloads stay off its page");
     return () => {};
   }
 
@@ -261,7 +259,7 @@ export function register() {
 
   dispatch();
 
-  logger.debug("Registered the downloads patch");
+  console.debug("Registered the downloads patch");
   return () => {
     Reflect.deleteProperty(store, "AllTransfers");
     dispatch();

@@ -1,5 +1,3 @@
-import { logger } from "../logger";
-import rpc, { type EpicGame } from "../rpc";
 import * as appIds from "../state/app-ids";
 import { NON_STEAM_APP_APPID_MASK } from "../state/app-ids";
 import { createEmitter } from "../state/emitter";
@@ -55,21 +53,21 @@ const BATCH_SIZE = 10;
 const yieldToUi = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 async function createShortcut(game: EpicGame): Promise<number | undefined> {
-  const launch = await rpc.GetLaunchCommand(game.appName);
+  const launch = await backend.get_launch_command(game.app_name);
   if (!launch) {
-    logger.debug("No launch command available", { appName: game.appName });
+    console.debug("No launch command available", { appName: game.app_name });
     return undefined;
   }
 
   const appId = await SteamClient.Apps.AddShortcut(
     game.title,
     launch.exe,
-    launch.startDir,
+    launch.start_dir,
     launch.arguments,
   );
 
   if (typeof appId !== "number" || appId === 0) {
-    logger.warn("Steam refused to create a shortcut", { appName: game.appName, appId });
+    console.warn("Steam refused to create a shortcut", { appName: game.app_name, appId });
     return undefined;
   }
 
@@ -77,10 +75,10 @@ async function createShortcut(game: EpicGame): Promise<number | undefined> {
   // every one of ours "legendary.exe".
   SteamClient.Apps.SetShortcutName(appId, game.title);
   SteamClient.Apps.SetShortcutLaunchOptions(appId, launch.arguments);
-  SteamClient.Apps.SetShortcutStartDir(appId, launch.startDir);
+  SteamClient.Apps.SetShortcutStartDir(appId, launch.start_dir);
 
-  appIds.setAppId(game.appName, appId);
-  logger.debug("Created a shortcut", { appName: game.appName, appId, title: game.title });
+  appIds.setAppId(game.app_name, appId);
+  console.debug("Created a shortcut", { appName: game.app_name, appId, title: game.title });
 
   return appId;
 }
@@ -89,7 +87,7 @@ function removeShortcut(appName: string, appId: number) {
   SteamClient.Apps.RemoveShortcut(appId);
   appIds.removeAppName(appName);
   artwork.forget(appName);
-  logger.debug("Removed a shortcut", { appName, appId });
+  console.debug("Removed a shortcut", { appName, appId });
 }
 
 /**
@@ -100,7 +98,7 @@ export async function sync(games: EpicGame[]): Promise<SyncResult> {
   const result: SyncResult = { added: 0, removed: 0, failed: 0, artworkApplied: 0 };
 
   if (state.active) {
-    logger.debug("A sync is already in progress, skipping this one");
+    console.debug("A sync is already in progress, skipping this one");
     return result;
   }
 
@@ -117,7 +115,7 @@ export async function sync(games: EpicGame[]): Promise<SyncResult> {
     );
 
     const known = appIds.getAll();
-    const owned = new Set(games.map((game) => game.appName));
+    const owned = new Set(games.map((game) => game.app_name));
 
     // A game that left the account leaves a shortcut that launches into an
     // ownership error.
@@ -132,7 +130,7 @@ export async function sync(games: EpicGame[]): Promise<SyncResult> {
     let addedSinceReindex = 0;
 
     for (const game of games) {
-      const existing = appIds.getAppId(game.appName);
+      const existing = appIds.getAppId(game.app_name);
       const appId = existing ?? (await createShortcut(game));
 
       if (appId === undefined) {
@@ -144,7 +142,7 @@ export async function sync(games: EpicGame[]): Promise<SyncResult> {
         }
 
         // Also covers shortcuts made by a sync that was interrupted partway.
-        if (!artwork.isDone(game.appName)) {
+        if (!artwork.isDone(game.app_name)) {
           result.artworkApplied += await artwork.apply(appId, game);
         }
       }
@@ -166,7 +164,7 @@ export async function sync(games: EpicGame[]): Promise<SyncResult> {
       }
     }
 
-    logger.info("Shortcut sync complete", result);
+    console.info("Shortcut sync complete", result);
     return result;
   } finally {
     // Unconditional: the appid map has been written to either way, and the
@@ -186,5 +184,5 @@ export function removeAll() {
 /** How many of the library's games already have a shortcut. */
 export function syncedCount(games: EpicGame[]) {
   const known = appIds.getAll();
-  return games.filter((game) => known[game.appName] !== undefined).length;
+  return games.filter((game) => known[game.app_name] !== undefined).length;
 }

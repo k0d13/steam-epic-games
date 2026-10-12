@@ -1,5 +1,3 @@
-import { logger } from "../logger";
-import { type EpicGame } from "../rpc";
 import * as appIds from "../state/app-ids";
 import { NON_STEAM_APP_APPID_MASK } from "../state/app-ids";
 
@@ -46,7 +44,7 @@ function isHidden(appId: number): boolean {
   try {
     return collections().BIsHidden?.(appId) ?? false;
   } catch (reason: unknown) {
-    logger.warn("Couldn't read whether an app is hidden", { appId, reason });
+    console.warn("Couldn't read whether an app is hidden", { appId, reason });
     return false;
   }
 }
@@ -67,7 +65,7 @@ function setHidden(ids: number[], hidden: boolean): number {
   const single = (SteamClient.Apps as { SetAppHidden?(appId: number, hidden: boolean): void })
     .SetAppHidden;
   if (!single) {
-    logger.warn("This Steam build exposes no way to hide an app");
+    console.warn("This Steam build exposes no way to hide an app");
     return 0;
   }
 
@@ -81,7 +79,7 @@ function visibleDuplicates(games: EpicGame[]): number[] {
   const ids: number[] = [];
 
   for (const game of games) {
-    const appId = appIds.getAppId(game.appName);
+    const appId = appIds.getAppId(game.app_name);
     if (appId === undefined || !titles.has(normalize(game.title)) || isHidden(appId)) continue;
     ids.push(appId);
   }
@@ -94,14 +92,14 @@ const hiddenShortcuts = () => Object.values(appIds.getAll()).filter(isHidden);
 /** Hide every Epic shortcut duplicating a Steam game. Returns how many moved. */
 export function hideDuplicates(games: EpicGame[]): number {
   const hidden = setHidden(visibleDuplicates(games), true);
-  logger.info("Hid duplicate Epic shortcuts", { hidden });
+  console.info("Hid duplicate Epic shortcuts", { hidden });
   return hidden;
 }
 
 /** Unhide every shortcut this plugin created. Returns how many moved. */
 export function showAll(): number {
   const shown = setHidden(hiddenShortcuts(), false);
-  logger.info("Unhid Epic shortcuts", { shown });
+  console.info("Unhid Epic shortcuts", { shown });
   return shown;
 }
 

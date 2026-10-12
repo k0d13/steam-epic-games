@@ -1,8 +1,7 @@
+local DATA = require("data")
 local fs = require("fs")
 local json = require("json")
-local logger = require("logger")
-local text = require("text")
-local trace = require("trace")
+local log = require("log")
 local utils = require("utils")
 
 -- Somewhere to run a command that isn't `utils.exec`.
@@ -12,19 +11,19 @@ local utils = require("utils")
 -- with it. Once a second, which is what polling a download used to cost, that is
 -- unusable.
 --
--- So one PowerShell is started at load - hidden, and the only window this plugin
--- flashes at all - and left running. It watches `data/daemon/req` for a request,
--- runs it, and writes the output and the exit code back into `data/daemon/res`;
+-- So one PowerShell is started with the first command - hidden, and the only
+-- window this plugin flashes at all - and left running. It watches `daemon/req` for a request,
+-- runs it, and writes the output and the exit code back into `daemon/res`;
 -- this module writes the one and waits for the other. Since that PowerShell is
 -- already up, a command also stops paying for a process launch.
 --
 -- `shell.run` still blocks the Lua state for as long as the command takes; what
--- it doesn't do is put a window on screen. `shell.start` is the one that comes
--- back straight away, and work too long even for that belongs in `jobs.lua`.
+-- it doesn't do is put a window on screen. Work too long for that belongs in
+-- `jobs.lua`.
 
 local shell = {}
 
-local ROOT = utils.get_backend_path() .. "/data/daemon"
+local ROOT = DATA .. "/daemon"
 local ROOT_WIN = (ROOT:gsub("/", "\\"))
 
 --- Everything the daemon directory holds, the same shape `jobs.lua` uses for a
@@ -40,7 +39,6 @@ local FILES = {
   script = "daemon.ps1",
   launcher = "daemon.vbs",
   version = "daemon.version",
-  kept = "kept",
   stop = "daemon.stop",
 }
 
@@ -75,23 +73,12 @@ local function fingerprint(value)
   return #value .. "-" .. sum
 end
 
---- What to multiply milliseconds by to get whatever unit `utils.sleep` takes,
---- measured once rather than assumed: guessing seconds when it wants
---- milliseconds only wastes a poll, guessing the other way round freezes Steam.
----@type number|nil
-local sleep_scale = nil
-
----Sleep for roughly `ms` milliseconds.
+---Sleep, if this runtime can. Wrapped because a throw here would take down
+---whichever backend call was waiting on a command, and leave the frontend with
+---nothing but a timeout.
 ---@param ms number
 local function nap(ms)
-  if not sleep_scale then
-    local started = utils.time_ms()
-    pcall(utils.sleep, 1)
-    -- A whole second back from an argument of 1 means the argument is seconds.
-    sleep_scale = (utils.time_ms() - started) >= 500 and 0.001 or 1
-  end
-
-  pcall(utils.sleep, ms * sleep_scale)
+  pcall(utils.sleep, ms)
 end
 
 ---Is `path` a lock file that some process is holding open?
@@ -106,8 +93,8 @@ function shell.is_locked(path)
     return false
   end
 
-  local ok, wrote = pcall(utils.write_file, path, "")
-  return not (ok and wrote ~= false)
+  -- nil rather than false on failure, so only true counts as getting in.
+  return utils.write_file(path, "") ~= true
 end
 
 ---Escape a string for a single-quoted PowerShell literal.
@@ -291,10 +278,9 @@ local function launch()
     .. "\n"
     .. DAEMON_SCRIPT
 
-  trace.event("daemon.write")
   local ok, err = utils.write_file(file("script"), script)
   if not ok then
-    logger:error("Could not write the daemon: " .. tostring(err))
+    log.error("Could not write the daemon: " .. tostring(err))
     retry_after = utils.time_ms() + RETRY_AFTER
     return false
   end
@@ -302,22 +288,20 @@ local function launch()
   utils.write_file(file("version"), FINGERPRINT)
   utils.write_file(file("launcher"), shell.vbs_launcher(file("script")))
 
-  -- The one console window left, at startup rather than once a second.
-  trace.event("daemon.spawn")
+  -- The one console window left, once per Steam session rather than once a second.
   utils.exec('wscript "' .. (file("launcher"):gsub("/", "\\")) .. '"')
 
   local deadline = utils.time_ms() + 10000
   while not shell.is_locked(file("lock")) do
     if utils.time_ms() > deadline then
-      logger:warn("Command daemon did not start, falling back to blocking commands")
+      log.warn("Command daemon did not start, falling back to blocking commands")
       retry_after = utils.time_ms() + RETRY_AFTER
       return false
     end
     nap(20)
   end
 
-  trace.event("daemon.ready")
-  logger:info("Command daemon ready")
+  log.info("Command daemon ready")
   return true
 end
 
@@ -332,8 +316,7 @@ function shell.ensure()
 
     -- The script has been edited since that daemon started, which only happens
     -- while developing. It polls for this file and exits when it sees it.
-    trace.event("daemon.stale", { want = FINGERPRINT, have = stamp() })
-    logger:info("Command daemon is out of date, restarting it")
+    log.info("Command daemon is out of date, restarting it")
     utils.write_file(file("stop"), "1")
 
     local deadline = utils.time_ms() + 10000
@@ -389,9 +372,9 @@ end
 ---Requests run side by side, so two of these overlap rather than queue.
 ---@param exe string
 ---@param args string[]
----@return string|nil id Hand this to `shell.poll`
+---@return string|nil id Hand this to `poll`
 ---@return string? error
-function shell.start(exe, args)
+local function start(exe, args)
   if not shell.ensure() then
     return nil, "The command daemon is not running"
   end
@@ -410,54 +393,12 @@ function shell.start(exe, args)
   return id
 end
 
---- How many broken responses to hold on to. Enough that the one which caused
---- trouble is still there a few commands later, few enough to not quietly
---- become a second copy of the library on disk.
-local KEEP = 10
-
----Drop all but the newest kept responses.
----@param dir string
-local function prune(dir)
-  local entries = fs.list(dir) or {}
-  if #entries <= KEEP then
-    return
-  end
-
-  table.sort(entries, function(a, b)
-    return (fs.last_write_time(a.path) or 0) > (fs.last_write_time(b.path) or 0)
-  end)
-  for index = KEEP + 1, #entries do
-    fs.remove(entries[index].path)
-  end
-end
-
----Move one command's output somewhere it outlives the call.
----
----A response that isn't valid UTF-8 is the shape that used to take Millennium
----down, and the bytes are the only thing that says which command produced them.
----They can't be read back out of a crash dump, so they are kept as a file.
----@param id string
----@param out_path string
----@param output string
----@param position integer
-local function keep(id, out_path, output, position)
-  local dir = file("kept")
-  fs.create_directories(dir)
-
-  if not fs.rename(out_path, dir .. "/" .. id .. ".out") then
-    return
-  end
-
-  trace.anomaly("shell.invalid_utf8", { id = id, bytes = text.window(output, position) })
-  prune(dir)
-end
-
 ---Has the command finished? Nil while it is still going, and the files are
 ---cleaned up by the read that collects them, so an id answers once.
 ---@param id string
 ---@return string|nil output
 ---@return integer? code
-function shell.poll(id)
+local function poll(id)
   local out_path = file("responses") .. "/" .. id .. ".out"
   local code_path = file("responses") .. "/" .. id .. ".code"
   if not fs.is_file(code_path) then
@@ -467,12 +408,7 @@ function shell.poll(id)
   local output = utils.read_file(out_path) or ""
   local code = tonumber(utils.trim(utils.read_file(code_path) or "")) or -1
 
-  local invalid = text.first_invalid(output)
-  if invalid then
-    keep(id, out_path, output, invalid)
-  elseif fs.is_file(out_path) then
-    fs.remove(out_path)
-  end
+  fs.remove(out_path)
   fs.remove(code_path)
 
   return output, code
@@ -501,23 +437,21 @@ end
 function shell.run(exe, args, timeout)
   timeout = timeout or TIMEOUT
 
-  local id, err = shell.start(exe, args)
+  local id, err = start(exe, args)
   if not id then
-    logger:warn(tostring(err))
-    trace.anomaly("shell.fallback", { exe = exe, error = tostring(err) })
+    log.warn(tostring(err))
     return fallback(exe, args)
   end
 
   local deadline = utils.time_ms() + timeout
   while true do
-    local output, code = shell.poll(id)
+    local output, code = poll(id)
     if output then
       return output, code or -1
     end
 
     if utils.time_ms() > deadline then
-      logger:warn("Command timed out: " .. exe)
-      trace.anomaly("shell.timeout", { exe = exe, ms = timeout })
+      log.warn("Command timed out: " .. exe)
       forget(id)
       return "", -1
     end

@@ -1,8 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/LuaLS/vscode-lua/master/setting/schema.json",
   "runtime.version": "Lua 5.1",
-  "workspace.library": ["types"],
+  "workspace.library": [".millennium/lsp/lua-types"],
   "workspace.checkThirdParty": false,
-  "diagnostics.globals": [],
   "format.enable": false
 }

@@ -1,11 +1,8 @@
-import { logger } from "../frontend/logger";
-import { getLibrary, type EpicGame } from "./rpc";
-
 /**
  * The store half of the plugin. Steam's store is a web page rather than part of
  * the client's React tree, so it gets its own bundle, loaded by Millennium into
  * every steampowered.com page and running with nothing the client half has -
- * no stores, no appid mapping, only the backend over RPC.
+ * no stores, no appid mapping, only the backend.
  *
  * All it does is say "you already own this on Epic" on a store page for a game
  * that is in the Epic library, so nobody buys a second copy. It says it the way
@@ -131,28 +128,22 @@ function render(game: EpicGame) {
   target.parentElement.insertBefore(banner, target);
 }
 
-export default async function WebkitMain() {
+export default async function main() {
   const title = storeTitle();
   if (!title) return;
 
-  let library;
-  try {
-    library = await getLibrary();
-  } catch (error) {
-    logger.error("Failed to read the Epic library", error);
-    return;
-  }
-
-  if (!library.ok) {
-    logger.debug("The store has no library to check against", library.error);
-    return;
-  }
+  // Always the backend's cache: this runs on every store page, and reading Epic
+  // itself takes seconds. Whatever the client half last cached is what we see.
+  const library = await backend.get_library();
 
   const wanted = new Set(keys(title));
-  const owned = library.games.find((game) => keys(game.title).some((key) => wanted.has(key)));
+  // An empty list arrives as `{}` (Lua has one table type); Object.values reads both.
+  const owned = Object.values(library.games).find((game) =>
+    keys(game.title).some((key) => wanted.has(key)),
+  );
 
   if (!owned) return;
 
-  logger.debug("Marking a store page as owned on Epic", { title, epic: owned.title });
+  console.debug("Marking a store page as owned on Epic", { title, epic: owned.title });
   render(owned);
 }

@@ -1,5 +1,3 @@
-import { logger } from "../logger";
-import rpc, { type Job } from "../rpc";
 import { createEmitter } from "./emitter";
 import * as library from "./library";
 import * as sizes from "./sizes";
@@ -30,7 +28,7 @@ export function active(): Job[] {
 export function queued(): Job[] {
   return [...byAppName.values()]
     .filter((job) => job.state === "queued")
-    .sort((a, b) => a.startedAt - b.startedAt);
+    .sort((a, b) => a.started_at - b.started_at);
 }
 
 export function paused(): Job[] {
@@ -39,7 +37,7 @@ export function paused(): Job[] {
 
 /** What the UI can tell apart: Steam draws the bar in whole percent. */
 const shownPercent = (job: Job | undefined) =>
-  job?.progress === undefined ? undefined : Math.round(job.progress.percent);
+  job?.progress ? Math.round(job.progress.percent) : undefined;
 
 /**
  * Fold one poll's answer in, and report what came of it.
@@ -54,19 +52,19 @@ function apply(jobs: Job[]) {
   let changed = false;
 
   for (const job of jobs) {
-    const previous = byAppName.get(job.appName);
-    if (previous?.state === "running" && job.state !== "running") finished.push(job.appName);
+    const previous = byAppName.get(job.app_name);
+    if (previous?.state === "running" && job.state !== "running") finished.push(job.app_name);
 
     if (!previous || previous.state !== job.state || shownPercent(previous) !== shownPercent(job)) {
       changed = true;
     }
 
-    byAppName.set(job.appName, job);
+    byAppName.set(job.app_name, job);
   }
 
   // A job that has vanished was cancelled, which leaves what it downloaded on
   // disk - so that counts as finishing too.
-  const seen = new Set(jobs.map((job) => job.appName));
+  const seen = new Set(jobs.map((job) => job.app_name));
   for (const appName of byAppName.keys()) {
     if (seen.has(appName)) continue;
     byAppName.delete(appName);
@@ -77,15 +75,17 @@ function apply(jobs: Job[]) {
   return { finished, changed };
 }
 
+// An empty list arrives as `{}` (Lua has one table type); Object.values reads both.
+
 async function poll() {
   timer = undefined;
 
   let jobs: Job[];
   try {
-    jobs = await rpc.GetJobs();
+    jobs = Object.values(await backend.get_jobs());
   } catch (reason: unknown) {
     // One failed call shouldn't leave a dead poller behind mid-download.
-    logger.warn("GetJobs failed", reason);
+    console.warn("get_jobs failed", reason);
     schedule();
     return;
   }
@@ -128,21 +128,21 @@ function schedule() {
  * just changed something and want the UI to say so.
  */
 export async function refresh() {
-  apply(await rpc.GetJobs());
+  apply(Object.values(await backend.get_jobs()));
   emitter.emit();
   schedule();
 }
 
 /** Take a freshly started job on, without waiting for the next poll to see it. */
-async function track(appName: string, job: Job | undefined) {
+async function track(appName: string, job: Job | null) {
   if (!job) {
     // The backend spawns the runner before it answers, so the install may be
     // underway with nothing watching it. Ask what is actually running.
-    logger.warn("No job came back from the backend", { appName });
+    console.warn("No job came back from the backend", { appName });
     try {
       await refresh();
     } catch (reason: unknown) {
-      logger.warn("Could not read the jobs back", reason);
+      console.warn("Could not read the jobs back", reason);
     }
     return get(appName);
   }
@@ -151,7 +151,7 @@ async function track(appName: string, job: Job | undefined) {
   emitter.emit();
   schedule();
 
-  logger.info(job.state === "queued" ? `Queued ${job.kind}` : `Started ${job.kind}`, { appName });
+  console.info(job.state === "queued" ? `Queued ${job.kind}` : `Started ${job.kind}`, { appName });
   return job;
 }
 
@@ -160,12 +160,12 @@ async function track(appName: string, job: Job | undefined) {
  * queued rather than running if one of ours is already going.
  */
 export async function install(appName: string, basePath?: string, gameFolder?: string) {
-  return track(appName, await rpc.StartInstall(appName, basePath, gameFolder));
+  return track(appName, await backend.start_install(appName, basePath, gameFolder));
 }
 
 /** Update an installed game to Epic's latest build. */
 export async function update(appName: string) {
-  return track(appName, await rpc.StartUpdate(appName));
+  return track(appName, await backend.start_update(appName));
 }
 
 /**
@@ -178,19 +178,19 @@ export async function resume(appName: string) {
 }
 
 export async function uninstall(appName: string) {
-  return track(appName, await rpc.StartUninstall(appName));
+  return track(appName, await backend.start_uninstall(appName));
 }
 
 /** Pause everything of ours. What Steam's global "pause all downloads" maps to. */
 export async function pauseAll() {
   // The queue too, or "pause all downloads" stops the one that's running and
   // the backend immediately starts the next.
-  for (const job of [...active(), ...queued()]) await rpc.PauseJob(job.appName);
+  for (const job of [...active(), ...queued()]) await backend.pause_job(job.app_name);
   await refresh();
 }
 
 export async function cancel(appName: string) {
-  const cancelled = await rpc.CancelJob(appName);
+  const cancelled = await backend.cancel_job(appName);
   await refresh();
   return cancelled;
 }

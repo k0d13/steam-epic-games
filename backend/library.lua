@@ -1,8 +1,10 @@
+--# selene: allow(unused_variable)
 local cache = require("cache")
+local DATA = require("data")
 local egl = require("egl")
 local entitlements = require("entitlements")
 local legendary = require("legendary")
-local logger = require("logger")
+local log = require("log")
 local utils = require("utils")
 
 -- The merge of two legendary commands: `list`, everything the account owns, and
@@ -12,7 +14,7 @@ local utils = require("utils")
 local library = {}
 
 --- Cached so a cold start can draw the library before it has spoken to Epic.
-local CACHE_PATH = utils.get_backend_path() .. "/data/cache/library.json"
+local CACHE_PATH = DATA .. "/cache/library.json"
 
 ---@class EpicGame
 ---@field app_name string Epic's internal id, and our stable key for everything
@@ -27,6 +29,11 @@ local CACHE_PATH = utils.get_backend_path() .. "/data/cache/library.json"
 ---@field art_portrait string|nil Tall box art URL
 ---@field art_hero string|nil Wide art URL
 ---@field purchased_at integer|nil Unix seconds the account was granted the game
+
+---@class Library
+---@field games EpicGame[]
+---@field refreshed_at integer Unix seconds of the last read from Epic, 0 if never
+---@field error string|nil Why the refresh asked for didn't happen
 
 ---@type EpicGame[]
 local games = {}
@@ -69,13 +76,13 @@ end
 function library.load()
   local decoded = cache.read(CACHE_PATH, "library")
   if not decoded then
-    logger:info("No cached library yet")
+    log.info("No cached library yet")
     return
   end
 
   games = decoded.games or {}
   refreshed_at = decoded.refreshed_at or 0
-  logger:info("Loaded " .. #games .. " games from cache")
+  log.info("Loaded " .. #games .. " games from cache")
 end
 
 local function save()
@@ -92,10 +99,10 @@ end
 --- against is in the catalog we already fetch, so we do the comparison here.
 local LIST_INSTALLED = { "list-installed", "--json" }
 
---- Per `legendary import`. One manifest refetch, not a download.
+-- Per `legendary import`. One manifest refetch, not a download.
 local IMPORT_TIMEOUT = 30000
 
----Index one `list-installed` output by app name, so merging stays linear rather
+----Index one `list-installed` output by app name, so merging stays linear rather
 ---than a nested scan over 300+ titles.
 ---@param output string
 ---@return table<string, table>|nil installed_by_name
@@ -169,9 +176,7 @@ local function import_leftover_egl_installs(owned, installed_by_name)
   if #commands == 0 then
     return installed_by_name
   end
-  logger:info(
-    "Importing Epic Games Launcher installs egl-sync skipped: " .. utils.join(titles, ", ")
-  )
+  log.info("Importing Epic Games Launcher installs egl-sync skipped: " .. utils.join(titles, ", "))
 
   for _, args in ipairs(commands) do
     -- These run one after another and each blocks the Lua state, so they get a
@@ -282,7 +287,7 @@ function library.refresh(force)
   -- installs into EGL, which isn't ours to do to another launcher; `--one-shot`
   -- and `-y` answer the prompts, since there's no stdin here.
   local synced = legendary.run({ "-y", "egl-sync", "--import-only", "--one-shot" })
-  logger:info("Epic Games Launcher sync: " .. utils.trim(synced))
+  log.info("Epic Games Launcher sync: " .. utils.trim(synced))
 
   local owned, err = legendary.decode_json(legendary.run(list_args))
   if type(owned) ~= "table" then
@@ -309,7 +314,7 @@ function library.refresh(force)
   refreshed_at = math.floor(utils.time())
   save()
 
-  logger:info("Refreshed library: " .. #games .. " games")
+  log.info("Refreshed library: " .. #games .. " games")
   return games
 end
 
@@ -340,23 +345,35 @@ function library.refresh_installed()
   -- refreshed_at means "when did we last ask Epic", which this didn't.
   save()
 
-  logger:info("Refreshed installs: " .. count .. " on disk")
+  log.info("Refreshed installs: " .. count .. " on disk")
   return games
 end
 
----The library as we last saw it, empty until something refreshes it. Never
----refreshes on its own: this answers the frontend's first call at startup, and
----a cold `legendary list` there would hold the plugin behind a round trip to
----Epic.
----@return EpicGame[] games
-function library.get()
-  return games
+---@ffi
+---The library, answered from the cache unless `refresh` is set; `force` also
+---bypasses legendary's own catalog cache, which is what picks up a newly
+---bought game. Never refreshes on its own: a cold `legendary list` takes a few
+---seconds on a large account and shouldn't happen behind the user's back.
+---@param refresh? boolean
+---@param force? boolean
+---@return Library
+function get_library(refresh, force)
+  local err
+  if refresh then
+    local _
+    _, err = library.refresh(force == true)
+  end
+  return { games = games, refreshed_at = refreshed_at, error = err }
 end
 
----When the library was last read from Epic, in Unix seconds. 0 if never.
----@return integer
-function library.get_refreshed_at()
-  return refreshed_at
+---@ffi
+---Re-read only what's installed on disk. No round trip to Epic, so it costs a
+---fraction of a full refresh: this is the one for after an install or an
+---uninstall, where the catalog can't have changed.
+---@return Library
+function get_installed()
+  local _, err = library.refresh_installed()
+  return { games = games, refreshed_at = refreshed_at, error = err }
 end
 
 return library

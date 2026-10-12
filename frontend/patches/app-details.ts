@@ -1,5 +1,4 @@
-import { callOriginal, replacePatch } from "@steambrew/client";
-import { logger } from "../logger";
+import { callOriginal, replacePatch } from "millennium";
 import { once } from "../services/once";
 import * as jobs from "../state/jobs";
 import * as library from "../state/library";
@@ -42,7 +41,7 @@ interface AppsApi extends Record<PropertyKey, unknown> {
 }
 
 const logApplied = once((details: AppDetails, appName: string) => {
-  logger.debug("App details patch applied", {
+  console.debug("App details patch applied", {
     appId: details.unAppID,
     appName,
     // Anything else means the fields are read-only or renamed on this build and
@@ -68,7 +67,7 @@ function apply(details: AppDetails) {
   // against the account, so an uninstalled game still has a record to show.
   // Left alone rather than blanked while we're waiting on Epic, so the section
   // doesn't flicker out between reads.
-  const achievements = getAchievements(game.appName);
+  const achievements = getAchievements(game.app_name);
   if (achievements) details.achievements = achievements;
 
   if (game.installed) return;
@@ -76,7 +75,7 @@ function apply(details: AppDetails) {
   // Any job state, not just running: a finished install is on disk while
   // library.installed catches up a poll later, which is long enough for the row
   // to flash back in between.
-  const job = jobs.get(game.appName);
+  const job = jobs.get(game.app_name);
   if (job?.kind === "install") {
     details.bHasAnyLocalContent = true;
     return;
@@ -84,13 +83,13 @@ function apply(details: AppDetails) {
 
   details.bHasAnyLocalContent = false;
 
-  const size = sizes.get(game.appName);
+  const size = sizes.get(game.app_name);
   if (size) details.lDiskSpaceRequiredBytes = size.disk;
   // Reading it fetches the game's manifest from Epic, so it's started here and
   // drawn on the pass after it lands.
-  else sizes.ensure(game.appName);
+  else sizes.ensure(game.app_name);
 
-  logApplied(details, game.appName);
+  logApplied(details, game.app_name);
 }
 
 export function register() {
@@ -113,7 +112,7 @@ export function register() {
   // A size arriving is asynchronous and has no other way back into the UI.
   const unsubscribe = sizes.subscribe(() => refreshAll());
 
-  logger.debug("Registered the app details patch");
+  console.debug("Registered the app details patch");
 
   return () => {
     patch.unpatch();

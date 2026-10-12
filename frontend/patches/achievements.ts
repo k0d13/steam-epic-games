@@ -1,6 +1,4 @@
-import { afterPatch } from "@steambrew/client";
-import { logger } from "../logger";
-import { type Achievement, type GameAchievements } from "../rpc";
+import { afterPatch } from "millennium";
 import { findExport } from "../services/modules";
 import * as achievements from "../state/achievements";
 import * as library from "../state/library";
@@ -58,6 +56,16 @@ interface SectionsComponent {
  * 1. Steam draws a progress bar whenever there's a maximum, so one is only
  * given to the partly-done ones - everything else is a plain locked icon.
  */
+/**
+ * Epic times its unlocks as "2026-06-12 21:21:24.391000+00:00", which is ISO
+ * 8601 with a space where the T belongs - so Date can't read it as it stands,
+ * and Steam wants Unix seconds anyway.
+ */
+function unlockedAt(achievement: Achievement): number {
+  const parsed = Date.parse(achievement.unlocked_at?.replace(" ", "T") ?? "");
+  return Number.isNaN(parsed) ? 0 : Math.floor(parsed / 1000);
+}
+
 function toSteamAchievement(achievement: Achievement): SteamAchievement {
   const partial = !achievement.unlocked && achievement.progress > 0 && achievement.progress < 1;
 
@@ -68,7 +76,7 @@ function toSteamAchievement(achievement: Achievement): SteamAchievement {
     flCurrentProgress: partial ? Math.round(achievement.progress * 100) : 0,
     flMaxProgress: partial ? 100 : 0,
     flAchieved: achievement.rarity ?? 0,
-    rtUnlocked: achievement.unlockedAt ?? 0,
+    rtUnlocked: unlockedAt(achievement),
     strDescription: achievement.description,
     strID: achievement.id,
     strImage: achievement.icon ?? "",
@@ -96,8 +104,9 @@ function listFor(appName: string): SteamAchievement[] | undefined {
 
   let list = converted.get(result);
   if (!list) {
-    list = [...result.achievements]
-      .sort((a, b) => (b.unlockedAt ?? 0) - (a.unlockedAt ?? 0))
+    // An empty list arrives as `{}` (Lua has one table type); Object.values reads both.
+    list = Object.values(result.achievements)
+      .sort((a, b) => unlockedAt(b) - unlockedAt(a))
       .map(toSteamAchievement);
     converted.set(result, list);
   }
@@ -250,7 +259,7 @@ function patchGetter<T>(
     const game = library.getByAppId(args[0]);
     if (!game) return result;
 
-    const ours = listFor(game.appName);
+    const ours = listFor(game.app_name);
     return ours ? { data: build(ours) } : { loading: true };
   });
 }
@@ -281,7 +290,7 @@ function patchStore(store: AchievementStore) {
 export function register() {
   const component = findSectionsComponent();
   if (!component) {
-    logger.warn("Could not find the app details sections component, achievements stay hidden");
+    console.warn("Could not find the app details sections component, achievements stay hidden");
     return () => {};
   }
 
@@ -292,7 +301,7 @@ export function register() {
       const [overview] = args as [AppOverview, unknown];
 
       const game = library.getByAppId(overview.appid);
-      if (!game || !listFor(game.appName)) return sections;
+      if (!game || !listFor(game.app_name)) return sections;
 
       sections.add("achievements");
       // The component hands back the Set it memoised whenever the one it just
@@ -306,10 +315,10 @@ export function register() {
   // The page is a feature of its own: without the store the section still
   // draws, it just has nowhere to lead.
   const store = findAchievementStore();
-  if (!store) logger.warn("Could not find the achievement store, the full page stays empty");
+  if (!store) console.warn("Could not find the achievement store, the full page stays empty");
   const unpatchStore = store ? patchStore(store) : () => {};
 
-  logger.debug("Registered the achievements patch");
+  console.debug("Registered the achievements patch");
 
   return () => {
     patch.unpatch();

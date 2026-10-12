@@ -1,6 +1,4 @@
-import { type SteamAppOverview } from "@steambrew/client";
-import { logger } from "../logger";
-import rpc, { type EpicGame } from "../rpc";
+import { type SteamAppOverview } from "millennium";
 import * as appIds from "./app-ids";
 import { createEmitter } from "./emitter";
 
@@ -20,8 +18,8 @@ function reindex(games: EpicGame[]) {
   byAppId.clear();
 
   for (const game of games) {
-    byAppName.set(game.appName, game);
-    const appId = appIds.getAppId(game.appName);
+    byAppName.set(game.app_name, game);
+    const appId = appIds.getAppId(game.app_name);
     if (appId !== undefined) byAppId.set(appId, game);
   }
 
@@ -37,21 +35,21 @@ export function getByAppId(appId: number): EpicGame | undefined {
   return byAppId.get(appId);
 }
 
+/** An empty list arrives as `{}` (Lua has one table type); Object.values reads both. */
+const withGames = (library: Library): Library => ({
+  ...library,
+  games: Object.values(library.games),
+});
+
 /**
  * Load the library from the backend, from its cache unless `refresh` is set -
  * reading it fresh takes several seconds.
  */
 export async function load(refresh = false, force = false) {
-  const result = await rpc.GetLibrary(refresh, force);
-
-  if (!result.ok) {
-    logger.error("Failed to load the Epic library", result.error);
-    return result;
-  }
+  const result = withGames(await backend.get_library(refresh, force));
+  if (result.error) console.error("Failed to load the Epic library", result.error);
 
   reindex(result.games);
-  logger.debug("Loaded the Epic library", { games: result.games.length, refresh });
-
   return result;
 }
 
@@ -60,12 +58,8 @@ export async function load(refresh = false, force = false) {
  * finishing. The catalog can't have changed, so this skips the trip to Epic.
  */
 export async function loadInstalled() {
-  const result = await rpc.GetInstalled();
-
-  if (!result.ok) {
-    logger.warn("Failed to re-read the installed games", result.error);
-    return result;
-  }
+  const result = withGames(await backend.get_installed());
+  if (result.error) console.warn("Failed to re-read the installed games", result.error);
 
   reindex(result.games);
   return result;

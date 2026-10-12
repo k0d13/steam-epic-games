@@ -1,13 +1,16 @@
+--# selene: allow(unused_variable)
+local cache = require("cache")
+local DATA = require("data")
 local fs = require("fs")
 local json = require("json")
-local logger = require("logger")
+local log = require("log")
 local shell = require("shell")
 local utils = require("utils")
 
 -- Work too long to wait for: installs, updates, uninstalls.
 --
--- Running one through `shell.run` would freeze the Lua state, and every RPC
--- with it, for the length of the download. So a job is a detached PowerShell
+-- Running one through `shell.run` would freeze the Lua state, and every backend
+-- call with it, for the length of the download. So a job is a detached PowerShell
 -- process that owns the command and writes its progress and its last error to
 -- small files; this module only reads those files back.
 --
@@ -26,7 +29,7 @@ local utils = require("utils")
 
 local jobs = {}
 
-local ROOT = utils.get_backend_path() .. "/data/jobs"
+local ROOT = DATA .. "/jobs"
 
 --- Everything a job directory holds, named the way `shell.lua` names the
 --- daemon's files: the ones the runner process itself owns carry its name, and
@@ -65,8 +68,8 @@ local SPAWN_GRACE = 15
 
 ---@class Job
 ---@field app_name string
----@field kind JobKind
----@field state JobState
+---@field kind string One of JobKind
+---@field state string One of JobState
 ---@field pid integer|nil PID of the runner, which owns legendary as a child
 ---@field started_at integer When the job was asked for, which is its place in the queue
 ---@field spawned_at integer|nil When its runner was actually launched, nil while queued
@@ -267,8 +270,8 @@ end
 ---@param dir string
 ---@return table|nil
 local function read_meta(dir)
-  local ok, meta = pcall(json.decode, read(file(dir, "meta")) or "")
-  return ok and type(meta) == "table" and meta or nil
+  local meta = cache.decode(read(file(dir, "meta")))
+  return type(meta) == "table" and meta or nil
 end
 
 ---Build one job out of its directory and the metadata already read from it.
@@ -353,18 +356,18 @@ local function promote(entries)
   -- call the job stands for. Without them there is nothing to run.
   local meta = next_up.meta
   if type(meta.exe) ~= "string" or type(meta.args) ~= "table" then
-    logger:warn("Dropping a queued job with nothing to run: " .. tostring(meta.app_name))
+    log.warn("Dropping a queued job with nothing to run: " .. tostring(meta.app_name))
     fs.remove_all(next_up.dir)
     return
   end
 
   local started, err = spawn(next_up.dir, meta.exe, meta.args)
   if not started then
-    logger:error("Could not start the queued " .. tostring(meta.kind) .. ": " .. tostring(err))
+    log.error("Could not start the queued " .. tostring(meta.kind) .. ": " .. tostring(err))
     return
   end
 
-  logger:info("Started the queued " .. tostring(meta.kind) .. " for " .. tostring(meta.app_name))
+  log.info("Started the queued " .. tostring(meta.kind) .. " for " .. tostring(meta.app_name))
   next_up.job = build(next_up.dir, meta)
 end
 
@@ -411,10 +414,6 @@ end
 ---@return Job|nil job
 ---@return string? error
 function jobs.start(app_name, kind, exe, args)
-  if type(app_name) ~= "string" or app_name == "" then
-    return nil, "No app name provided"
-  end
-
   local existing = jobs.get(app_name)
   if existing and (existing.state == "running" or existing.state == "queued") then
     return existing
@@ -444,7 +443,7 @@ function jobs.start(app_name, kind, exe, args)
     return nil, "Could not write the job: " .. tostring(err)
   end
 
-  logger:info("Queued " .. kind .. " for " .. app_name)
+  log.info("Queued " .. kind .. " for " .. app_name)
 
   -- Starts it too, if its turn is now.
   jobs.list()
@@ -473,25 +472,35 @@ local function stop(job)
   return true
 end
 
+---@ffi
+---Every job we know about, queued, running or finished. Polled while something
+---is downloading.
+---@return Job[]
+function get_jobs()
+  return jobs.list()
+end
+
+---@ffi
 ---Stop a running job, keeping what has already been downloaded. Resuming is
 ---re-running the install.
 ---@param app_name string
 ---@return boolean stopped
-function jobs.pause(app_name)
+function pause_job(app_name)
   local job = jobs.get(app_name)
   if not job or not stop(job) then
     return false
   end
 
-  logger:info("Paused " .. app_name)
+  log.info("Paused " .. app_name)
   return true
 end
 
+---@ffi
 ---Stop a job and forget it ever ran. What's on disk is left alone - removing a
 ---partial install is `uninstall`'s job.
 ---@param app_name string
 ---@return boolean cancelled
-function jobs.cancel(app_name)
+function cancel_job(app_name)
   local job = jobs.get(app_name)
   if not job then
     return false
@@ -499,7 +508,7 @@ function jobs.cancel(app_name)
 
   stop(job)
   fs.remove_all(job_dir(app_name))
-  logger:info("Cancelled " .. app_name)
+  log.info("Cancelled " .. app_name)
   return true
 end
 
