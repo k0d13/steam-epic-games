@@ -59,8 +59,8 @@ export function forceFakeLocationChange() {
   setTimeout(() => {
     nudgeQueued = false;
 
-    if (MainWindowBrowserManager?.m_lastLocation) {
-      MainWindowBrowserManager.m_lastLocation.hash = `#${Math.random()}`;
+    if (window.MainWindowBrowserManager?.m_lastLocation) {
+      window.MainWindowBrowserManager.m_lastLocation.hash = `#${Math.random()}`;
       return;
     }
 

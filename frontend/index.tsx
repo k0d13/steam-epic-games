@@ -14,6 +14,7 @@ import * as installs from "./patches/installs";
 import * as libraryBadge from "./patches/library-badge";
 import * as manageMenu from "./patches/manage-menu";
 import * as storage from "./patches/storage";
+import * as storeMenu from "./patches/store-menu";
 import { onGameStopped } from "./services/playtime";
 import * as achievements from "./state/achievements";
 import * as jobs from "./state/jobs";
@@ -57,6 +58,7 @@ export default definePlugin(async () => {
     ["achievement progress", achievementProgress.register],
     ["storage", storage.register],
     ["downloads", downloads.register],
+    ["store menu", storeMenu.register],
   ] as const) {
     try {
       unpatches.push(patch());

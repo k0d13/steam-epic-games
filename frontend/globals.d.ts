@@ -17,17 +17,25 @@ declare global {
   /** Steam draws each of its windows into a popup, announced through here. */
   const g_PopupManager: {
     GetExistingPopup(name: string): SteamPopup | undefined;
+    /** Every open popup by name, menus included. */
+    m_mapPopups?: Map<string, SteamPopup>;
     AddPopupCreatedCallback(callback: (popup: SteamPopup) => void): { Unregister(): void };
     AddPopupDestroyedCallback(callback: (popup: SteamPopup) => void): { Unregister(): void };
   };
 
   interface SteamPopup {
+    /** The title Steam gave it, which for menus is an internal name like "Store Supernav". */
+    m_strTitle?: string;
     window?: Window;
     root_element?: Element;
   }
 
-  /** The desktop library's router. Big Picture has none. */
-  const MainWindowBrowserManager: { m_lastLocation?: { hash: string } } | undefined;
+  /**
+   * The desktop library's router. Big Picture has none, and it only exists once the
+   * main window has drawn, so read it off `window`: a bare reference throws until then.
+   */
+  // oxlint-disable-next-line no-var -- `var` is what puts it on `window`'s type.
+  var MainWindowBrowserManager: { m_lastLocation?: { hash: string } } | undefined;
 }
 
 export {};
