@@ -1,4 +1,5 @@
 import {
+  ConfirmModal,
   DialogButton,
   Field,
   Menu,
@@ -6,11 +7,13 @@ import {
   MenuSeparator,
   ProgressBarWithInfo,
   showContextMenu,
+  showModal,
 } from "millennium";
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import * as artwork from "../services/artwork";
 import * as collection from "../services/collection";
 import * as hidden from "../services/hidden";
+import { mainPopup } from "../services/popups";
 import * as shortcuts from "../services/shortcuts";
 import * as library from "../state/library";
 
@@ -33,12 +36,19 @@ function describeAge(refreshedAt: number) {
   return `updated ${Math.floor(hours / 24)}d ago`;
 }
 
+function plural(count: number, noun: string) {
+  return `${count} ${noun}${count === 1 ? "" : "s"}`;
+}
+
 /** Describe a finished sync, for a panel that may not have been open for it. */
 function describeResult(result: shortcuts.SyncResult) {
-  return (
-    `Added ${result.added}, removed ${result.removed}, ${result.artworkApplied} images` +
-    (result.failed ? `, ${result.failed} failed` : "")
-  );
+  const counts =
+    `added ${result.added}, removed ${result.removed}, ${plural(result.artworkApplied, "image")}` +
+    (result.failed ? `, ${result.failed} failed` : "");
+
+  // The counts alone would read as a finished sync.
+  if (result.error) return `Sync stopped partway (${counts}): ${result.error}`;
+  return counts.charAt(0).toUpperCase() + counts.slice(1);
 }
 
 export function LibraryPanel() {
@@ -113,7 +123,7 @@ export function LibraryPanel() {
           <MenuItem
             onSelected={() => {
               artwork.forgetAll();
-              setNote("Artwork cleared. Sync again to fetch it.");
+              void onSync();
             }}
           >
             Redownload artwork
@@ -131,14 +141,16 @@ export function LibraryPanel() {
                   );
                 } else {
                   setNote(
-                    `All ${result.total} games are already in "${collection.COLLECTION_NAME}".`,
+                    result.total === 1
+                      ? `Your game is already in "${collection.COLLECTION_NAME}".`
+                      : `All ${result.total} games are already in "${collection.COLLECTION_NAME}".`,
                   );
                 }
               });
             }}
           >
             {uncollected > 0
-              ? `Add ${uncollected} to an "${collection.COLLECTION_NAME}" collection`
+              ? `Add ${plural(uncollected, "game")} to an "${collection.COLLECTION_NAME}" collection`
               : `"${collection.COLLECTION_NAME}" collection is up to date`}
           </MenuItem>
           <MenuSeparator />
@@ -149,18 +161,20 @@ export function LibraryPanel() {
               const count = hidden.hideDuplicates(games);
               setNote(
                 count > 0
-                  ? `Hid ${count} game${count === 1 ? "" : "s"} you also own on Steam.`
+                  ? `Hid ${plural(count, "game")} you also own on Steam.`
                   : "Nothing to hide.",
               );
             }}
           >
-            {hideable > 0 ? `Hide ${hideable} duplicates of Steam games` : "No duplicates to hide"}
+            {hideable > 0
+              ? `Hide ${plural(hideable, "duplicate")} of Steam games`
+              : "No duplicates to hide"}
           </MenuItem>
           <MenuItem
             disabled={alreadyHidden === 0}
             onSelected={() => {
               const count = hidden.showAll();
-              setNote(`Unhid ${count} game${count === 1 ? "" : "s"}.`);
+              setNote(`Unhid ${plural(count, "game")}.`);
             }}
           >
             Show all hidden Epic games
@@ -168,12 +182,29 @@ export function LibraryPanel() {
           <MenuSeparator />
           <MenuItem
             tone="destructive"
-            onSelected={() => {
-              shortcuts.removeAll();
-              library.reindexAppIds();
-              setSynced(0);
-              setNote("Removed every shortcut this plugin created.");
-            }}
+            // Confirmed first: it sits last in a menu often driven by gamepad, and
+            // the only way back is a full sync.
+            onSelected={() =>
+              showModal(
+                <ConfirmModal
+                  strTitle="Remove all shortcuts"
+                  strDescription={
+                    "This removes every Epic game this plugin added to your Steam library. " +
+                    "Installed games stay on disk, and Add to Steam brings them back."
+                  }
+                  strOKButtonText="Remove all"
+                  bDestructiveWarning
+                  onOK={() => {
+                    shortcuts.removeAll();
+                    library.reindexAppIds();
+                    setSynced(0);
+                    setNote("Removed every shortcut this plugin created.");
+                  }}
+                />,
+                // Explicit because showModal's default, findSP(), throws on this build.
+                mainPopup()?.window,
+              )
+            }
           >
             Remove all shortcuts
           </MenuItem>
@@ -203,7 +234,7 @@ export function LibraryPanel() {
           error ??
           (games === undefined
             ? "Reading your library..."
-            : `${total} games, ${installed} installed - ${describeAge(refreshedAt)}`)
+            : `${plural(total, "game")}, ${installed} installed, ${describeAge(refreshedAt)}`)
         }
         childrenContainerWidth="min"
         bottomSeparator={total > 0 ? "standard" : "none"}
@@ -228,8 +259,10 @@ export function LibraryPanel() {
               (note ??
               (sync.lastResult && describeResult(sync.lastResult)) ??
               (synced === total
-                ? `All ${total} games are in your Steam library.`
-                : `${synced} of ${total} games are in your Steam library.`))
+                ? total === 1
+                  ? "Your game is in your Steam library."
+                  : `All ${total} games are in your Steam library.`
+                : `${synced} of ${plural(total, "game")} are in your Steam library.`))
             )
           }
           childrenContainerWidth="min"

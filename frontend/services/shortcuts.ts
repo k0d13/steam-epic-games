@@ -15,6 +15,8 @@ export interface SyncResult {
   failed: number;
   /** Individual images applied, not games - a game is worth up to four. */
   artworkApplied: number;
+  /** Set when the sync stopped partway, so the counts above are not the whole run. */
+  error?: string;
 }
 
 interface SyncState {
@@ -165,6 +167,11 @@ export async function sync(games: EpicGame[]): Promise<SyncResult> {
     }
 
     console.info("Shortcut sync complete", result);
+    return result;
+  } catch (reason: unknown) {
+    // Returned, not thrown: the panel may not be open to catch it.
+    console.error("Shortcut sync failed", reason);
+    result.error = reason instanceof Error ? reason.message : String(reason);
     return result;
   } finally {
     // Unconditional: the appid map has been written to either way, and the

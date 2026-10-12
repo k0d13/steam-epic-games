@@ -53,6 +53,9 @@ export function AuthPanel({ onStatus }: { onStatus: (status: EpicStatus) => void
   const [awaitingCode, setAwaitingCode] = useState(false);
   const [code, setCode] = useState("");
 
+  // Set when no browser could be opened, so the address can be copied by hand.
+  const [manualUrl, setManualUrl] = useState<string | undefined>(undefined);
+
   // Separate from `status`: a backend that didn't answer is not a missing
   // binary, and saying so sends whoever debugs it to the wrong place.
   const [unreachable, setUnreachable] = useState(false);
@@ -89,6 +92,7 @@ export function AuthPanel({ onStatus }: { onStatus: (status: EpicStatus) => void
     setBusy(true);
     try {
       applyStatus(await backend.get_status(true));
+      setUnreachable(false);
     } catch (reason: unknown) {
       console.warn("get_status failed", reason);
       setUnreachable(true);
@@ -97,19 +101,29 @@ export function AuthPanel({ onStatus }: { onStatus: (status: EpicStatus) => void
   }, [applyStatus]);
 
   const onSignIn = useCallback(() => {
-    const opened = openInBrowser(status?.login_url ?? "https://legendary.gl/epiclogin");
+    const url = status?.login_url ?? "https://legendary.gl/epiclogin";
+    setManualUrl(openInBrowser(url) ? undefined : url);
     setAwaitingCode(true);
-    setError(opened ? undefined : "Couldn't open your browser. Use the address below instead.");
+    setError(undefined);
   }, [status?.login_url]);
 
   const onSubmitCode = useCallback(async () => {
     setBusy(true);
     setError(undefined);
 
-    const result = await backend.sign_in(extractCode(code));
+    let result;
+    try {
+      result = await backend.sign_in(extractCode(code));
+    } catch (reason: unknown) {
+      console.warn("sign_in failed", reason);
+      setError("The plugin's backend didn't respond.");
+      setBusy(false);
+      return;
+    }
+
     applyStatus(result);
     if (!result.authenticated) {
-      setError(result.error ?? "Sign in failed");
+      setError(result.error ?? "Sign in failed.");
       setBusy(false);
       return;
     }
@@ -117,6 +131,7 @@ export function AuthPanel({ onStatus }: { onStatus: (status: EpicStatus) => void
     // Single use, so clear it: pasting it again would only fail.
     setCode("");
     setAwaitingCode(false);
+    setManualUrl(undefined);
     setBusy(false);
   }, [applyStatus, code]);
 
@@ -124,7 +139,12 @@ export function AuthPanel({ onStatus }: { onStatus: (status: EpicStatus) => void
     setBusy(true);
     setError(undefined);
 
-    applyStatus(await backend.sign_out());
+    try {
+      applyStatus(await backend.sign_out());
+    } catch (reason: unknown) {
+      console.warn("sign_out failed", reason);
+      setError("The plugin's backend didn't respond, so you're still signed in.");
+    }
     setBusy(false);
   }, [applyStatus]);
 
@@ -133,13 +153,18 @@ export function AuthPanel({ onStatus }: { onStatus: (status: EpicStatus) => void
       <Field
         label="Epic account"
         description="The plugin's backend didn't respond. Check the Millennium logs for details."
+        childrenContainerWidth="min"
         bottomSeparator="none"
-      />
+      >
+        <DialogButton disabled={busy} onClick={onRetry}>
+          {busy ? "Checking..." : "Retry"}
+        </DialogButton>
+      </Field>
     );
   }
 
   if (!status) {
-    return <Field description="Checking for legendary..." bottomSeparator="none" />;
+    return <Field description="Checking for Legendary..." bottomSeparator="none" />;
   }
 
   if (!status.available) {
@@ -163,7 +188,7 @@ export function AuthPanel({ onStatus }: { onStatus: (status: EpicStatus) => void
     return (
       <Field
         label="Epic account"
-        description={`Signed in as ${status.account}`}
+        description={error ?? `Signed in as ${status.account}`}
         childrenContainerWidth="min"
         // The library rows render directly below, in the same section.
         bottomSeparator="standard"
@@ -188,14 +213,29 @@ export function AuthPanel({ onStatus }: { onStatus: (status: EpicStatus) => void
         </DialogButton>
       </Field>
 
+      {awaitingCode &&
+        manualUrl && (
+          // A field because Steam's descriptions can't be selected. Edits are ignored.
+          <Field
+            description="Couldn't open your browser. Open this address in it yourself:"
+            childrenLayout="below"
+            childrenContainerWidth="max"
+            bottomSeparator="standard"
+          >
+            <TextField value={manualUrl} onChange={() => undefined} />
+          </Field>
+        )}
+
       {awaitingCode && (
         // childrenLayout="below" so the input gets the panel's full width;
         // inline, a paste this long runs off the edge.
         <Field
           description={
-            error ??
-            "Epic will show you a page of text once you've signed in. Copy it - all " +
-              "of it is fine - and paste it here."
+            error
+              ? `${error.replace(/\.?\s*$/, ".")} Each code works once, so if this ` +
+                "one has been used, press Sign in for a new one."
+              : "Epic will show you a page of text once you've signed in. Copy all of " +
+                "it and paste it here."
           }
           childrenLayout="below"
           childrenContainerWidth="max"
