@@ -1,12 +1,11 @@
-local DATA = require("data")
 local fs = require("fs")
 local legendary = require("legendary")
 local library = require("library")
 local log = require("log")
+local DATA = log.DATA
 local millennium = require("millennium")
 
--- Loaded for the `---@ffi` functions they define, which is all the frontend
--- calls. legendary, library and jobs are already pulled in above.
+-- Loaded for its `---@ffi` functions; the other modules are required above.
 require("grid")
 
 local function on_load()
@@ -22,16 +21,13 @@ local function on_load()
 end
 
 local function on_frontend_loaded()
-  log.info("Frontend loaded, checking legendary status...")
-  -- Where the one-off download happens, so a machine missing legendary pays for
-  -- it at startup rather than in the middle of the first thing it's asked to do.
+  -- Downloads legendary if missing, so startup pays for it, not the first action.
   local status = legendary.get_status()
   log.info(
-    string.format(
-      "Frontend loaded. legendary available=%s authenticated=%s",
-      tostring(status.available),
-      tostring(status.authenticated)
-    )
+    "Frontend loaded. legendary available="
+      .. tostring(status.available)
+      .. " authenticated="
+      .. tostring(status.authenticated)
   )
 end
 

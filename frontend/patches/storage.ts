@@ -2,18 +2,8 @@ import { afterPatch } from "millennium";
 import { getLastPlayed } from "../services/playtime";
 import * as library from "../state/library";
 
-// Settings > Storage draws one row per app in each library folder's `vecApps`,
-// and adds the folder's own totals up into the drive bar. Both come from one
-// call, GetInstallFolders, which the native side answers out of Steam's own
-// install manifests - so a shortcut is never in it, wherever its files are.
-//
-// Rather than writing manifests into Steam's library for the native side to
-// find, our games are added to that call's answer on the way out. The folder
-// store re-reads it on every change Steam announces, so nothing needs
-// re-asserting, and nothing of ours is left in Steam's files to clean up.
-//
-// The row's Uninstall goes through OpenUninstallWizard, which installs.ts
-// already routes to legendary. Move has no Epic counterpart and is left alone.
+// Storage rows and drive totals come from GetInstallFolders, built from Steam's own
+// manifests, so our games are added to its answer rather than written to disk.
 
 /** One row of the storage page. Every field is read by the row or the sort. */
 interface InstallFolderApp {
@@ -50,18 +40,12 @@ interface Bridge {
   InstallFolder: InstallFolders;
 }
 
-/**
- * A path in one spelling. legendary answers with forward slashes, Steam with
- * backslashes, and Windows doesn't care about case.
- */
+/** legendary uses forward slashes, Steam backslashes, and Windows ignores case. */
 function normalise(path: string) {
   return path.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
 }
 
-/**
- * The folder a game sits under, if any. The longest match, since one library
- * can be nested inside another's directory.
- */
+/** The folder a game sits under; the longest match, since libraries can nest. */
 function folderFor(folders: InstallFolder[], installPath: string) {
   const path = normalise(installPath);
   let best: { folder: InstallFolder; length: number } | undefined;
@@ -75,44 +59,7 @@ function folderFor(folders: InstallFolder[], installPath: string) {
   return best?.folder;
 }
 
-/** Add every installed game of ours to the folder holding it. */
-function withOurGames(folders: InstallFolder[]) {
-  for (const appId of library.appIdsWithGames()) {
-    const game = library.getByAppId(appId);
-    if (!game?.installed || !game.install_path) continue;
-
-    const folder = folderFor(folders, game.install_path);
-    if (!folder) continue;
-
-    // An answer the native side already had our app in would draw it twice.
-    if (folder.vecApps.some((app) => app.nAppID === appId)) continue;
-
-    const size = game.install_size ?? 0;
-    folder.vecApps.push({
-      nAppID: appId,
-      strAppName: game.title,
-      strSortAs: game.title,
-      rtLastPlayed: getLastPlayed(game.app_name),
-      nUsedSize: size,
-      nAppSize: size,
-      nDLCSize: 0,
-      nWorkshopSize: 0,
-      nStagedSize: 0,
-      nShaderSize: 0,
-    });
-
-    // The drive bar is drawn from the folder's totals, not its rows.
-    folder.nUsedSize += size;
-    folder.nAppSize += size;
-  }
-
-  return folders;
-}
-
-/**
- * Ask the store to read the folders again, so a change to what's installed
- * reaches an open storage page. Cheap: one native call, no disk scan.
- */
+/** Have the store re-read the folders so an open storage page updates. */
 export function refresh() {
   const store = Reflect.get(globalThis, "installFolderStore") as InstallFolderStore | undefined;
   if (typeof store?.OnInstallFolderChanges !== "function") return;
@@ -126,7 +73,39 @@ export function register() {
   const bridge = SteamClient as unknown as Bridge;
 
   const patch = afterPatch(bridge.InstallFolder, "GetInstallFolders", (_args, result) =>
-    result.then(withOurGames),
+    // Every installed game of ours, added to the folder holding it.
+    result.then((folders: InstallFolder[]) => {
+      for (const appId of library.appIdsWithGames()) {
+        const game = library.getByAppId(appId);
+        if (!game?.installed || !game.install_path) continue;
+
+        const folder = folderFor(folders, game.install_path);
+        if (!folder) continue;
+
+        // An answer the native side already had our app in would draw it twice.
+        if (folder.vecApps.some((app) => app.nAppID === appId)) continue;
+
+        const size = game.install_size ?? 0;
+        folder.vecApps.push({
+          nAppID: appId,
+          strAppName: game.title,
+          strSortAs: game.title,
+          rtLastPlayed: getLastPlayed(game.app_name),
+          nUsedSize: size,
+          nAppSize: size,
+          nDLCSize: 0,
+          nWorkshopSize: 0,
+          nStagedSize: 0,
+          nShaderSize: 0,
+        });
+
+        // The drive bar is drawn from the folder's totals, not its rows.
+        folder.nUsedSize += size;
+        folder.nAppSize += size;
+      }
+
+      return folders;
+    }),
   );
 
   // The store read the folders before we were here to add to them.

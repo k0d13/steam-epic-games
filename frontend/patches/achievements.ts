@@ -3,21 +3,15 @@ import { findExport } from "../services/modules";
 import * as achievements from "../state/achievements";
 import * as library from "../state/library";
 
-// Steam's app details page builds the list of sections it will draw, and throws
-// nearly all of them away for a shortcut:
+// Steam's details page drops most sections for a shortcut:
 //
 //   e.BIsModOrShortcut() && (s = ["nonsteam", "notes", "screenshots"])
 //
-// So the achievements section never mounts for an Epic game, however good the
-// data behind it is. The section component itself has no such opinion - it only
-// asks appDetailsStore for the achievements and returns null if there are none -
-// which makes putting "achievements" back into that set the whole patch.
-//
-// The details themselves are filled in by app-details.ts, on the same callback
-// it already corrects the install state through.
+// The section itself copes, so putting "achievements" back is the whole patch;
+// app-details.ts supplies the data.
 
 /** Steam's own achievement shape, as the details store carries it. */
-export interface SteamAchievement {
+interface SteamAchievement {
   bAchieved: boolean;
   bHidden: boolean;
   flMinProgress: number;
@@ -52,49 +46,20 @@ interface SectionsComponent {
 }
 
 /**
- * Epic tracks progress on a handful of achievements and leaves the rest at 0 or
- * 1. Steam draws a progress bar whenever there's a maximum, so one is only
- * given to the partly-done ones - everything else is a plain locked icon.
- */
-/**
- * Epic times its unlocks as "2026-06-12 21:21:24.391000+00:00", which is ISO
- * 8601 with a space where the T belongs - so Date can't read it as it stands,
- * and Steam wants Unix seconds anyway.
+ * Epic's "2026-06-12 21:21:24.391000+00:00" has a space where ISO's T goes, so Date
+ * can't read it as is.
  */
 function unlockedAt(achievement: Achievement): number {
   const parsed = Date.parse(achievement.unlocked_at?.replace(" ", "T") ?? "");
   return Number.isNaN(parsed) ? 0 : Math.floor(parsed / 1000);
 }
 
-function toSteamAchievement(achievement: Achievement): SteamAchievement {
-  const partial = !achievement.unlocked && achievement.progress > 0 && achievement.progress < 1;
-
-  return {
-    bAchieved: achievement.unlocked,
-    bHidden: achievement.hidden,
-    flMinProgress: 0,
-    flCurrentProgress: partial ? Math.round(achievement.progress * 100) : 0,
-    flMaxProgress: partial ? 100 : 0,
-    flAchieved: achievement.rarity ?? 0,
-    rtUnlocked: unlockedAt(achievement),
-    strDescription: achievement.description,
-    strID: achievement.id,
-    strImage: achievement.icon ?? "",
-    strName: achievement.name,
-  };
-}
-
-/**
- * Kept against the state object it was built from: the render paths below ask
- * for a game's achievements several times a page, and the answer only changes
- * when a fetch lands, which is a new object.
- */
+/** Keyed by the state object, which is replaced whenever a fetch lands. */
 const converted = new WeakMap<GameAchievements, SteamAchievement[]>();
 
 /**
- * One game's achievements, converted and sorted the way Steam features them -
- * most recent unlock first. Undefined while we're still waiting on Epic; the
- * fetch starts here, so a details page opening is what asks.
+ * A game's achievements converted for Steam, latest unlock first. Undefined while
+ * waiting on Epic; this is what starts the fetch.
  */
 function listFor(appName: string): SteamAchievement[] | undefined {
   achievements.ensure(appName);
@@ -107,7 +72,25 @@ function listFor(appName: string): SteamAchievement[] | undefined {
     // An empty list arrives as `{}` (Lua has one table type); Object.values reads both.
     list = Object.values(result.achievements)
       .sort((a, b) => unlockedAt(b) - unlockedAt(a))
-      .map(toSteamAchievement);
+      .map((achievement): SteamAchievement => {
+        // Steam draws a bar whenever there's a maximum, so only partly-done ones get one.
+        const partial =
+          !achievement.unlocked && achievement.progress > 0 && achievement.progress < 1;
+
+        return {
+          bAchieved: achievement.unlocked,
+          bHidden: achievement.hidden,
+          flMinProgress: 0,
+          flCurrentProgress: partial ? Math.round(achievement.progress * 100) : 0,
+          flMaxProgress: partial ? 100 : 0,
+          flAchieved: achievement.rarity ?? 0,
+          rtUnlocked: unlockedAt(achievement),
+          strDescription: achievement.description,
+          strID: achievement.id,
+          strImage: achievement.icon ?? "",
+          strName: achievement.name,
+        };
+      });
     converted.set(result, list);
   }
 
@@ -117,11 +100,7 @@ function listFor(appName: string): SteamAchievement[] | undefined {
 /** Kept against the converted list, for the same reason `converted` is. */
 const bucketed = new WeakMap<SteamAchievement[], SteamAchievements>();
 
-/**
- * One game's achievements in the shape the app details store holds. Memoised
- * as well as the conversion: this is called for every Epic game on every
- * repaint, and a fresh object is also a fresh prop to re-render on.
- */
+/** The details store's shape, memoised since a fresh object re-renders every repaint. */
 export function getAchievements(appName: string): SteamAchievements | undefined {
   const list = listFor(appName);
   const result = achievements.get(appName);
@@ -152,12 +131,8 @@ export function getAchievements(appName: string): SteamAchievements | undefined 
   return built;
 }
 
-// The full achievements page - the one "View all achievements" opens - reads
-// none of that. It goes through a store of its own, which asks the client for
-// the account's stats and caches the answer, error included: a shortcut has no
-// stats, so it caches "Failed to retrieve user stats" once and never asks
-// again. Patching the client call underneath it therefore isn't enough; the
-// store's three getters are what the page actually reads.
+// The full achievements page has its own store, which caches "Failed to retrieve
+// user stats" for a shortcut for good, so its three getters are patched instead.
 
 /** What the store hands the page: one of these three, never more than one. */
 interface StoreResult<T> {
@@ -182,48 +157,14 @@ interface AchievementStore {
   GetPlayerAchievements(appId: number, accountId: number): StoreResult<unknown>;
 }
 
-/**
- * The app details page component. Found by the section names it lists rather
- * than by anything Steam's build could rename - "playtestinvites" is a string
- * literal in the same function that drops our section.
- */
-function findSectionsComponent(): SectionsComponent | undefined {
-  return findExport<SectionsComponent>(
-    '"playtestinvites"',
-    (value): value is SectionsComponent =>
-      typeof value === "function" &&
-      typeof (value as SectionsComponent).prototype?.GetSections === "function",
-  );
-}
-
-/**
- * The store behind the achievements page, found by the warning it logs when the
- * client refuses a game's stats - which is the very thing it does for every
- * shortcut.
- */
-function findAchievementStore(): AchievementStore | undefined {
-  return findExport<AchievementStore>(
-    "Failed to GetMyAchievementsForApp",
-    (value): value is AchievementStore =>
-      typeof value === "object" &&
-      value !== null &&
-      typeof (value as AchievementStore).GetMyAchievements === "function" &&
-      typeof (value as AchievementStore).GetGlobalAchievements === "function",
-  );
-}
-
-/**
- * The store's grouping. `withHidden` is off for the player page, which has no
- * hidden bucket of its own - a locked hidden achievement is only locked there.
- */
+/** Memoised groupings. `withHidden` is off for the player page, which has no hidden bucket. */
 const grouping = {
   true: new WeakMap<SteamAchievement[], MyAchievements>(),
   false: new WeakMap<SteamAchievement[], MyAchievements>(),
 };
 
 function group(list: SteamAchievement[], withHidden: boolean): MyAchievements {
-  // The page asks its getters on every render, and a game with a few hundred
-  // achievements is a few hundred object writes each time.
+  // The page reads its getters every render, and a big game is hundreds of writes.
   const memo = grouping[withHidden ? "true" : "false"];
   const cached = memo.get(list);
   if (cached) return cached;
@@ -241,20 +182,15 @@ function group(list: SteamAchievement[], withHidden: boolean): MyAchievements {
 }
 
 /**
- * Answer one of the store's getters out of our own state, for our own games
- * only.
- *
- * A game whose achievements haven't arrived yet reads as loading rather than as
- * an error, so the page shows its spinner and not "no stats" - `listFor` has
- * started the fetch by then, and the repaint on arrival brings the answer.
+ * Answer a store getter for our games. Not yet arrived reads as loading, so the page
+ * shows a spinner rather than "no stats" until the repaint brings the answer.
  */
 function patchGetter<T>(
   store: AchievementStore,
   method: keyof AchievementStore,
   build: (ours: SteamAchievement[]) => T,
 ) {
-  // All three getters hand back the same envelope, so the loosest of them
-  // stands in for whichever one is being patched.
+  // All three share one envelope, so the loosest type stands in for each.
   return afterPatch(store, method as "GetPlayerAchievements", (args, result) => {
     const game = library.getByAppId(args[0]);
     if (!game) return result;
@@ -268,17 +204,14 @@ function patchStore(store: AchievementStore) {
   const patches = [
     patchGetter(store, "GetMyAchievements", (ours) => group(ours, true)),
 
-    // Epic publishes the same "x% of players have this" Steam does, so the
-    // rarity column on the page is real rather than blank.
+    // Epic publishes rarity too, so the page's rarity column is real.
     patchGetter(store, "GetGlobalAchievements", (ours) => {
       const rarities: GlobalAchievements = {};
       for (const achievement of ours) rarities[achievement.strID] = achievement.flAchieved;
       return rarities;
     }),
 
-    // Asked for whoever's achievements are being looked at, which on our own
-    // page is us. Nobody else can hold achievements for an Epic game, so ours
-    // are the answer whichever account it asks about.
+    // Only we can hold an Epic game's achievements, whichever account is asked about.
     patchGetter(store, "GetPlayerAchievements", (ours) => group(ours, false)),
   ];
 
@@ -288,7 +221,13 @@ function patchStore(store: AchievementStore) {
 }
 
 export function register() {
-  const component = findSectionsComponent();
+  // Found by the "playtestinvites" literal in the same function that drops our section.
+  const component = findExport<SectionsComponent>(
+    '"playtestinvites"',
+    (value): value is SectionsComponent =>
+      typeof value === "function" &&
+      typeof (value as SectionsComponent).prototype?.GetSections === "function",
+  );
   if (!component) {
     console.warn("Could not find the app details sections component, achievements stay hidden");
     return () => {};
@@ -304,17 +243,23 @@ export function register() {
       if (!game || !listFor(game.app_name)) return sections;
 
       sections.add("achievements");
-      // The component hands back the Set it memoised whenever the one it just
-      // built matches, so a Set edited after that comparison would be thrown
-      // away on the very next render.
+      // The component returns its memoised Set when the new one matches, which
+      // would discard our edit on the next render.
       this.m_setSectionsMemo = sections;
       return sections;
     },
   );
 
-  // The page is a feature of its own: without the store the section still
-  // draws, it just has nowhere to lead.
-  const store = findAchievementStore();
+  // Optional: without the store the section still draws, it just leads nowhere.
+  // Found by the warning it logs for every shortcut.
+  const store = findExport<AchievementStore>(
+    "Failed to GetMyAchievementsForApp",
+    (value): value is AchievementStore =>
+      typeof value === "object" &&
+      value !== null &&
+      typeof (value as AchievementStore).GetMyAchievements === "function" &&
+      typeof (value as AchievementStore).GetGlobalAchievements === "function",
+  );
   if (!store) console.warn("Could not find the achievement store, the full page stays empty");
   const unpatchStore = store ? patchStore(store) : () => {};
 

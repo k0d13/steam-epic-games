@@ -1,7 +1,6 @@
 /**
- * A set of listeners with no payload: everything reads the current value back
- * off the module it subscribed to. `subscribe` is stable, so it goes straight
- * into `useSyncExternalStore`.
+ * Listeners with no payload; subscribers read the value off the module. `subscribe`
+ * is stable, so it goes straight into `useSyncExternalStore`.
  */
 export function createEmitter() {
   const listeners = new Set<() => void>();

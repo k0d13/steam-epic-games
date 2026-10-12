@@ -1,11 +1,7 @@
 import { type SteamAppOverview } from "millennium";
 
-// The client globals the library is built from, which @steambrew/client either
-// doesn't type or types only the parts of that it uses itself. Declared here
-// rather than wrapped, so the code reads as the same globals Steam's own does.
-//
-// Only the members we touch, and none of them are guaranteed on a given client
-// build - the code using them feature tests rather than trusting these.
+// Client globals @steambrew/client doesn't type. None is guaranteed on a given
+// build, so the code using them feature tests.
 
 declare global {
   const appStore: {

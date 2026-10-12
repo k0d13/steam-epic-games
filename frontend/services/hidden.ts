@@ -1,13 +1,8 @@
 import * as appIds from "../state/app-ids";
 import { NON_STEAM_APP_APPID_MASK } from "../state/app-ids";
 
-// Owning a game on both stores puts it in the library twice. Steam's own answer
-// is the per-game "Hide this game", so that's what this drives - in bulk, over
-// the Epic shortcuts whose title already belongs to a real Steam game.
-//
-// Neither hiding call is in @steambrew/client's types and neither exists on every
-// client build, so both are found by feature test and a missing one costs only
-// this feature.
+// Hides Epic shortcuts that duplicate a Steam game. The hiding calls are untyped
+// and not on every build, so they're feature tested.
 
 interface Hiding {
   BIsHidden?(appId: number): boolean;
@@ -17,9 +12,8 @@ interface Hiding {
 const collections = () => collectionStore as unknown as Hiding;
 
 /**
- * Titles compared with everything a store could disagree about removed:
- * punctuation, spacing, case and the trademark marks Steam keeps and Epic
- * doesn't. "S.T.A.L.K.E.R. 2" and "STALKER 2" are the same game.
+ * Strip what stores disagree on: punctuation, spacing, case and trademark marks.
+ * "S.T.A.L.K.E.R. 2" and "STALKER 2" are the same game.
  */
 function normalize(title: string) {
   return title
@@ -49,10 +43,7 @@ function isHidden(appId: number): boolean {
   }
 }
 
-/**
- * Hide or unhide shortcuts, preferring the store's bulk call - it writes the
- * hidden collection once rather than per game.
- */
+/** Hide or unhide shortcuts, preferring the bulk call that writes the collection once. */
 function setHidden(ids: number[], hidden: boolean): number {
   if (ids.length === 0) return 0;
 

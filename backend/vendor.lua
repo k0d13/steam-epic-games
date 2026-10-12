@@ -1,20 +1,14 @@
-local DATA = require("data")
 local fs = require("fs")
 local log = require("log")
+local DATA = log.DATA
 local shell = require("shell")
 local utils = require("utils")
 
--- Fetches the legendary binary on first use, from a release pinned by tag *and*
--- by SHA-256: a download that doesn't hash to exactly the bytes recorded below
--- is thrown away, so a compromised release or a hijacked CDN can't put a
--- different executable on a user's machine.
+-- legendary, pinned by tag and SHA-256 so a compromised release can't swap the exe.
+-- GPL-3.0, fetched unmodified and never redistributed by us.
 --
--- To upgrade, bump VERSION and replace SHA256 with the `digest` field GitHub
--- publishes for the asset:
---
+-- To upgrade, bump VERSION and set SHA256 to the asset's `digest` from:
 --   curl -sL https://api.github.com/repos/legendary-gl/legendary/releases/latest
---
--- legendary is GPL-3.0, fetched unmodified and never redistributed by us.
 
 local vendor = {}
 
@@ -27,14 +21,11 @@ local URL = "https://github.com/legendary-gl/legendary/releases/download/"
   .. "/"
   .. ASSET
 
---- Where the binary is kept. The name has no version in it because every Steam
---- shortcut points at this path: an upgrade replaces the file in place, which
---- the hash check notices on its own.
+--- Unversioned because every Steam shortcut points here; the hash check catches upgrades.
 local DIR = DATA .. "/vendor"
 local PATH = DIR .. "/legendary.exe"
 
----The SHA-256 of a file, lowercase hex, or nil if it couldn't be hashed.
----certutil ships with Windows, so there's nothing to install.
+---A file's lowercase SHA-256 via certutil, which ships with Windows.
 ---@param path string
 ---@return string|nil
 local function digest(path)
@@ -44,10 +35,8 @@ local function digest(path)
     return nil
   end
 
-  -- Matched a line at a time: the banner carries the path and the trailer starts
-  -- with hex letters of its own, so reading the output as one run of characters
-  -- glues them onto the digits this is after. Spaces inside the line are dropped
-  -- because older certutil builds print the hash in byte pairs.
+  -- Line by line, or the banner and trailer glue hex onto the digits. Spaces go
+  -- because older certutil prints the hash in byte pairs.
   for line in output:gmatch("[^\r\n]+") do
     local hash = line:gsub("%s", ""):match("^%x+$")
     if hash and #hash == 64 then
@@ -58,8 +47,7 @@ local function digest(path)
   return nil
 end
 
----Fetch a URL to a file, blocking until it's there. The PowerShell fallback is
----for a Windows old enough to be missing curl.exe.
+---Download to a file. PowerShell is the fallback for Windows without curl.exe.
 ---@param destination string
 ---@return boolean ok
 local function fetch(destination)
@@ -86,9 +74,7 @@ local function fetch(destination)
   return fs.is_file(destination)
 end
 
----The legendary binary, downloading it if this machine hasn't got it yet.
----Blocks, since nothing here can do anything useful until it's there, and it
----only happens once per version.
+---The legendary binary, downloaded once per version. Blocks: nothing works without it.
 ---@return string|nil path
 ---@return string? error
 function vendor.ensure()
@@ -102,8 +88,7 @@ function vendor.ensure()
 
   fs.create_directories(DIR)
 
-  -- Downloaded under a temporary name and moved into place once verified, so an
-  -- interrupted download is never mistaken for a usable binary.
+  -- A temporary name, so an interrupted download never passes for the binary.
   local partial = PATH .. ".part"
   if fs.is_file(partial) then
     fs.remove(partial)

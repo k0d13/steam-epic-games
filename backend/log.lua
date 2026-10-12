@@ -1,12 +1,16 @@
-local DATA = require("data")
 local fs = require("fs")
+local millennium = require("millennium")
 local utils = require("utils")
 
--- Millennium 3.5 loses the reply to any backend call that writes through its
--- `logger` while the call is running, and the frontend sees nothing but a
--- timeout. So the backend logs to a file of its own instead.
+-- Millennium 3.5 drops the reply to any call that writes through its `logger`,
+-- so the backend logs to its own file.
 
 local log = {}
+
+-- Millennium's data folder for the plugin. Not `utils.get_backend_path()`, which
+-- comes back empty under `starlight watch`.
+local DATA = millennium.steam_path() .. "/millennium/data/epic-games"
+log.DATA = DATA
 
 local PATH = DATA .. "/plugin.log"
 

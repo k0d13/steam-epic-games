@@ -2,9 +2,7 @@ import { type SteamAppOverview } from "millennium";
 import * as appIds from "./app-ids";
 import { createEmitter } from "./emitter";
 
-// An in-memory mirror of the backend's library, indexed by both keys. The
-// install state patch runs inside Steam's render path, so "is this one of ours?"
-// has to be answered synchronously.
+// The backend's library in memory, so Steam's render path can ask synchronously.
 
 const byAppName = new Map<string, EpicGame>();
 const byAppId = new Map<number, EpicGame>();
@@ -41,10 +39,7 @@ const withGames = (library: Library): Library => ({
   games: Object.values(library.games),
 });
 
-/**
- * Load the library from the backend, from its cache unless `refresh` is set -
- * reading it fresh takes several seconds.
- */
+/** Load the library, from the backend's cache unless `refresh` is set. */
 export async function load(refresh = false, force = false) {
   const result = withGames(await backend.get_library(refresh, force));
   if (result.error) console.error("Failed to load the Epic library", result.error);
@@ -53,10 +48,7 @@ export async function load(refresh = false, force = false) {
   return result;
 }
 
-/**
- * Re-read what's installed on disk and repaint, for an install or uninstall
- * finishing. The catalog can't have changed, so this skips the trip to Epic.
- */
+/** Re-read installs without asking Epic, for an install or uninstall finishing. */
 export async function loadInstalled() {
   const result = withGames(await backend.get_installed());
   if (result.error) console.warn("Failed to re-read the installed games", result.error);
@@ -76,9 +68,8 @@ export function appIdsWithGames(): number[] {
 }
 
 /**
- * The overviews Steam holds for our shortcuts. By appid rather than filtered
- * out of `allApps`: this runs on every library and job change, and `allApps` is
- * thousands of overviews for our handful.
+ * Steam's overviews for our shortcuts, by appid: this runs on every change and
+ * `allApps` holds thousands.
  */
 export function overviews(): SteamAppOverview[] {
   return appIdsWithGames()

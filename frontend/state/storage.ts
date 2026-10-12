@@ -1,10 +1,6 @@
 /**
- * A record kept in localStorage and mirrored in memory: a sync reads once per
- * game and writes back for most of them, and re-parsing the document each time
- * is UI-thread work for an answer we already have.
- *
- * `key` should be versioned, so a change to what's stored throws the old
- * entries away rather than half-reading them.
+ * A localStorage record mirrored in memory, so syncs don't re-parse it per game.
+ * Version `key` so a format change drops old entries rather than half-reading them.
  */
 export function createStore<T>(key: string) {
   let cache: Record<string, T> | undefined;

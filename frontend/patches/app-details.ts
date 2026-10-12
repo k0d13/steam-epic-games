@@ -5,16 +5,8 @@ import * as library from "../state/library";
 import * as sizes from "../state/sizes";
 import { getAchievements, type SteamAchievements } from "./achievements";
 
-// Steam's play bar shows "Space Required" beside Install for a game that isn't
-// on disk yet, and drops it once the install starts. It isn't a component to
-// replace - it's drawn from two fields on the app's details,
-// `bHasAnyLocalContent` and `lDiskSpaceRequiredBytes`, and a shortcut points at
-// a file on disk so Steam gets both wrong for every Epic game.
-//
-// The obvious place to correct them is appDetailsStore.AppDetailsChanged, but
-// that's a mobx action and mobx 6 makes those non-writable. So we patch one
-// step earlier, at the client callback the store registers - the same thing
-// every update arrives through.
+// "Space Required" reads `bHasAnyLocalContent` and `lDiskSpaceRequiredBytes`, which
+// shortcuts get wrong. AppDetailsChanged is a non-writable mobx action, so we patch its callback.
 
 /** Only the fields we touch; details carry several dozen. */
 interface AppDetails {
@@ -44,37 +36,28 @@ const logApplied = once((details: AppDetails, appName: string) => {
   console.debug("App details patch applied", {
     appId: details.unAppID,
     appName,
-    // Anything else means the fields are read-only or renamed on this build and
-    // none of it is taking effect.
+    // Anything else means these fields are read-only or renamed on this build.
     gotLocalContent: details.bHasAnyLocalContent,
     gotRequired: details.lDiskSpaceRequiredBytes,
   });
 });
 
 /**
- * Rewrite one app's details to match what Epic says. The disk-space half is
- * skipped for installed games, since Steam's answer for them is already right.
- *
- * A game part-way through an install counts as installed here: Steam drops the
- * row once its own download starts, which is what stops the play bar shifting
- * under the cursor as the progress bar appears.
+ * Rewrite one app's details to match Epic. An install in progress counts as
+ * installed, so the play bar doesn't shift under the cursor as progress appears.
  */
 function apply(details: AppDetails) {
   const game = library.getByAppId(details.unAppID);
   if (!game) return;
 
-  // Achievements go on whether the game is installed or not - Epic keeps them
-  // against the account, so an uninstalled game still has a record to show.
-  // Left alone rather than blanked while we're waiting on Epic, so the section
-  // doesn't flicker out between reads.
+  // Epic keeps achievements per account, so uninstalled games show them too. Left
+  // alone while waiting, so the section doesn't flicker.
   const achievements = getAchievements(game.app_name);
   if (achievements) details.achievements = achievements;
 
   if (game.installed) return;
 
-  // Any job state, not just running: a finished install is on disk while
-  // library.installed catches up a poll later, which is long enough for the row
-  // to flash back in between.
+  // Any state: a finished install is on disk a poll before the library knows.
   const job = jobs.get(game.app_name);
   if (job?.kind === "install") {
     details.bHasAnyLocalContent = true;
@@ -85,16 +68,14 @@ function apply(details: AppDetails) {
 
   const size = sizes.get(game.app_name);
   if (size) details.lDiskSpaceRequiredBytes = size.disk;
-  // Reading it fetches the game's manifest from Epic, so it's started here and
-  // drawn on the pass after it lands.
+  // Fetches the manifest from Epic, so it's drawn on a later pass.
   else sizes.ensure(game.app_name);
 
   logApplied(details, game.app_name);
 }
 
 export function register() {
-  // replacePatch, because the point is to swap out an argument: `args` is what
-  // the original is called with, so our wrapper goes in front of every update.
+  // replacePatch, so our wrapper can replace the callback argument.
   const apps = SteamClient.Apps as unknown as AppsApi;
   const patch = replacePatch(apps, "RegisterForAppDetails", (args) => {
     const [, callback] = args as [number, DetailsCallback];
@@ -104,8 +85,7 @@ export function register() {
       callback(details);
     };
 
-    // Forwards to the real function with the arguments we just edited. The cast
-    // is replacePatch's typing being narrower than the function really is.
+    // Forwards with the edited arguments; the cast works around replacePatch's typing.
     return callOriginal as unknown as ReturnType<AppsApi["RegisterForAppDetails"]>;
   });
 
@@ -121,12 +101,8 @@ export function register() {
 }
 
 /**
- * Correct the details Steam is already holding, and get them re-read.
- * AppDetailsChanged can't be patched but it can be called, and it notifies the
- * same listeners the client's own updates do.
- *
- * It has to be a copy: the store holds details by reference, so re-submitting
- * the same object gives its observers no reason to re-render.
+ * Correct the details Steam already holds through AppDetailsChanged. A copy, or
+ * observers see the same reference and don't re-render.
  */
 export function refreshAll() {
   const store = Reflect.get(globalThis, "appDetailsStore") as AppDetailsStore | undefined;
@@ -139,10 +115,13 @@ export function refreshAll() {
     const updated = { ...details };
     apply(updated);
 
-    // Only when the pass wrote something new: a repaint happens on every jobs
-    // poll, and re-submitting unchanged details re-renders the app page for
-    // nothing. Against what we last sent, since the store's copy is Steam's.
-    const signature = sign(updated);
+    // Only when changed since we last sent it, as this runs on every jobs poll.
+    const signature = [
+      updated.bHasAnyLocalContent,
+      updated.lDiskSpaceRequiredBytes,
+      updated.achievements?.nAchieved,
+      updated.achievements?.nTotal,
+    ].join("|");
     if (applied.get(details.unAppID) === signature) continue;
 
     applied.set(details.unAppID, signature);
@@ -152,11 +131,3 @@ export function refreshAll() {
 
 /** What we last sent for an app, so an unchanged pass costs no re-render. */
 const applied = new Map<number, string>();
-
-const sign = (details: AppDetails) =>
-  [
-    details.bHasAnyLocalContent,
-    details.lDiskSpaceRequiredBytes,
-    details.achievements?.nAchieved,
-    details.achievements?.nTotal,
-  ].join("|");

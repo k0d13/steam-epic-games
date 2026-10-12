@@ -1,15 +1,14 @@
 --# selene: allow(unused_variable)
 local cache = require("cache")
-local DATA = require("data")
 local egl = require("egl")
 local entitlements = require("entitlements")
 local legendary = require("legendary")
 local log = require("log")
+local DATA = log.DATA
 local utils = require("utils")
 
--- The merge of two legendary commands: `list`, everything the account owns, and
--- `list-installed`, what is on disk. Neither alone is enough - showing games you
--- own but haven't installed is the point of the plugin.
+-- `legendary list` (owned) merged with `list-installed` (on disk): owned but
+-- uninstalled games are the point of the plugin.
 
 local library = {}
 
@@ -41,10 +40,7 @@ local games = {}
 --- Unix seconds of the last successful refresh.
 local refreshed_at = 0
 
--- Artwork ---------------------------------------------------------------------
-
---- Which image types a title has varies with how old its store page is, so the
---- first one present wins.
+--- Older store pages have different image types, so the first one present wins.
 local ART_TYPES = {
   portrait = { "DieselGameBoxTall", "OfferImageTall", "Thumbnail" },
   hero = { "DieselGameBox", "OfferImageWide", "DieselGameBoxWide" },
@@ -70,8 +66,6 @@ local function pick_art(key_images, kind)
   return nil
 end
 
--- Persistence -----------------------------------------------------------------
-
 ---Read the cached library from disk, if there is one.
 function library.load()
   local decoded = cache.read(CACHE_PATH, "library")
@@ -89,18 +83,11 @@ local function save()
   cache.write(CACHE_PATH, { games = games, refreshed_at = refreshed_at }, "library")
 end
 
--- Refresh ---------------------------------------------------------------------
-
---- Reads what's on disk. Local, so no round trip to Epic.
----
---- Without `--check-updates`, which as of legendary 0.21 only prints "Update
---- available!" in its human-readable output and puts nothing in the JSON, while
---- costing a login and a round trip to Epic. The build version to compare
---- against is in the catalog we already fetch, so we do the comparison here.
+--- No `--check-updates`: it costs a round trip and puts nothing in the JSON, so
+--- updates are compared against the catalog's build version instead.
 local LIST_INSTALLED = { "list-installed", "--json" }
 
-----Index one `list-installed` output by app name, so merging stays linear rather
----than a nested scan over 300+ titles.
+---Index `list-installed` output by app name so merging stays linear.
 ---@param output string
 ---@return table<string, table>|nil installed_by_name
 local function index_installed(output)
@@ -116,12 +103,8 @@ local function index_installed(output)
   return by_name
 end
 
----Copy the installed half of a game across from `list-installed`.
----
----An update is the installed build version differing from the catalog's, which
----is the same comparison legendary's own `--check-updates` makes. `latest_version`
----is kept on the game so this can be redone after an install without the
----catalog in hand.
+---Copy the installed fields across from `list-installed`. `latest_version` stays
+---on the game so this can be redone after an install without the catalog.
 ---@param game table An EpicGame missing its installed fields
 ---@param local_game table|nil
 ---@param latest_version string|nil The catalog's build version, `game.latest_version` if nil
@@ -133,8 +116,7 @@ local function apply_installed(game, local_game, latest_version)
   game.version = local_game and local_game.version or nil
   game.latest_version = latest_version or game.latest_version
 
-  -- Only ever an update against a build we actually know the name of: a missing
-  -- catalog version would otherwise read as "every installed game is stale".
+  -- A missing catalog version would otherwise flag every installed game as stale.
   game.needs_update = game.installed
     and game.latest_version ~= nil
     and game.version ~= nil
@@ -149,8 +131,7 @@ end
 ---@param installed_by_name table<string, table> app_name -> installed game
 ---@return table<string, table> installed_by_name
 local function import_leftover_egl_installs(owned, installed_by_name)
-  -- A manifest for something this account doesn't own belongs to another
-  -- account, and importing it just fails.
+  -- Another account's manifests can't be imported.
   local owned_names = {}
   for _, game in ipairs(owned) do
     owned_names[game.app_name] = true
@@ -183,8 +164,7 @@ local function import_leftover_egl_installs(owned, installed_by_name)
   return index_installed(legendary.run(LIST_INSTALLED)) or installed_by_name
 end
 
----Is this catalog entry a game? The catalog is also full of engine components,
----plugins and asset packs, which nobody wants in their Steam library.
+---Is this catalog entry a game, not an engine component, plugin or asset pack?
 ---@param entry table
 ---@return boolean
 local function is_game(entry)
@@ -201,8 +181,7 @@ local function is_game(entry)
   return false
 end
 
----The build Epic is currently shipping for a title, which is what an installed
----game is stale against. Keyed by platform, and we only ever install Windows.
+---The build Epic currently ships for Windows, the only platform we install.
 ---@param entry table One element of `legendary list`
 ---@return string|nil version
 local function latest_version(entry)
@@ -213,9 +192,8 @@ local function latest_version(entry)
   return windows.build_version
 end
 
----The Epic namespace a catalog entry belongs to, which is what an entitlement is
----keyed by. On the entry itself for most titles, on the Windows asset for the
----rest.
+---The namespace entitlements are keyed by: on the entry for most titles, on the
+---Windows asset for the rest.
 ---@param entry table One element of `legendary list`
 ---@return string|nil namespace
 local function namespace(entry)
@@ -228,8 +206,7 @@ local function namespace(entry)
   return type(windows) == "table" and windows.namespace or nil
 end
 
----Fold one catalog entry together with what's installed on disk for it, if
----anything is.
+---Merge a catalog entry with its install, if any.
 ---@param entry table One element of `legendary list`
 ---@param local_game table|nil The matching element of `legendary list-installed`
 ---@param granted table<string, integer> Grant dates by namespace, per entitlements.lua
@@ -240,8 +217,7 @@ local function merge_game(entry, local_game, granted)
   local game = {
     app_name = entry.app_name,
     title = entry.app_title or metadata.title or entry.app_name,
-    -- What legendary names the directory when given no --game-folder, so the
-    -- install dialog can show the full path up front.
+    -- legendary's default folder name, so the install dialog can show the full path.
     folder_name = ((metadata.customAttributes or {}).FolderName or {}).value,
     art_portrait = pick_art(metadata.keyImages, "portrait"),
     art_hero = pick_art(metadata.keyImages, "hero"),
@@ -262,9 +238,7 @@ function library.refresh(force)
     return nil, binary_error
   end
 
-  -- Signed out, `legendary list` exits 1 with "ValueError: No saved
-  -- credentials" and a traceback under it. Asked anyway, that is two failed
-  -- subprocesses and a page of Python handed back as an error on every refresh.
+  -- Signed out, `legendary list` fails with a Python traceback, so don't ask.
   local status = legendary.get_status()
   if not status.authenticated then
     return nil, "Not signed in to Epic."
@@ -275,11 +249,8 @@ function library.refresh(force)
     table.insert(list_args, "--force-refresh")
   end
 
-  -- The EGL sync goes first: it's what makes launcher installs visible to the
-  -- list-installed after it. Its failure is only logged, since not having EGL
-  -- is normal. `--import-only` because a full sync also exports legendary's
-  -- installs into EGL, which isn't ours to do to another launcher; `--one-shot`
-  -- and `-y` answer the prompts, since there's no stdin here.
+  -- First, so launcher installs show up in list-installed. `--import-only` so we
+  -- never export into another launcher's library.
   local synced = legendary.run({ "-y", "egl-sync", "--import-only", "--one-shot" })
   log.info("Epic Games Launcher sync: " .. utils.trim(synced))
 
@@ -312,9 +283,8 @@ function library.refresh(force)
   return games
 end
 
----Re-read only what's on disk, leaving the catalog alone. This is the
----after-an-install refresh: a game the catalog has never seen can't appear this
----way, which is what `library.refresh` is for.
+---Re-read only what's on disk, for after an install. New catalog entries need
+---`library.refresh`.
 ---@return EpicGame[]|nil games
 ---@return string? error
 function library.refresh_installed()
@@ -344,10 +314,8 @@ function library.refresh_installed()
 end
 
 ---@ffi
----The library, answered from the cache unless `refresh` is set; `force` also
----bypasses legendary's own catalog cache, which is what picks up a newly
----bought game. Never refreshes on its own: a cold `legendary list` takes a few
----seconds on a large account and shouldn't happen behind the user's back.
+---The cached library. `force` also bypasses legendary's catalog cache to pick up
+---new purchases. Never refreshes on its own, since a cold `list` takes seconds.
 ---@param refresh? boolean
 ---@param force? boolean
 ---@return Library
@@ -361,9 +329,7 @@ function get_library(refresh, force)
 end
 
 ---@ffi
----Re-read only what's installed on disk. No round trip to Epic, so it costs a
----fraction of a full refresh: this is the one for after an install or an
----uninstall, where the catalog can't have changed.
+---Re-read only what's installed, without asking Epic. For after an install or uninstall.
 ---@return Library
 function get_installed()
   local _, err = library.refresh_installed()

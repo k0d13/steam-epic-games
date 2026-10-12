@@ -1,13 +1,9 @@
 import { DialogButton, Field, TextField } from "millennium";
 import { useCallback, useEffect, useState } from "react";
 
-/**
- * Open a URL outside Steam. Which of these exists varies by client build, and a
- * missing one off an optional chain fails silently - hence the logging.
- */
+/** Open a URL outside Steam. Which API exists varies by build, hence the logging. */
 function openInBrowser(url: string) {
-  // SteamClient.URL's interface is named `URL`, which TypeScript resolves to
-  // the DOM's global instead - so this goes around the types.
+  // SteamClient.URL's type is named `URL`, which resolves to the DOM global.
   const client = SteamClient as unknown as {
     URL?: { ExecuteSteamURL?(url: string): void };
     System?: { OpenInSystemBrowser?(url: string): void };
@@ -29,21 +25,6 @@ function openInBrowser(url: string) {
   return window.open(url, "_blank") !== null;
 }
 
-/**
- * Pull the authorization code out of whatever was pasted: Epic's page shows a
- * blob of JSON, and the bare code, the whole document and the redirect URL are
- * all reasonable things to copy off it.
- */
-function extractCode(pasted: string) {
-  const trimmed = pasted.trim();
-
-  return (
-    trimmed.match(/"authorizationCode"\s*:\s*"([^"]+)"/)?.[1] ??
-    trimmed.match(/[?&]code=([^&\s"]+)/)?.[1] ??
-    trimmed
-  );
-}
-
 /** `onStatus` hears every status this panel reads, so the library below can follow. */
 export function AuthPanel({ onStatus }: { onStatus: (status: EpicStatus) => void }) {
   const [status, setStatus] = useState<EpicStatus | undefined>(undefined);
@@ -56,12 +37,10 @@ export function AuthPanel({ onStatus }: { onStatus: (status: EpicStatus) => void
   // Set when no browser could be opened, so the address can be copied by hand.
   const [manualUrl, setManualUrl] = useState<string | undefined>(undefined);
 
-  // Separate from `status`: a backend that didn't answer is not a missing
-  // binary, and saying so sends whoever debugs it to the wrong place.
+  // Separate from `status`: an unresponsive backend isn't a missing binary.
   const [unreachable, setUnreachable] = useState(false);
 
-  // Every path that learns a status goes through this, so nothing above
-  // misses one.
+  // Every path that learns a status goes through this.
   const applyStatus = useCallback(
     (next: EpicStatus | undefined) => {
       setStatus(next);
@@ -70,8 +49,7 @@ export function AuthPanel({ onStatus }: { onStatus: (status: EpicStatus) => void
     [onStatus],
   );
 
-  // Without the catch, a backend that throws leaves the panel on "Checking for
-  // legendary..." forever with nothing to say why.
+  // Without the catch, a throwing backend leaves this on "Checking..." forever.
   useEffect(() => {
     let cancelled = false;
     backend
@@ -111,9 +89,16 @@ export function AuthPanel({ onStatus }: { onStatus: (status: EpicStatus) => void
     setBusy(true);
     setError(undefined);
 
+    // The bare code, Epic's JSON page or the redirect URL.
+    const pasted = code.trim();
+    const authCode =
+      pasted.match(/"authorizationCode"\s*:\s*"([^"]+)"/)?.[1] ??
+      pasted.match(/[?&]code=([^&\s"]+)/)?.[1] ??
+      pasted;
+
     let result;
     try {
-      result = await backend.sign_in(extractCode(code));
+      result = await backend.sign_in(authCode);
     } catch (reason: unknown) {
       console.warn("sign_in failed", reason);
       setError("The plugin's backend didn't respond.");
@@ -175,8 +160,7 @@ export function AuthPanel({ onStatus }: { onStatus: (status: EpicStatus) => void
         childrenContainerWidth="min"
         bottomSeparator="none"
       >
-        {/* A refresh re-runs the download, for a machine that was offline when
-            the plugin first asked. */}
+        {/* Retrying re-runs the download, for a machine that was offline. */}
         <DialogButton disabled={busy} onClick={onRetry}>
           {busy ? "Downloading..." : "Retry"}
         </DialogButton>
@@ -227,8 +211,7 @@ export function AuthPanel({ onStatus }: { onStatus: (status: EpicStatus) => void
         )}
 
       {awaitingCode && (
-        // childrenLayout="below" so the input gets the panel's full width;
-        // inline, a paste this long runs off the edge.
+        // Below, so a long paste gets the panel's full width.
         <Field
           description={
             error

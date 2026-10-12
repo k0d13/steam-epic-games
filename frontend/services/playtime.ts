@@ -1,17 +1,9 @@
 import * as appIds from "../state/app-ids";
 
-// Steam times a shortcut's last launch the same way it times a real game, so
-// "has this been played since we last asked Epic?" is answerable without Epic -
-// which is what keeps an achievement cache from going a stale window out of
-// date after a session. Only launches through Steam count; a game started from
-// the Epic launcher leaves this untouched, which is what the age check in
-// state/achievements.ts is still there for.
+// Steam's last-launch time says whether a game was played since we asked Epic.
+// Only Steam launches count, hence the age check in state/achievements.ts.
 
-/**
- * Unix seconds of the last time Steam launched a game, 0 if it never has. The
- * overview is Steam's and its fields are unversioned, so a build without this
- * one reads as "never played" rather than throwing on a render path.
- */
+/** Unix seconds of Steam's last launch, 0 if never or on a build without the field. */
 export function getLastPlayed(appName: string): number {
   const appId = appIds.getAppId(appName);
   if (appId === undefined) return 0;
@@ -32,11 +24,7 @@ interface GameSessions {
   };
 }
 
-/**
- * Call back with the appid of every game Steam has just stopped running. The
- * registration isn't on every client build, so a missing one costs only the
- * refresh it would have triggered.
- */
+/** Call back with each appid Steam stops running; a no-op on builds without the hook. */
 export function onGameStopped(callback: (appId: number) => void): () => void {
   const sessions = (SteamClient as unknown as { GameSessions?: GameSessions }).GameSessions;
   if (typeof sessions?.RegisterForAppLifetimeNotifications !== "function") return () => {};

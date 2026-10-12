@@ -1,14 +1,8 @@
 import { type SteamAppOverview } from "millennium";
 import * as appIds from "../state/app-ids";
 
-// Every Epic shortcut in one Steam collection, so the library has an "Epic
-// Games" shelf without us drawing one.
-//
-// Collections are Steam's own, stored in cloud storage and edited through the
-// collection store: a manual ("drag drop") collection holds an explicit list of
-// apps, which is what this builds. None of it is in @steambrew/client's types and
-// none of it is guaranteed to exist on a given client build, so every call is
-// feature tested and a missing one costs only this feature.
+// Every Epic shortcut in one manual Steam collection. The collection API is untyped
+// and not on every build, so every call is feature tested.
 
 export const COLLECTION_NAME = "Epic Games";
 
@@ -64,9 +58,8 @@ type CollectionResult =
   { ok: true; added: number; total: number } | { ok: false; error: string };
 
 /**
- * Put every Epic game with a shortcut into the collection, creating it if it
- * isn't there. Re-running it adds only what's missing, and nothing is ever
- * removed - a game dragged in by hand stays.
+ * Add every Epic shortcut to the collection, creating it if needed. Only ever adds,
+ * so games dragged in by hand stay.
  */
 export async function addAll(games: EpicGame[]): Promise<CollectionResult> {
   const apps = overviews(games);
@@ -76,8 +69,6 @@ export async function addAll(games: EpicGame[]): Promise<CollectionResult> {
 
   const existing = findCollection();
 
-  // A new collection is created with its apps in one go; an existing one is
-  // only ever added to.
   if (!existing) {
     const created = collections().NewUnsavedCollection?.(COLLECTION_NAME, undefined, apps);
     if (!created?.Save) {
@@ -90,8 +81,7 @@ export async function addAll(games: EpicGame[]): Promise<CollectionResult> {
     return { ok: true, added: apps.length, total: apps.length };
   }
 
-  // A dynamic collection - one built from a filter - has no app list to write
-  // to, and overwriting the user's filter would be worse than doing nothing.
+  // A filter-based collection has no app list, and we won't overwrite the user's filter.
   const editable = existing.AsDragDropCollection?.();
   if (!editable || !existing.Save) {
     console.warn("The Epic Games collection isn't one we can add to", { id: existing.id });

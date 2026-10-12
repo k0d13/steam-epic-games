@@ -1,41 +1,20 @@
 --# selene: allow(unused_variable)
 local cache = require("cache")
-local DATA = require("data")
 local fs = require("fs")
 local json = require("json")
 local log = require("log")
+local DATA = log.DATA
 local shell = require("shell")
 local utils = require("utils")
 
--- Work too long to wait for: installs, updates, uninstalls.
---
--- Running one through `shell.run` would freeze the Lua state, and every backend
--- call with it, for the length of the download. So a job is a detached PowerShell
--- process that owns the command and writes its progress and its last error to
--- small files; this module only reads those files back.
---
--- Nothing here knows what it is running. The progress lines it watches for are
--- legendary's, but the caller supplies the program and the arguments, and
--- `legendary.lua` is what turns "install this game" into either of those.
---
--- legendary refuses to run two of these at once, so only one job ever has a
--- runner. The rest sit in the directory with everything needed to start them
--- and no process, and `jobs.list()` starts the next one as soon as it sees the
--- previous finish. The queue is therefore on disk like the rest of it, and a
--- Steam restart mid-queue loses nothing.
---
--- The frontend polls `jobs.list()` about once a second, so that path stays
--- cheap: it only reads files, and nothing it reads grows with the download.
+-- `shell.run` would block the Lua state for a whole download, so installs, updates
+-- and uninstalls run in a detached PowerShell that reports through small files.
 
 local jobs = {}
 
 local ROOT = DATA .. "/jobs"
 
---- Everything a job directory holds: the files the runner process itself owns
---- carry its name, and the small ones it writes as it goes say what is in them.
----
---- The runner script spells these as `{lock}` and so on rather than repeating
---- them, so this table stays the only place they're written down.
+--- The files in a job directory. The runner script refers to them as `{lock}` etc.
 local FILES = {
   lock = "runner.lock",
   script = "runner.ps1",
@@ -50,8 +29,7 @@ local FILES = {
   spawned = "spawned.txt",
 }
 
---- How long a job is allowed to have neither a lock nor a PID before it counts
---- as a runner that never came up. Only has to cover a wscript launch.
+--- Seconds a job may have neither lock nor PID before its runner counts as lost.
 local SPAWN_GRACE = 15
 
 ---@alias JobKind "install" | "update" | "uninstall"
@@ -76,10 +54,7 @@ local SPAWN_GRACE = 15
 ---@field progress JobProgress|nil
 ---@field error string|nil Last error line legendary printed, when it failed
 
--- Job directories -------------------------------------------------------------
-
----One directory per game. Epic's app names are alphanumeric already, but
----they're not ours to trust as path components.
+---One directory per game, with the app name sanitised rather than trusted.
 ---@param app_name string
 ---@return string
 local function job_dir(app_name)
@@ -94,8 +69,7 @@ local function file(dir, key)
   return dir .. "/" .. FILES[key]
 end
 
----Read a file, or nil if it isn't there yet. The runner creates these as it
----goes, so missing is normal.
+---Read a file, or nil if the runner hasn't written it yet.
 ---@param path string
 ---@return string|nil
 local function read(path)
@@ -105,29 +79,18 @@ local function read(path)
   return utils.read_file(path)
 end
 
--- The runner ------------------------------------------------------------------
-
---- The script the detached process runs. legendary goes in a pipeline so this
---- one PID owns everything - `taskkill /T` on it takes legendary down too - and
---- `2>&1` pulls in stderr, where the progress lines go.
----
---- Every line is appended to the log, and the ones carrying progress or an error
---- also overwrite a small file of their own, so reading either back never costs
---- a scan of a log hundreds of kilobytes long.
+--- legendary runs in a pipeline so `taskkill /T` on this PID takes it down too.
+--- Progress and errors get files of their own so reads never scan the log.
 local RUNNER = [[
 $ErrorActionPreference = 'Continue'
 
-# Held, unshared, for as long as this process lives, so the plugin can tell
-# whether the runner is still going by trying to open it. Deliberately never
-# closed: the handle goes when the process does, which is after the exit code
-# at the end of this script has been written.
+# Held unshared and never closed, so the plugin can tell the runner is alive by
+# failing to open it. It's released only after the exit code below is written.
 $Lock = [System.IO.File]::Open("$Dir\{lock}", 'Create', 'Write', 'None')
 
 $PID | Out-File -Encoding ascii -FilePath "$Dir\{pid}"
 
-# One handle held open for the whole download rather than an open, write and
-# close per line: legendary prints thousands of them, and it is the only work
-# this loop does on every single one.
+# One handle for the whole download: legendary prints thousands of lines.
 $Log = New-Object System.IO.StreamWriter "$Dir\{log}", $true, (New-Object System.Text.UTF8Encoding $false)
 $Log.AutoFlush = $true
 
@@ -161,13 +124,10 @@ if ($null -eq $code) { $code = 0 }
 $code | Out-File -Encoding ascii -FilePath "$Dir\{exit}"
 ]]
 
---- The script as the runner actually runs it.
 local RUNNER_SCRIPT = (RUNNER:gsub("{(%w+)}", FILES))
 
----Start a detached, hidden PowerShell running one legendary command.
----
----Through wscript because `utils.exec` waits for the command, and this one runs
----for the length of the download: wscript hands the runner off and returns.
+---Start a hidden, detached runner. Through wscript because `utils.exec` waits
+---for the command to finish.
 ---@param dir string
 ---@param exe string The program the runner owns
 ---@param args string[] Arguments to it
@@ -201,24 +161,15 @@ local function spawn(dir, exe, args)
     return false, "Could not write the job launcher: " .. tostring(err)
   end
 
-  -- Before the launch, not after: this is what stops the job reading as queued,
-  -- and a read landing in between would otherwise start a second runner.
+  -- Before the launch, or a read in between sees it queued and starts a second runner.
   utils.write_file(file(dir, "spawned"), tostring(math.floor(utils.time())))
 
-  -- Returns as soon as wscript has handed the runner off, which is the point:
-  -- nothing here waits for a download.
   shell.run("wscript", { (launcher_path:gsub("/", "\\")) })
   return true
 end
 
--- Reading a job back ----------------------------------------------------------
-
----Is the runner that owns this directory still alive?
----
----Asked once a second per job, so it can't cost a subprocess: `tasklist` here
----was a console window flashing up and stealing focus for the length of every
----download. The runner holds `runner.lock` open unshared instead, and nothing
----else can open it until the process has exited.
+---Is the runner still alive? Polled every second, so it tests the lock the runner
+---holds unshared rather than spawning `tasklist`.
 ---@param dir string
 ---@param pid integer|nil
 ---@param spawned_at integer|nil
@@ -226,11 +177,8 @@ end
 local function is_running(dir, pid, spawned_at)
   local lock = file(dir, "lock")
   if not fs.is_file(lock) then
-    -- The runner takes the lock before it writes its PID, so no lock and a PID
-    -- is a job that predates the lock or one whose runner died on the way up.
-    -- No lock and no PID is the first moments of a job - but only for a moment:
-    -- a wscript that never got the runner up would otherwise leave a job that
-    -- reads as running forever, polled once a second with nothing behind it.
+    -- A PID without the lock means the runner died starting up. Neither means
+    -- it's still starting, but only for SPAWN_GRACE.
     return pid == nil and (utils.time() - (spawned_at or 0)) < SPAWN_GRACE
   end
 
@@ -271,13 +219,8 @@ local function read_meta(dir)
   return type(meta) == "table" and meta or nil
 end
 
----Build one job out of its directory and the metadata already read from it.
----
----State is derived rather than stored, since the runner can die without getting
----to record anything: an exit code means finished, a held lock means running,
----and a lock nobody holds with no exit code means the runner died - deliberately
----if pause left its marker behind, otherwise not. A job that was never spawned
----at all is one still waiting its turn.
+---Build a job from its directory. State is derived, not stored, since the runner
+---can die without recording anything.
 ---@param dir string
 ---@param meta table
 ---@return Job
@@ -291,8 +234,7 @@ local function build(dir, meta)
   if exit_code then
     state = exit_code == 0 and "done" or "failed"
   elseif fs.is_file(file(dir, "paused")) then
-    -- Pausing is a kill, so this marker is the only evidence that the missing
-    -- process was meant to be missing.
+    -- Pausing is a kill; this marker says the process was meant to be gone.
     state = "paused"
   elseif not spawned_at then
     state = "queued"
@@ -322,12 +264,8 @@ function jobs.get(app_name)
   return meta and build(dir, meta)
 end
 
----Launch the runner a queued job has been waiting for, if it is that job's turn.
----
----Called off `jobs.list()`, which the frontend polls, so the queue moves on
----roughly a second after the job ahead of it ends. There is no timer behind
----this and nothing in memory holding the order: the oldest `started_at` with no
----runner goes next.
+---Start the oldest queued job if nothing is running. legendary runs one job at a
+---time, so the queue lives on disk and moves whenever `jobs.list()` is polled.
 ---@param entries { dir: string, meta: table, job: Job }[]
 local function promote(entries)
   ---@type { dir: string, meta: table, job: Job }|nil
@@ -349,8 +287,7 @@ local function promote(entries)
     return
   end
 
-  -- Written by `jobs.start`, which is the only thing that knows what legendary
-  -- call the job stands for. Without them there is nothing to run.
+  -- Written by `jobs.start`; without them there's nothing to run.
   local meta = next_up.meta
   if type(meta.exe) ~= "string" or type(meta.args) ~= "table" then
     log.warn("Dropping a queued job with nothing to run: " .. tostring(meta.app_name))
@@ -368,10 +305,7 @@ local function promote(entries)
   next_up.job = build(next_up.dir, meta)
 end
 
----Every job we know about, queued, running or finished.
----
----Also where the queue moves: reading the jobs is the only thing that happens
----often enough to notice one of them ending.
+---Every job, queued, running or finished. Also moves the queue along.
 ---@return Job[]
 function jobs.list()
   if not fs.is_directory(ROOT) then
@@ -396,14 +330,8 @@ function jobs.list()
   return result
 end
 
--- Starting and stopping -------------------------------------------------------
-
----Queue one job for a game, replacing whatever it last ran, and start it if
----nothing else is running.
----
----Nothing here spawns: writing the job down is enough, and `promote` picks it
----up on the same call. So a second install while the first is downloading takes
----exactly this path and simply waits.
+---Queue a job for a game, replacing its last one. `promote` starts it in the same
+---call if nothing else is running.
 ---@param app_name string
 ---@param kind JobKind
 ---@param exe string
@@ -416,16 +344,14 @@ function jobs.start(app_name, kind, exe, args)
     return existing
   end
 
-  -- Everything from a previous run goes, or a fresh install reports the
-  -- percentage the old one stopped at until its first progress line.
+  -- Clear the old run, or the new one shows its last percentage until progress arrives.
   local dir = job_dir(app_name)
   if fs.is_directory(dir) then
     fs.remove_all(dir)
   end
   fs.create_directories(dir)
 
-  -- The command goes in with the rest of it, since whatever eventually runs
-  -- this job may be a poll minutes from now with no memory of the request.
+  -- Store the command: whatever starts this job may be a poll minutes from now.
   local ok, err = utils.write_file(
     file(dir, "meta"),
     json.encode({
@@ -447,10 +373,8 @@ function jobs.start(app_name, kind, exe, args)
   return jobs.get(app_name)
 end
 
----Kill the runner behind a job we have already read.
----
----legendary has no pause, so stopping is a kill: `/T` takes legendary down with
----the runner, `/F` because it won't respond to anything gentler mid-download.
+---Kill a job's runner. `/T` takes legendary down with it, and `/F` because it
+---ignores anything gentler mid-download.
 ---@param job Job
 ---@return boolean stopped
 local function stop(job)
@@ -458,9 +382,8 @@ local function stop(job)
     return false
   end
 
-  -- Before the kill: a read landing in the gap would otherwise see a runner
-  -- that vanished on its own and call the job failed. For a queued job it is
-  -- the whole of the work - the marker is what takes it out of the queue.
+  -- Before the kill, or a read in between calls the job failed. For a queued job
+  -- the marker alone takes it out of the queue.
   utils.write_file(file(job_dir(job.app_name), "paused"), "1")
 
   if job.state == "running" and job.pid then
@@ -470,8 +393,7 @@ local function stop(job)
 end
 
 ---@ffi
----Every job we know about, queued, running or finished. Polled while something
----is downloading.
+---Every job, queued, running or finished. Polled while something downloads.
 ---@return Job[]
 function get_jobs()
   return jobs.list()

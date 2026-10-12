@@ -19,12 +19,10 @@ import * as achievements from "./state/achievements";
 import * as jobs from "./state/jobs";
 import * as library from "./state/library";
 
-// IconsModule is typed as `any` and its contents vary between Steam builds, so
-// fall back rather than letting a missing icon take the whole plugin down.
+// IconsModule varies between Steam builds; a missing icon mustn't break the plugin.
 const PluginIcon = IconsModule?.Download ?? IconsModule?.Settings ?? (() => null);
 
-// The plugin's own panel, which is where setup lives. Reachable whether or not
-// anything is signed in, unlike the app properties dialog.
+// Setup lives here, reachable whether or not anything is signed in.
 function Panel() {
   const [authenticated, setAuthenticated] = useState(false);
 
@@ -33,9 +31,8 @@ function Panel() {
     setAuthenticated(status.authenticated);
   }, []);
 
-  // One section around both, so their fields are siblings: Steam suppresses the
-  // separator on a section's last field, and two sections stacked leave the
-  // account row and the library row touching with nothing between them.
+  // One section: Steam drops the separator on a section's last field, so two
+  // would leave the rows touching.
   return (
     <DialogControlsSection>
       <AuthPanel onStatus={onStatus} />
@@ -45,9 +42,8 @@ function Panel() {
 }
 
 export default definePlugin(async () => {
-  // Before the library loads, so overviews Steam builds meanwhile go through
-  // the patch. Guarded so a patch that no longer applies costs its own feature
-  // rather than the plugin.
+  // Before the library loads, so overviews built meanwhile are patched. Guarded so
+  // a patch that no longer applies only costs its own feature.
   const unpatches: (() => void)[] = [];
   for (const [name, patch] of [
     ["install state", installState.register],
@@ -69,11 +65,8 @@ export default definePlugin(async () => {
     }
   }
 
-  // Steam builds its overviews once and keeps them, so every change to the
-  // library has to ask for a repaint.
-  //
-  // Coalesced: the sources of one fire together, an install poll landing a jobs
-  // change and a library change on the same tick.
+  // Steam keeps its overviews, so changes must ask for a repaint. Coalesced, since
+  // a poll often lands a jobs and a library change on the same tick.
   let repaintQueued = false;
   const repaint = () => {
     if (repaintQueued) return;
@@ -90,19 +83,15 @@ export default definePlugin(async () => {
   };
 
   const unsubscribes = [
-    // A running install repaints once a second, since its progress bar is read
-    // off the overview.
+    // Running installs repaint every second: the progress bar reads off the overview.
     library.subscribe(repaint),
-    // Not on the repaint: that runs every second of an install, and the storage
-    // page only changes when what's installed does, which is a library change.
+    // Not on the repaint: the storage page only changes when what's installed does.
     library.subscribe(storage.refresh),
     jobs.subscribe(repaint),
     // Achievements land a round trip to Epic after the page asking for them drew.
     achievements.subscribe(repaint),
 
-    // A session just ended is the one moment an achievement cache is certain to
-    // be short, so the game that ended is re-read there and then rather than
-    // waiting for something to draw it.
+    // A session ending is when an achievement cache is certain to be short.
     onGameStopped((appId) => {
       const game = library.getByAppId(appId);
       if (game) void achievements.refresh(game.app_name);
@@ -111,32 +100,26 @@ export default definePlugin(async () => {
 
   window.addEventListener("beforeunload", () => {
     for (const unsubscribe of unsubscribes) unsubscribe();
-    // The overview is Steam's: our appid left in it survives a reload and
-    // shows a download nothing is writing to.
+    // Our appid would survive a reload in Steam's overview as a dead download.
     downloadOverview.release();
     for (const unpatch of unpatches) unpatch();
   });
 
-  // Not awaited: Millennium brings up plugins and themes off this same startup,
-  // and the first backend call can be a legendary download. Awaiting it held up
-  // the client, themes included, and left this panel unreachable meanwhile.
+  // Not awaited: the first backend call can be a legendary download, and awaiting
+  // it held up the whole client, themes included.
   void (async () => {
-    // Cache only: every shortcut claims to be installed until this resolves, so
-    // it can't wait on Epic. The panel asks for the real thing once it's up.
+    // Cache only: every shortcut reads as installed until this resolves.
     await library.load();
 
-    // Installs are detached, so they outlive a Steam restart: pick up anything
-    // still running and start polling it again.
+    // Installs are detached and outlive a Steam restart, so resume polling them.
     await jobs.refresh();
 
-    // Counts for the games we've already read, so the library home can sort by
-    // completion before anything opens a details page. Last, because the cached
-    // read is followed by a round trip per game that has been played since.
+    // Lets the library home sort by completion early. Last, since it follows up
+    // with a round trip per recently played game.
     void achievements.loadSummaries();
 
-    // legendary only spots a new build by comparing what's installed against a
-    // catalog it has already fetched, so a cached library never grows an
-    // update. Costs a round trip to Epic, so nothing waits on it.
+    // A cached library never shows updates: legendary compares against the catalog
+    // it fetched. Costs a round trip, so nothing waits on it.
     void library.load(true, true);
   })();
 

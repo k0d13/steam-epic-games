@@ -3,14 +3,8 @@ import { findExport } from "../services/modules";
 import { memo } from "../services/once";
 import * as jobs from "../state/jobs";
 
-// The client only raises its install wizard for real appids, so an Epic game
-// can never make it appear. But all the native side sends is one plain object,
-// and the dialog is drawn from it in JS - so writing that object into
-// GameActionsStore opens the wizard ourselves, in Steam's own language and
-// window, with the drive list, space warnings and shortcut checkboxes free.
-//
-// Its buttons call four SteamClient.Installs functions, intercepted the same
-// way the uninstall flow is: the dialog is Steam's, the file work is ours.
+// The client only opens its install wizard for real appids, but it's drawn in JS
+// from one object, so we write that into GameActionsStore and intercept its buttons.
 
 /** The state the wizard's own configuration page is drawn for. */
 const SHOW_CONFIG = 7;
@@ -24,10 +18,7 @@ interface InstallRequestApp {
   lDiskSpaceRequiredBytes: number;
 }
 
-/**
- * What the native client sends the wizard. Every field is read somewhere, and a
- * missing one draws a warning or an empty row, so it's built whole.
- */
+/** What the native client sends the wizard; a missing field draws a warning or empty row. */
 interface InstallRequest {
   rgApps: InstallRequestApp[];
   eInstallState: number;
@@ -63,8 +54,7 @@ interface GameActionsStore {
   GetInstallManager(): InstallRequest | null;
 }
 
-// `unknown` rather than a promise, so a patch can return callOriginal - a
-// symbol - from the same function.
+// `unknown`, so a patch can also return callOriginal, a symbol.
 interface Installs {
   SetInstallFolder(folderIndex: number): unknown;
   SetCreateShortcuts(desktop: boolean, systemMenu: boolean): unknown;
@@ -86,10 +76,7 @@ interface Bridge {
   Apps: Apps;
 }
 
-/**
- * The store singleton, found by the source of one of its getters, which is a
- * string Steam's build can't rename.
- */
+/** The store singleton, found by the source of its getter. */
 const getStore = memo(() => {
   const store = findExport(
     "GetInstallManager(){return this.m_InstallManager}",
@@ -105,11 +92,7 @@ let pending: { appName: string; folderName?: string; request: InstallRequest } |
 
 let folders: InstallFolder[] = [];
 
-/**
- * Hand the store a fresh object every time. Its field is a deep mobx
- * observable, so it holds a proxy around what it was given - mutating ours
- * afterwards repaints nothing.
- */
+/** A fresh object each time: the store wraps what it's given in a mobx proxy. */
 function publish() {
   const current = getStore();
   if (current && pending) current.m_InstallManager = { ...pending.request };
@@ -126,11 +109,7 @@ function folderByIndex(index: number) {
   return folders.find((folder) => folder.nFolderIndex === index);
 }
 
-/**
- * Open Steam's install wizard for one of our games. The size is awaited, since
- * the dialog sizes its space warning against it - by this point it's usually
- * cached from the game's page anyway.
- */
+/** Open Steam's install wizard for our game, awaiting the size its space warning needs. */
 export async function open(appId: number, appName: string, folderName?: string) {
   if (!getStore()) return;
 
@@ -177,8 +156,7 @@ export async function open(appId: number, appName: string, folderName?: string) 
 export function register() {
   const bridge = SteamClient as unknown as Bridge;
 
-  // What the dialog's buttons call. All global, so a real Steam install goes
-  // through them whenever ours isn't.
+  // Global, so real Steam installs fall through whenever ours isn't pending.
   const patches = [
     replacePatch(bridge.Installs, "SetInstallFolder", ([folderIndex]: [number]) => {
       if (!pending) return callOriginal;
@@ -239,8 +217,7 @@ export function register() {
 
   console.debug("Registered the install wizard patches");
   return () => {
-    // A wizard left on screen once the patches are gone has buttons that ask
-    // the native client about an appid it has never heard of.
+    // A stray wizard's buttons would ask the client about an appid it doesn't know.
     if (pending) close();
     for (const patch of patches) patch.unpatch();
   };
