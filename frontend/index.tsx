@@ -12,6 +12,7 @@ import * as installWizard from "./patches/install-wizard";
 import * as installs from "./patches/installs";
 import * as libraryBadge from "./patches/library-badge";
 import * as manageMenu from "./patches/manage-menu";
+import * as storage from "./patches/storage";
 import { type EpicStatus } from "./rpc";
 import { onGameStopped } from "./services/playtime";
 import * as achievements from "./state/achievements";
@@ -70,6 +71,7 @@ export default definePlugin(async () => {
     ["activity", activity.register],
     ["achievements", achievementsPatch.register],
     ["achievement progress", achievementProgress.register],
+    ["storage", storage.register],
   ] as const) {
     try {
       unpatches.push(patch());
@@ -100,6 +102,9 @@ export default definePlugin(async () => {
   // A running install repaints once a second, since its progress bar is read
   // off the overview.
   const unsubscribeLibrary = library.subscribe(repaint);
+  // Not on the repaint: that runs every second of an install, and the storage
+  // page only changes when what's installed does, which is a library change.
+  const unsubscribeStorage = library.subscribe(storage.refresh);
   const unsubscribeJobs = jobs.subscribe(repaint);
   // Achievements land a round trip to Epic after the page asking for them drew.
   const unsubscribeAchievements = achievements.subscribe(repaint);
@@ -115,6 +120,7 @@ export default definePlugin(async () => {
   window.addEventListener("beforeunload", () => {
     unsubscribeSessions();
     unsubscribeLibrary();
+    unsubscribeStorage();
     unsubscribeJobs();
     unsubscribeAchievements();
     // The overview is Steam's: our appid left in it survives a reload and
