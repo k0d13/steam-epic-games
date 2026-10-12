@@ -65,9 +65,7 @@ end
 local function fetch(destination)
   local target = (destination:gsub("/", "\\"))
 
-  -- Five minutes: this is a 30MB download over whatever connection the machine
-  -- has, and the usual timeout would give up on a slow one.
-  shell.run("curl.exe", { "-fsSL", "--retry", "2", "-o", target, URL }, 300000)
+  shell.run("curl.exe", { "-fsSL", "--retry", "2", "-o", target, URL })
   if fs.is_file(destination) then
     return true
   end
@@ -83,7 +81,7 @@ local function fetch(destination)
       .. "' -OutFile '"
       .. target
       .. "'",
-  }, 300000)
+  })
 
   return fs.is_file(destination)
 end

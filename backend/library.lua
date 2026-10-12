@@ -99,9 +99,6 @@ end
 --- against is in the catalog we already fetch, so we do the comparison here.
 local LIST_INSTALLED = { "list-installed", "--json" }
 
--- Per `legendary import`. One manifest refetch, not a download.
-local IMPORT_TIMEOUT = 30000
-
 ----Index one `list-installed` output by app name, so merging stays linear rather
 ---than a nested scan over 300+ titles.
 ---@param output string
@@ -179,10 +176,7 @@ local function import_leftover_egl_installs(owned, installed_by_name)
   log.info("Importing Epic Games Launcher installs egl-sync skipped: " .. utils.join(titles, ", "))
 
   for _, args in ipairs(commands) do
-    -- These run one after another and each blocks the Lua state, so they get a
-    -- short leash: a handful of manifests legendary can't resolve shouldn't add
-    -- up to minutes of frozen plugin on a refresh.
-    legendary.run(args, IMPORT_TIMEOUT)
+    legendary.run(args)
   end
 
   -- Re-read: the list only picks the imports up once they have happened.

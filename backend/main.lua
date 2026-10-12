@@ -1,3 +1,5 @@
+local DATA = require("data")
+local fs = require("fs")
 local legendary = require("legendary")
 local library = require("library")
 local log = require("log")
@@ -8,11 +10,11 @@ local millennium = require("millennium")
 require("grid")
 
 local function on_load()
+  -- Left behind by versions that ran commands through a PowerShell daemon.
+  -- pcall'd because one still running from before a reload holds its lock file.
+  pcall(fs.remove_all, DATA .. "/daemon")
+
   -- Cache only, so the first get_library is answered from disk.
-  --
-  -- The command daemon is left for the first command to start: starting it here,
-  -- before `ready`, holds up Millennium's handshake with this process until it
-  -- gives up on the plugin.
   library.load()
 
   millennium.ready()
