@@ -1,7 +1,6 @@
 import { beforePatch, type SteamAppOverview } from "@steambrew/client";
-import { logger } from "../index";
+import { logger } from "../logger";
 import { forceFakeLocationChange } from "../services/popups";
-import { NON_STEAM_APP_APPID_MASK } from "../state/app-ids";
 import * as library from "../state/library";
 
 // A non-Steam shortcut has no purchase date, so every Epic game lands in the
@@ -37,10 +36,7 @@ export function register() {
     collectionStore,
     "OnAppOverviewChange",
     ([apps]: [SteamAppOverview[]]) => {
-      for (const app of apps) {
-        if (app.appid < NON_STEAM_APP_APPID_MASK) continue;
-        applyActivity(app);
-      }
+      for (const app of apps) applyActivity(app);
     },
   );
 
@@ -50,12 +46,7 @@ export function register() {
 
 /** Correct the overviews Steam built before the library loaded. */
 export function refreshAll() {
-  // By appid, not by sifting `allApps`: see the same call in install-state.
-  const apps = library
-    .appIdsWithGames()
-    .map((appId) => appStore.GetAppOverviewByAppID(appId))
-    .filter((app): app is SteamAppOverview => app !== undefined);
-
+  const apps = library.overviews();
   if (apps.length === 0) return;
 
   for (const app of apps) applyActivity(app);

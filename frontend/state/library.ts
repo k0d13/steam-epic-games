@@ -1,4 +1,5 @@
-import { logger } from "../index";
+import { type SteamAppOverview } from "@steambrew/client";
+import { logger } from "../logger";
 import rpc, { type EpicGame } from "../rpc";
 import * as appIds from "./app-ids";
 import { createEmitter } from "./emitter";
@@ -78,4 +79,15 @@ export function isEmpty(): boolean {
 /** The Steam appids we have shortcuts for, for the paths that correct them. */
 export function appIdsWithGames(): number[] {
   return [...byAppId.keys()];
+}
+
+/**
+ * The overviews Steam holds for our shortcuts. By appid rather than filtered
+ * out of `allApps`: this runs on every library and job change, and `allApps` is
+ * thousands of overviews for our handful.
+ */
+export function overviews(): SteamAppOverview[] {
+  return appIdsWithGames()
+    .map((appId) => appStore.GetAppOverviewByAppID(appId))
+    .filter((app): app is SteamAppOverview => app !== undefined);
 }

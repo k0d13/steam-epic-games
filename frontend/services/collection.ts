@@ -1,5 +1,5 @@
 import { type SteamAppOverview } from "@steambrew/client";
-import { logger } from "../index";
+import { logger } from "../logger";
 import { type EpicGame } from "../rpc";
 import * as appIds from "../state/app-ids";
 
@@ -55,14 +55,15 @@ function overviews(games: EpicGame[]): SteamAppOverview[] {
   return appStore.allApps.filter((app) => wanted.has(app.appid));
 }
 
-export interface CollectionResult {
-  ok: boolean;
-  /** Games added by this call, not the collection's total. */
-  added: number;
-  /** Everything of ours in the collection once this finished. */
-  total: number;
-  error?: string;
+/** Our shortcuts the collection doesn't hold yet. */
+function missingFrom(collection: Collection, apps: SteamAppOverview[]) {
+  const present = new Set(collection.allApps.map((app) => app.appid));
+  return apps.filter((app) => !present.has(app.appid));
 }
+
+type CollectionResult =
+  /** `added` by this call, and the `total` of ours in the collection after it. */
+  { ok: true; added: number; total: number } | { ok: false; error: string };
 
 /**
  * Put every Epic game with a shortcut into the collection, creating it if it
@@ -72,7 +73,7 @@ export interface CollectionResult {
 export async function addAll(games: EpicGame[]): Promise<CollectionResult> {
   const apps = overviews(games);
   if (apps.length === 0) {
-    return { ok: false, added: 0, total: 0, error: "No Epic shortcuts to collect yet." };
+    return { ok: false, error: "No Epic shortcuts to collect yet." };
   }
 
   const existing = findCollection();
@@ -83,7 +84,7 @@ export async function addAll(games: EpicGame[]): Promise<CollectionResult> {
     const created = collections().NewUnsavedCollection?.(COLLECTION_NAME, undefined, apps);
     if (!created?.Save) {
       logger.warn("This Steam build exposes no way to create a collection");
-      return { ok: false, added: 0, total: 0, error: "Steam wouldn't create the collection." };
+      return { ok: false, error: "Steam wouldn't create the collection." };
     }
 
     await created.Save();
@@ -98,14 +99,11 @@ export async function addAll(games: EpicGame[]): Promise<CollectionResult> {
     logger.warn("The Epic Games collection isn't one we can add to", { id: existing.id });
     return {
       ok: false,
-      added: 0,
-      total: 0,
       error: `A collection named "${COLLECTION_NAME}" already exists and can't be edited.`,
     };
   }
 
-  const present = new Set(existing.allApps?.map((app) => app.appid) ?? []);
-  const missing = apps.filter((app) => !present.has(app.appid));
+  const missing = missingFrom(existing, apps);
 
   if (missing.length > 0) {
     editable.AddApps(missing);
@@ -120,8 +118,5 @@ export async function addAll(games: EpicGame[]): Promise<CollectionResult> {
 export function missingCount(games: EpicGame[]): number {
   const apps = overviews(games);
   const existing = findCollection();
-  if (!existing) return apps.length;
-
-  const present = new Set(existing.allApps?.map((app) => app.appid) ?? []);
-  return apps.filter((app) => !present.has(app.appid)).length;
+  return existing ? missingFrom(existing, apps).length : apps.length;
 }

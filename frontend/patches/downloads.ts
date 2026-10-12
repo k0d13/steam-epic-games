@@ -1,4 +1,4 @@
-import { logger } from "../index";
+import { logger } from "../logger";
 import { type Job } from "../rpc";
 import * as appIds from "../state/app-ids";
 import * as jobs from "../state/jobs";
@@ -113,9 +113,10 @@ export function etaSeconds(eta: string | undefined) {
  * install, since an update's size isn't something we can ask for.
  */
 export function bytesFor(job: Job) {
-  const total = job.kind === "install" ? (sizes.get(job.appName)?.download ?? 0) : 0;
-  if (job.kind === "install") sizes.ensure(job.appName);
+  if (job.kind !== "install") return [0, 0] as const;
 
+  sizes.ensure(job.appName);
+  const total = sizes.get(job.appName)?.download ?? 0;
   return [Math.round((total * (job.progress?.percent ?? 0)) / 100), total] as const;
 }
 

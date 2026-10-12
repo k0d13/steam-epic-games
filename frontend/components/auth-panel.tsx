@@ -1,6 +1,6 @@
 import { DialogButton, Field, TextField } from "@steambrew/client";
 import { useCallback, useEffect, useState } from "react";
-import { logger } from "../index";
+import { logger } from "../logger";
 import rpc, { type EpicStatus } from "../rpc";
 
 /**
@@ -36,7 +36,7 @@ function openInBrowser(url: string) {
  * blob of JSON, and the bare code, the whole document and the redirect URL are
  * all reasonable things to copy off it.
  */
-export function extractCode(pasted: string) {
+function extractCode(pasted: string) {
   const trimmed = pasted.trim();
 
   return (
@@ -46,12 +46,8 @@ export function extractCode(pasted: string) {
   );
 }
 
-export interface AuthPanelProps {
-  /** Called with every status this panel reads, so the library below can follow. */
-  onStatus?: (status: EpicStatus) => void;
-}
-
-export function AuthPanel({ onStatus }: AuthPanelProps) {
+/** `onStatus` hears every status this panel reads, so the library below can follow. */
+export function AuthPanel({ onStatus }: { onStatus: (status: EpicStatus) => void }) {
   const [status, setStatus] = useState<EpicStatus | undefined>(undefined);
 
   const [busy, setBusy] = useState(false);
@@ -68,7 +64,7 @@ export function AuthPanel({ onStatus }: AuthPanelProps) {
   const applyStatus = useCallback(
     (next: EpicStatus | undefined) => {
       setStatus(next);
-      if (next) onStatus?.(next);
+      if (next) onStatus(next);
     },
     [onStatus],
   );

@@ -1,5 +1,5 @@
 import { afterPatch } from "@steambrew/client";
-import { logger } from "../index";
+import { logger } from "../logger";
 import { getLastPlayed } from "../services/playtime";
 import * as library from "../state/library";
 
@@ -78,9 +78,7 @@ function folderFor(folders: InstallFolder[], installPath: string) {
 
 /** Add every installed game of ours to the folder holding it. */
 function withOurGames(folders: InstallFolder[]) {
-  const ours = new Set(library.appIdsWithGames());
-
-  for (const appId of ours) {
+  for (const appId of library.appIdsWithGames()) {
     const game = library.getByAppId(appId);
     if (!game?.installed || !game.installPath) continue;
 

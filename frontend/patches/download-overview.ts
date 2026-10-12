@@ -1,4 +1,4 @@
-import { logger } from "../index";
+import { logger } from "../logger";
 import { once } from "../services/once";
 import * as appIds from "../state/app-ids";
 import * as jobs from "../state/jobs";

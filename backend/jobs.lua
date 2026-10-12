@@ -57,8 +57,8 @@ local SPAWN_GRACE = 15
 
 ---@class JobProgress
 ---@field percent number 0-100
----@field downloaded integer Bytes, as legendary counts them
----@field total integer Bytes
+---@field downloaded integer Chunks, not bytes: that's what legendary counts
+---@field total integer Chunks
 ---@field eta string|nil "00:10:00", straight from legendary
 ---@field elapsed string|nil "00:01:23"
 ---@field speed number|nil MiB/s, raw off the wire
@@ -195,14 +195,7 @@ local function spawn(dir, exe, args)
   end
 
   local launcher_path = file(dir, "launcher")
-  ok, err = utils.write_file(
-    launcher_path,
-    shell.vbs_launcher(
-      'powershell -NoProfile -ExecutionPolicy Bypass -File "'
-        .. (script_path:gsub("/", "\\"))
-        .. '"'
-    )
-  )
+  ok, err = utils.write_file(launcher_path, shell.vbs_launcher(script_path))
   if not ok then
     return false, "Could not write the job launcher: " .. tostring(err)
   end
@@ -274,16 +267,8 @@ end
 ---@param dir string
 ---@return table|nil
 local function read_meta(dir)
-  local text = read(file(dir, "meta"))
-  if not text then
-    return nil
-  end
-
-  local ok, meta = pcall(json.decode, text)
-  if not ok or type(meta) ~= "table" then
-    return nil
-  end
-  return meta
+  local ok, meta = pcall(json.decode, read(file(dir, "meta")) or "")
+  return ok and type(meta) == "table" and meta or nil
 end
 
 ---Build one job out of its directory and the metadata already read from it.
@@ -300,7 +285,6 @@ local function build(dir, meta)
   local pid = tonumber(read(file(dir, "pid")) or "")
   local exit_code = tonumber(read(file(dir, "exit")) or "")
   local spawned_at = tonumber(read(file(dir, "spawned")) or "")
-  local started_at = meta.started_at or 0
 
   ---@type JobState
   local state
@@ -318,10 +302,10 @@ local function build(dir, meta)
 
   return {
     app_name = meta.app_name,
-    kind = meta.kind or "install",
+    kind = meta.kind,
     state = state,
     pid = pid,
-    started_at = started_at,
+    started_at = meta.started_at,
     spawned_at = spawned_at,
     exit_code = exit_code,
     progress = read_progress(dir),
@@ -335,12 +319,7 @@ end
 function jobs.get(app_name)
   local dir = job_dir(app_name)
   local meta = read_meta(dir)
-  if not meta then
-    return nil
-  end
-
-  meta.app_name = meta.app_name or app_name
-  return build(dir, meta)
+  return meta and build(dir, meta)
 end
 
 ---Launch the runner a queued job has been waiting for, if it is that job's turn.
@@ -395,11 +374,11 @@ end
 ---often enough to notice one of them ending.
 ---@return Job[]
 function jobs.list()
-  local entries = {}
   if not fs.is_directory(ROOT) then
     return {}
   end
 
+  local entries = {}
   for _, entry in ipairs(fs.list(ROOT) or {}) do
     -- The directory name is a slug, so the app name comes out of the metadata.
     local meta = entry.is_directory and read_meta(entry.path)
@@ -476,10 +455,9 @@ end
 ---
 ---legendary has no pause, so stopping is a kill: `/T` takes legendary down with
 ---the runner, `/F` because it won't respond to anything gentler mid-download.
----@param app_name string
 ---@param job Job
 ---@return boolean stopped
-local function stop(app_name, job)
+local function stop(job)
   if job.state ~= "running" and job.state ~= "queued" then
     return false
   end
@@ -487,7 +465,7 @@ local function stop(app_name, job)
   -- Before the kill: a read landing in the gap would otherwise see a runner
   -- that vanished on its own and call the job failed. For a queued job it is
   -- the whole of the work - the marker is what takes it out of the queue.
-  utils.write_file(file(job_dir(app_name), "paused"), "1")
+  utils.write_file(file(job_dir(job.app_name), "paused"), "1")
 
   if job.state == "running" and job.pid then
     shell.run("taskkill", { "/F", "/T", "/PID", tostring(job.pid) })
@@ -501,7 +479,7 @@ end
 ---@return boolean stopped
 function jobs.pause(app_name)
   local job = jobs.get(app_name)
-  if not job or not stop(app_name, job) then
+  if not job or not stop(job) then
     return false
   end
 
@@ -519,7 +497,7 @@ function jobs.cancel(app_name)
     return false
   end
 
-  stop(app_name, job)
+  stop(job)
   fs.remove_all(job_dir(app_name))
   logger:info("Cancelled " .. app_name)
   return true

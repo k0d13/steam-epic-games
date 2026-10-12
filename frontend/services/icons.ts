@@ -1,5 +1,5 @@
 import { ELibraryAssetType } from "@steambrew/client";
-import { logger } from "../index";
+import { logger } from "../logger";
 import rpc, { type EpicGame } from "../rpc";
 
 // The sidebar icon is the one piece of artwork that isn't just another

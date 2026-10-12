@@ -240,52 +240,37 @@ end
 ---from the cache. Never touches Epic, so the frontend can seed the whole
 ---library's completion percentages in one call.
 RPC.GetCachedAchievements = function()
-  -- A list rather than a map keyed by app name: the frontend camelises every
-  -- key it gets back, and an app name is not a key it should be rewriting.
-  local games = {}
-  for app_name, summary in pairs(legendary.get_cached_achievements()) do
-    table.insert(games, {
-      app_name = app_name,
-      total = summary.total,
-      unlocked = summary.unlocked,
-      fetched_at = summary.fetched_at,
-    })
-  end
-
-  return { ok = true, games = games }
+  return { ok = true, games = legendary.get_cached_achievements() }
 end
 
 -- Installs --------------------------------------------------------------------
+
+---@param job Job|nil
+---@param err string|nil
+local function job_answer(job, err)
+  if not job then
+    return { ok = false, error = err }
+  end
+  return { ok = true, job = job }
+end
 
 ---Start installing, updating or resuming one game. Returns as soon as the job
 ---is spawned; progress is read back with GetJobs. Starting a game that is
 ---already installing returns the running job.
 RPC.StartInstall = function(data)
-  local job, err = legendary.install(data.app_name, data.base_path, data.game_folder)
-  if not job then
-    return { ok = false, error = err }
-  end
-  return { ok = true, job = job }
+  return job_answer(legendary.install(data.app_name, data.base_path, data.game_folder))
 end
 
 ---Update an installed game to the latest build. The same job machinery as an
 ---install, and the same queue - only one legendary runs at a time.
 RPC.StartUpdate = function(data)
-  local job, err = legendary.update(data.app_name)
-  if not job then
-    return { ok = false, error = err }
-  end
-  return { ok = true, job = job }
+  return job_answer(legendary.update(data.app_name))
 end
 
 ---Remove a game from disk. The Steam shortcut is left alone, since keeping
 ---uninstalled games in the library is the point of the plugin.
 RPC.StartUninstall = function(data)
-  local job, err = legendary.uninstall(data.app_name)
-  if not job then
-    return { ok = false, error = err }
-  end
-  return { ok = true, job = job }
+  return job_answer(legendary.uninstall(data.app_name))
 end
 
 ---Every install or uninstall we know about, running or finished. Polled while

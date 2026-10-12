@@ -17,42 +17,26 @@ export function mainPopup(): SteamPopup | undefined {
   );
 }
 
-const CLOSE_CALLBACKS = Symbol("epic-games.popup-close");
-
-interface Handlers {
-  /** Run now, and again whenever the popup is shown. */
-  onOpen(callback: VoidFunction): void;
-  onClose(callback: VoidFunction): void;
-}
-
 /**
  * Call back for every popup, the ones already open included. The callback may
- * return its own teardown, which runs with the ones given to `onClose`.
+ * return a teardown, which runs when that popup is destroyed.
  *
  * @returns Cleanup that unregisters from the manager.
  */
-export function onPopupCreate(
-  handleOpen: (popup: SteamPopup, handlers: Handlers) => void | VoidFunction,
-): () => void {
+export function onPopupCreate(handleOpen: (popup: SteamPopup) => void | VoidFunction): () => void {
   const popups = g_PopupManager;
   if (!popups) return () => {};
 
+  // Per registration, so two features watching the same popup keep their own.
+  const teardowns = new WeakMap<SteamPopup, void | VoidFunction>();
+
   function onCreate(popup: SteamPopup) {
-    const closeCallbacks = new Set<VoidFunction>();
-    Reflect.set(popup, CLOSE_CALLBACKS, closeCallbacks);
-
-    const onClose = handleOpen(popup, {
-      onOpen: (callback) => callback(),
-      onClose: (callback) => closeCallbacks.add(callback),
-    });
-
-    if (onClose) closeCallbacks.add(onClose);
+    teardowns.set(popup, handleOpen(popup));
   }
 
   function onDestroy(popup: SteamPopup) {
-    const closeCallbacks = Reflect.get(popup, CLOSE_CALLBACKS) as Set<VoidFunction> | undefined;
-    for (const callback of closeCallbacks ?? []) callback();
-    Reflect.deleteProperty(popup, CLOSE_CALLBACKS);
+    teardowns.get(popup)?.();
+    teardowns.delete(popup);
   }
 
   for (const name of [DESKTOP_WINDOW_NAME, GAMEPAD_WINDOW_NAME]) {
@@ -87,17 +71,14 @@ export function forceFakeLocationChange() {
   // A timer, not a frame: SharedJSContext has none of its own.
   setTimeout(() => {
     nudgeQueued = false;
-    nudge();
+
+    if (MainWindowBrowserManager?.m_lastLocation) {
+      MainWindowBrowserManager.m_lastLocation.hash = `#${Math.random()}`;
+      return;
+    }
+
+    // Big Picture has no browser manager; its library is in the popup's opener.
+    const opener = mainPopup()?.window?.opener;
+    if (opener instanceof Window) opener.location.hash = `#${Math.random()}`;
   }, 16);
-}
-
-function nudge() {
-  if (MainWindowBrowserManager?.m_lastLocation) {
-    MainWindowBrowserManager.m_lastLocation.hash = `#${Math.random()}`;
-    return;
-  }
-
-  // Big Picture has no browser manager; its library is in the popup's opener.
-  const opener = mainPopup()?.window?.opener;
-  if (opener instanceof Window) opener.location.hash = `#${Math.random()}`;
 }

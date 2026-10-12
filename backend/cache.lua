@@ -3,8 +3,8 @@ local json = require("json")
 local logger = require("logger")
 local utils = require("utils")
 
--- Small JSON documents kept under backend/data/cache. Every one of them is a
--- cache: losing one costs a refresh, so nothing here tries harder than that.
+-- Small JSON documents on disk. The ones written here are all caches: losing
+-- one costs a refresh, so nothing here tries harder than that.
 
 local cache = {}
 
@@ -19,7 +19,7 @@ function cache.read(path, label)
 
   local ok, decoded = pcall(json.decode, utils.read_file(path) or "")
   if not ok or type(decoded) ~= "table" then
-    logger:warn("Cached " .. label .. " is unreadable, ignoring it")
+    logger:warn("Unreadable " .. label .. " at " .. path)
     return nil
   end
 

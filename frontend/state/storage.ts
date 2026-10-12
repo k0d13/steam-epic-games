@@ -1,4 +1,4 @@
-import { logger } from "../index";
+import { logger } from "../logger";
 
 /**
  * A record kept in localStorage and mirrored in memory: a sync reads once per

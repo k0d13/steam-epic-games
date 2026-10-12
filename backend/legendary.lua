@@ -31,13 +31,7 @@ function legendary.get_binary()
 
   local path, err = vendor.ensure()
   BINARY = path
-
-  -- Always with a reason, so every caller can hand the error straight on
-  -- rather than inventing wording of its own.
-  if not path then
-    return nil, err or "legendary binary not found"
-  end
-  return path
+  return path, err
 end
 
 -- Commands --------------------------------------------------------------------
@@ -67,7 +61,7 @@ function legendary.run(args, timeout)
   end
 
   local started = utils.time_ms()
-  local output, status = shell.run(binary, args, { timeout = timeout })
+  local output, status = shell.run(binary, args, timeout)
 
   local summary = subcommand(args) .. " in " .. (utils.time_ms() - started) .. "ms"
   if status == 0 then
@@ -84,6 +78,19 @@ end
 ---@return boolean
 local function is_log_line(trimmed)
   return trimmed:match("^%[[%w%-%._]+%]%s+%u+:") ~= nil
+end
+
+---The last error line in some legendary output, if it printed one.
+---@param output string
+---@return string|nil
+local function last_error(output)
+  local last
+  for line in output:gmatch("[^\r\n]+") do
+    if line:find("ERROR:") or line:find("CRITICAL:") then
+      last = utils.trim(line)
+    end
+  end
+  return last
 end
 
 ---Decode the JSON a legendary command printed.
@@ -121,21 +128,7 @@ function legendary.decode_json(output)
   -- Only the last error line, never the whole output: a legendary that fell over
   -- prints a Python traceback, and handing kilobytes of it back as an error
   -- string tells nobody anything and travels through the whole RPC path.
-  local trimmed = utils.trim(output)
-  return nil, legendary.last_error(output) or trimmed:sub(1, 200)
-end
-
----The last error line in some legendary output, if it printed one.
----@param output string
----@return string|nil
-function legendary.last_error(output)
-  local last
-  for line in output:gmatch("[^\r\n]+") do
-    if line:find("ERROR:") or line:find("CRITICAL:") then
-      last = utils.trim(line)
-    end
-  end
-  return last
+  return nil, last_error(output) or utils.trim(output):sub(1, 200)
 end
 
 -- Status ----------------------------------------------------------------------
@@ -165,7 +158,7 @@ function legendary.get_status(refresh)
       available = false,
       authenticated = false,
       login_url = LOGIN_URL,
-      error = err or "legendary could not be downloaded.",
+      error = err,
     }
     return status
   end
@@ -194,26 +187,38 @@ function legendary.get_status(refresh)
   return status
 end
 
----Start a legendary command without waiting for it, for work too slow to hold
----the Lua state for. Collect it with `legendary.collect`.
+---Run a legendary command for one game without waiting for it, for work too
+---slow to hold the Lua state for. The first call starts it and every call after
+---checks on it, until one comes back with the output.
+---@param running table<string, string> The command in flight, by app name
+---@param app_name string
 ---@param args string[] Arguments to legendary, unquoted
----@return string|nil id
+---@return string|nil output
 ---@return string? error
-function legendary.start(args)
-  local binary, err = legendary.get_binary()
-  if not binary then
-    return nil, err
+---@return boolean? still_running The command has been started, ask again shortly
+local function run_in_background(running, app_name, args)
+  local id = running[app_name]
+  if not id then
+    local binary, err = legendary.get_binary()
+    if not binary then
+      return nil, err
+    end
+
+    local started, start_error = shell.start(binary, args)
+    if not started then
+      return nil, start_error
+    end
+
+    running[app_name] = started
+    return nil, nil, true
   end
 
-  return shell.start(binary, args)
-end
-
----The output of a command started with `legendary.start`, or nil while it is
----still running. Answers once: collecting it clears it.
----@param id string
----@return string|nil output
-function legendary.collect(id)
-  return shell.poll(id)
+  local output = shell.poll(id)
+  if not output then
+    return nil, nil, true
+  end
+  running[app_name] = nil
+  return output
 end
 
 -- Sizes ----------------------------------------------------------------------
@@ -261,22 +266,11 @@ function legendary.get_size(app_name, refresh)
     return sizes[app_name]
   end
 
-  local id = sizing[app_name]
-  if not id then
-    local started, err = legendary.start({ "info", app_name, "--json" })
-    if not started then
-      return nil, err
-    end
-
-    sizing[app_name] = started
-    return nil, nil, true
-  end
-
-  local output = legendary.collect(id)
+  local output, run_error, still_running =
+    run_in_background(sizing, app_name, { "info", app_name, "--json" })
   if not output then
-    return nil, nil, true
+    return nil, run_error, still_running
   end
-  sizing[app_name] = nil
 
   local decoded, err = legendary.decode_json(output)
   if type(decoded) ~= "table" then
@@ -381,7 +375,7 @@ end
 
 ---One game's achievements.
 ---
----Started and collected the way `get_size` is: a miss says so rather than
+---Read in the background the way `get_size` is: a miss says so rather than
 ---waiting, and the caller asks again shortly. Never blocks.
 ---@param app_name string
 ---@param refresh boolean|nil Ask Epic again even if it's cached
@@ -398,24 +392,13 @@ function legendary.get_achievements(app_name, refresh)
     return achievements[app_name]
   end
 
-  local id = achieving[app_name]
-  if not id then
-    -- --hidden, because Steam draws undiscovered achievements itself, blurred,
-    -- and dropping them here would leave its counts short of the total.
-    local started, err = legendary.start({ "achievements", app_name, "--json", "--hidden" })
-    if not started then
-      return nil, err
-    end
-
-    achieving[app_name] = started
-    return nil, nil, true
-  end
-
-  local output = legendary.collect(id)
+  -- --hidden, because Steam draws undiscovered achievements itself, blurred,
+  -- and dropping them here would leave its counts short of the total.
+  local output, run_error, still_running =
+    run_in_background(achieving, app_name, { "achievements", app_name, "--json", "--hidden" })
   if not output then
-    return nil, nil, true
+    return nil, run_error, still_running
   end
-  achieving[app_name] = nil
 
   local decoded, err = legendary.decode_json(output)
 
@@ -444,23 +427,42 @@ end
 ---whole library at once - which is what the library home's "% of Achievements
 ---Completed" sort needs, since it asks about every game as it draws and a
 ---command per game would be a subprocess storm.
----@return table<string, { total: integer, unlocked: integer, fetched_at: integer }>
+---
+---A list rather than a map keyed by app name: the frontend camelises every key
+---it gets back, and an app name is not a key it should be rewriting.
+---@return { app_name: string, total: integer, unlocked: integer, fetched_at: integer }[]
 function legendary.get_cached_achievements()
   achievements = achievements or disk.read(ACHIEVEMENTS_PATH, "achievements") or {}
 
   local summaries = {}
   for app_name, entry in pairs(achievements) do
-    summaries[app_name] = {
+    table.insert(summaries, {
+      app_name = app_name,
       total = entry.total,
       unlocked = entry.unlocked,
       fetched_at = entry.fetched_at,
-    }
+    })
   end
 
   return summaries
 end
 
 -- Long-running commands ------------------------------------------------------
+
+---Queue a legendary command as a job.
+---@param app_name string
+---@param kind JobKind
+---@param args string[]
+---@return Job|nil job
+---@return string? error
+local function start_job(app_name, kind, args)
+  local binary, err = legendary.get_binary()
+  if not binary then
+    return nil, err
+  end
+
+  return jobs.start(app_name, kind, binary, args)
+end
 
 ---Install, update or resume a game, as a job rather than a wait.
 ---
@@ -472,11 +474,6 @@ end
 ---@return Job|nil job
 ---@return string? error
 function legendary.install(app_name, base_path, game_folder)
-  local binary, err = legendary.get_binary()
-  if not binary then
-    return nil, err
-  end
-
   local args = { "-y", "install", app_name }
 
   if type(base_path) == "string" and base_path ~= "" then
@@ -488,7 +485,7 @@ function legendary.install(app_name, base_path, game_folder)
     table.insert(args, game_folder)
   end
 
-  return jobs.start(app_name, "install", binary, args)
+  return start_job(app_name, "install", args)
 end
 
 ---Update an already installed game, as a job.
@@ -500,24 +497,14 @@ end
 ---@return Job|nil job
 ---@return string? error
 function legendary.update(app_name)
-  local binary, err = legendary.get_binary()
-  if not binary then
-    return nil, err
-  end
-
-  return jobs.start(app_name, "update", binary, { "-y", "install", app_name, "--update-only" })
+  return start_job(app_name, "update", { "-y", "install", app_name, "--update-only" })
 end
 
 ---@param app_name string
 ---@return Job|nil job
 ---@return string? error
 function legendary.uninstall(app_name)
-  local binary, err = legendary.get_binary()
-  if not binary then
-    return nil, err
-  end
-
-  return jobs.start(app_name, "uninstall", binary, { "-y", "uninstall", app_name })
+  return start_job(app_name, "uninstall", { "-y", "uninstall", app_name })
 end
 
 -- Authentication --------------------------------------------------------------
@@ -549,7 +536,7 @@ function legendary.authenticate(code)
   -- A failed attempt is not a no-op: legendary clears the stored login before
   -- trying the new code, so a bad code signs the user out. Hence the wording.
   return false,
-    legendary.last_error(output)
+    last_error(output)
       or "That code didn't work, it may have expired or already been used. Press Sign in for a fresh one."
 end
 

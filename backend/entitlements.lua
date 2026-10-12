@@ -1,6 +1,4 @@
-local fs = require("fs")
-local json = require("json")
-local logger = require("logger")
+local cache = require("cache")
 local utils = require("utils")
 
 -- When an account was granted a game, which is the closest thing Epic has to
@@ -69,20 +67,10 @@ end
 ---The earliest grant date per Epic namespace, in Unix seconds.
 ---@return table<string, integer> granted_by_namespace
 function entitlements.get_granted()
-  local path = config_path() .. "/entitlements.json"
-  if not fs.is_file(path) then
-    logger:info("No legendary entitlements at " .. path)
-    return {}
-  end
-
-  local ok, decoded = pcall(json.decode, utils.read_file(path) or "")
-  if not ok or type(decoded) ~= "table" then
-    logger:warn("Unreadable legendary entitlements at " .. path)
-    return {}
-  end
-
   local granted = {}
-  for _, entitlement in ipairs(decoded) do
+  for _, entitlement in
+    ipairs(cache.read(config_path() .. "/entitlements.json", "legendary entitlements") or {})
+  do
     local namespace = entitlement.namespace
     local at = parse_granted(entitlement.grantDate)
     if

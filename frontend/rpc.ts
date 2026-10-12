@@ -1,81 +1,8 @@
 import { Millennium } from "@steambrew/client";
-import { logger } from "./index";
+import { asArray, createCall } from "./call";
+import { logger } from "./logger";
 
-/**
- * What a backend method answers instead of a result when the work it needs is
- * too slow to hold the Lua state for. RPC handlers run on Millennium's main
- * thread and cannot yield, so the only way not to block every other call is to
- * start the work, say so, and be asked again - which is what {@link call} does,
- * invisibly to everything below.
- */
-interface Pending {
-  pending: true;
-  /** How long the backend wants before the next attempt, in milliseconds. */
-  retryIn?: number;
-}
-
-const isPending = (value: unknown): value is Pending =>
-  typeof value === "object" && value !== null && (value as Pending).pending === true;
-
-/** Stop retrying eventually, so a backend stuck saying "pending" cannot hang a
- * caller for good. */
-const RETRY_LIMIT_MS = 120_000;
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-// The backend speaks snake_case, because that's what legendary and Lua both
-// use. Converting every answer here once keeps the rest of the frontend in
-// normal TS casing without a hand-written mapping per document - which was
-// where a renamed backend field used to turn silently into `undefined`.
-//
-// Only answers are converted. Payloads still go out spelled the way the Lua
-// side reads them.
-
-function camelize(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(camelize);
-  if (typeof value !== "object" || value === null) return value;
-
-  const result: Record<string, unknown> = {};
-  for (const [key, nested] of Object.entries(value)) {
-    result[key.replace(/_(.)/g, (_, character: string) => character.toUpperCase())] =
-      camelize(nested);
-  }
-
-  return result;
-}
-
-async function call<R>(route: `RPC.${string}`, payload: object = {}): Promise<R> {
-  const name = route.slice(4);
-  logger.debug(`-> ${name}`, payload);
-
-  const body = JSON.stringify(payload);
-  const deadline = Date.now() + RETRY_LIMIT_MS;
-
-  for (;;) {
-    const raw = await Millennium.callServerMethod(name, { payload: body });
-    const parsed = camelize(JSON.parse(raw)) as R | Pending;
-
-    if (!isPending(parsed)) {
-      logger.debug(`<- ${name}`, parsed);
-      return parsed;
-    }
-
-    if (Date.now() > deadline) {
-      logger.warn(`${name} never stopped saying pending`);
-      return parsed as R;
-    }
-
-    await sleep(parsed.retryIn ?? 250);
-  }
-}
-
-/**
- * Lua has one table type, so an empty list arrives as `{}` - an object with no
- * `map` on it, and a TypeError on every fresh install.
- */
-function asArray<T>(value: T[] | undefined): T[] {
-  return Array.isArray(value) ? value : [];
-}
+const call = createCall((name, payload) => Millennium.callServerMethod(name, { payload }), 120_000);
 
 /** Whether legendary is usable, and whether an Epic account is signed in. */
 export interface EpicStatus {
@@ -142,14 +69,14 @@ export interface GameAchievements {
 }
 
 /** What Steam needs to create a shortcut that launches a game through legendary. */
-export interface LaunchCommand {
+interface LaunchCommand {
   exe: string;
   arguments: string;
   startDir: string;
 }
 
 /** How far along a running install is. Absent until legendary's first progress line. */
-export interface JobProgress {
+interface JobProgress {
   percent: number;
   downloaded: number;
   total: number;
@@ -180,7 +107,7 @@ export interface Job {
   error?: string;
 }
 
-export interface LibraryResult {
+interface LibraryResult {
   ok: boolean;
   error?: string;
   games: EpicGame[];
@@ -226,7 +153,7 @@ function toLibrary(raw: RawLibrary): LibraryResult {
   return { ...raw, games: asArray(raw.games), refreshedAt: raw.refreshedAt ?? 0 };
 }
 
-export class RPC {
+class RPC {
   /**
    * Cached in the backend, because answering costs a subprocess launch; pass
    * `refresh` after anything that could have changed the answer.
@@ -266,12 +193,10 @@ export class RPC {
   }
 
   async GetLaunchCommand(appName: string): Promise<LaunchCommand | undefined> {
-    const raw = await call<{ ok: boolean } & Partial<LaunchCommand>>("RPC.GetLaunchCommand", {
+    const raw = await call<{ ok: boolean } & LaunchCommand>("RPC.GetLaunchCommand", {
       app_name: appName,
     });
-
-    if (!raw.ok || !raw.exe) return undefined;
-    return { exe: raw.exe, arguments: raw.arguments ?? "", startDir: raw.startDir ?? "" };
+    return raw.ok ? raw : undefined;
   }
 
   /**
@@ -279,17 +204,17 @@ export class RPC {
    * manifest from Epic - and cached in the backend from then on.
    */
   async GetGameSize(appName: string, refresh = false): Promise<GameSize | undefined> {
-    const raw = await call<{ ok: boolean; disk?: number; download?: number; error?: string }>(
-      "RPC.GetGameSize",
-      { app_name: appName, refresh },
-    );
+    const raw = await call<{ ok: boolean; error?: string } & GameSize>("RPC.GetGameSize", {
+      app_name: appName,
+      refresh,
+    });
 
-    if (!raw.ok || raw.disk === undefined) {
+    if (!raw.ok) {
       logger.debug("Could not size the game", { appName, error: raw.error });
       return undefined;
     }
 
-    return { disk: raw.disk, download: raw.download ?? raw.disk };
+    return raw;
   }
 
   /**
@@ -298,7 +223,7 @@ export class RPC {
    * re-reads one that has gone stale because the game has been played since.
    */
   async GetAchievements(appName: string, refresh = false): Promise<GameAchievements | undefined> {
-    const raw = await call<{ ok: boolean; error?: string } & Partial<RawAchievements>>(
+    const raw = await call<{ ok: boolean; error?: string } & RawAchievements>(
       "RPC.GetAchievements",
       { app_name: appName, refresh },
     );
@@ -308,12 +233,7 @@ export class RPC {
       return undefined;
     }
 
-    return {
-      total: raw.total ?? 0,
-      unlocked: raw.unlocked ?? 0,
-      fetchedAt: raw.fetchedAt ?? 0,
-      achievements: asArray(raw.achievements).map(toAchievement),
-    };
+    return { ...raw, achievements: asArray(raw.achievements).map(toAchievement) };
   }
 
   /**
@@ -328,22 +248,9 @@ export class RPC {
       games?: AchievementSummary[];
     }>("RPC.GetCachedAchievements");
 
-    const summaries = new Map<string, AchievementSummary>();
-    if (!raw.ok) {
-      logger.debug("Could not read the cached achievements", { error: raw.error });
-      return summaries;
-    }
+    if (!raw.ok) logger.debug("Could not read the cached achievements", { error: raw.error });
 
-    for (const summary of asArray(raw.games)) {
-      summaries.set(summary.appName, {
-        appName: summary.appName,
-        total: summary.total ?? 0,
-        unlocked: summary.unlocked ?? 0,
-        fetchedAt: summary.fetchedAt ?? 0,
-      });
-    }
-
-    return summaries;
+    return new Map(asArray(raw.games).map((summary) => [summary.appName, summary] as const));
   }
 
   /**

@@ -1,4 +1,4 @@
-import { logger } from "../index";
+import { logger } from "../logger";
 import rpc, { type EpicGame } from "../rpc";
 import * as appIds from "../state/app-ids";
 import { NON_STEAM_APP_APPID_MASK } from "../state/app-ids";
@@ -17,10 +17,9 @@ export interface SyncResult {
   failed: number;
   /** Individual images applied, not games - a game is worth up to four. */
   artworkApplied: number;
-  total: number;
 }
 
-export interface SyncState {
+interface SyncState {
   active: boolean;
   done: number;
   total: number;
@@ -54,12 +53,6 @@ export function getSyncState(): SyncState {
 const BATCH_SIZE = 10;
 
 const yieldToUi = () => new Promise((resolve) => setTimeout(resolve, 0));
-
-function existingShortcutIds(): Set<number> {
-  return new Set(
-    appStore.allApps.filter((app) => app.appid >= NON_STEAM_APP_APPID_MASK).map((app) => app.appid),
-  );
-}
 
 async function createShortcut(game: EpicGame): Promise<number | undefined> {
   const launch = await rpc.GetLaunchCommand(game.appName);
@@ -104,13 +97,7 @@ function removeShortcut(appName: string, appId: number) {
  * differs, so running it again once everything is in place is cheap.
  */
 export async function sync(games: EpicGame[]): Promise<SyncResult> {
-  const result: SyncResult = {
-    added: 0,
-    removed: 0,
-    failed: 0,
-    artworkApplied: 0,
-    total: games.length,
-  };
+  const result: SyncResult = { added: 0, removed: 0, failed: 0, artworkApplied: 0 };
 
   if (state.active) {
     logger.debug("A sync is already in progress, skipping this one");
@@ -121,7 +108,13 @@ export async function sync(games: EpicGame[]): Promise<SyncResult> {
 
   try {
     // Shortcuts the user deleted by hand would otherwise look synced forever.
-    appIds.prune(existingShortcutIds());
+    appIds.prune(
+      new Set(
+        appStore.allApps
+          .filter((app) => app.appid >= NON_STEAM_APP_APPID_MASK)
+          .map((app) => app.appid),
+      ),
+    );
 
     const known = appIds.getAll();
     const owned = new Set(games.map((game) => game.appName));

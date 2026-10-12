@@ -8,7 +8,7 @@ import {
   showContextMenu,
 } from "@steambrew/client";
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
-import { logger } from "../index";
+import { logger } from "../logger";
 import { type EpicGame } from "../rpc";
 import * as artwork from "../services/artwork";
 import * as collection from "../services/collection";

@@ -2,6 +2,7 @@ import { definePlugin, DialogControlsSection, IconsModule } from "@steambrew/cli
 import { useCallback, useState } from "react";
 import { AuthPanel } from "./components/auth-panel";
 import { LibraryPanel } from "./components/library-panel";
+import { logger } from "./logger";
 import * as achievementProgress from "./patches/achievement-progress";
 import * as achievementsPatch from "./patches/achievements";
 import * as activity from "./patches/activity";
@@ -19,18 +20,6 @@ import { onGameStopped } from "./services/playtime";
 import * as achievements from "./state/achievements";
 import * as jobs from "./state/jobs";
 import * as library from "./state/library";
-
-const BADGE = "Steam Epic Games";
-const BADGE_STYLE = "background: #2a2a2a; color: white; border-radius: 2px;";
-function log(write: (...args: unknown[]) => void, ...args: unknown[]) {
-  write(`%c ${BADGE} %c`, BADGE_STYLE, "background: transparent;", ...args);
-}
-export const logger = {
-  debug: (...args: unknown[]) => log(console.debug, ...args),
-  info: (...args: unknown[]) => log(console.info, ...args),
-  warn: (...args: unknown[]) => log(console.warn, ...args),
-  error: (...args: unknown[]) => log(console.error, ...args),
-};
 
 // IconsModule is typed as `any` and its contents vary between Steam builds, so
 // fall back rather than letting a missing icon take the whole plugin down.
@@ -102,30 +91,28 @@ export default definePlugin(async () => {
     }, 16);
   };
 
-  // A running install repaints once a second, since its progress bar is read
-  // off the overview.
-  const unsubscribeLibrary = library.subscribe(repaint);
-  // Not on the repaint: that runs every second of an install, and the storage
-  // page only changes when what's installed does, which is a library change.
-  const unsubscribeStorage = library.subscribe(storage.refresh);
-  const unsubscribeJobs = jobs.subscribe(repaint);
-  // Achievements land a round trip to Epic after the page asking for them drew.
-  const unsubscribeAchievements = achievements.subscribe(repaint);
+  const unsubscribes = [
+    // A running install repaints once a second, since its progress bar is read
+    // off the overview.
+    library.subscribe(repaint),
+    // Not on the repaint: that runs every second of an install, and the storage
+    // page only changes when what's installed does, which is a library change.
+    library.subscribe(storage.refresh),
+    jobs.subscribe(repaint),
+    // Achievements land a round trip to Epic after the page asking for them drew.
+    achievements.subscribe(repaint),
 
-  // A session just ended is the one moment an achievement cache is certain to
-  // be short, so the game that ended is re-read there and then rather than
-  // waiting for something to draw it.
-  const unsubscribeSessions = onGameStopped((appId) => {
-    const game = library.getByAppId(appId);
-    if (game) void achievements.refresh(game.appName);
-  });
+    // A session just ended is the one moment an achievement cache is certain to
+    // be short, so the game that ended is re-read there and then rather than
+    // waiting for something to draw it.
+    onGameStopped((appId) => {
+      const game = library.getByAppId(appId);
+      if (game) void achievements.refresh(game.appName);
+    }),
+  ];
 
   window.addEventListener("beforeunload", () => {
-    unsubscribeSessions();
-    unsubscribeLibrary();
-    unsubscribeStorage();
-    unsubscribeJobs();
-    unsubscribeAchievements();
+    for (const unsubscribe of unsubscribes) unsubscribe();
     // The overview is Steam's: our appid left in it survives a reload and
     // shows a download nothing is writing to.
     downloadOverview.release();

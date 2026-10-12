@@ -1,5 +1,5 @@
 import { ELibraryAssetType } from "@steambrew/client";
-import { logger } from "../index";
+import { logger } from "../logger";
 import { type EpicGame } from "../rpc";
 import { createStore } from "../state/storage";
 import * as icons from "./icons";
