@@ -31,9 +31,8 @@ local jobs = {}
 
 local ROOT = DATA .. "/jobs"
 
---- Everything a job directory holds, named the way `shell.lua` names the
---- daemon's files: the ones the runner process itself owns carry its name, and
---- the small ones it writes as it goes say what is in them.
+--- Everything a job directory holds: the files the runner process itself owns
+--- carry its name, and the small ones it writes as it goes say what is in them.
 ---
 --- The runner script spells these as `{lock}` and so on rather than repeating
 --- them, so this table stays the only place they're written down.
@@ -167,9 +166,8 @@ local RUNNER_SCRIPT = (RUNNER:gsub("{(%w+)}", FILES))
 
 ---Start a detached, hidden PowerShell running one legendary command.
 ---
----Through wscript because it's the only way to get no console window at all:
----`powershell -WindowStyle Hidden` still flashes one, and this window would sit
----on screen for the length of the download.
+---Through wscript because `utils.exec` waits for the command, and this one runs
+---for the length of the download: wscript hands the runner off and returns.
 ---@param dir string
 ---@param exe string The program the runner owns
 ---@param args string[] Arguments to it
@@ -219,9 +217,8 @@ end
 ---
 ---Asked once a second per job, so it can't cost a subprocess: `tasklist` here
 ---was a console window flashing up and stealing focus for the length of every
----download. The runner holds `runner.lock` open unshared instead, the same way
----the command daemon holds `daemon.lock`, and nothing else can open it until
----the process has exited.
+---download. The runner holds `runner.lock` open unshared instead, and nothing
+---else can open it until the process has exited.
 ---@param dir string
 ---@param pid integer|nil
 ---@param spawned_at integer|nil

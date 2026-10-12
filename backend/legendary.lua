@@ -52,10 +52,9 @@ end
 
 ---Run one legendary command and block until it exits.
 ---@param args string[] Arguments to legendary, unquoted
----@param timeout integer|nil Milliseconds to wait, `shell.run`'s default if nil
 ---@return string output stdout followed by stderr, empty if the binary is missing
 ---@return integer status -1 if there was nothing to run
-function legendary.run(args, timeout)
+function legendary.run(args)
   local binary, err = legendary.get_binary()
   if not binary then
     log.error("No legendary binary: " .. tostring(err))
@@ -63,7 +62,7 @@ function legendary.run(args, timeout)
   end
 
   local started = utils.time_ms()
-  local output, status = shell.run(binary, args, timeout)
+  local output, status = shell.run(binary, args)
 
   local summary = subcommand(args) .. " in " .. (utils.time_ms() - started) .. "ms"
   if status == 0 then
@@ -109,8 +108,8 @@ function legendary.decode_json(output)
     local opens = trimmed:sub(1, 1)
     if (opens == "{" or opens == "[") and not is_log_line(trimmed) then
       -- Stops at the next log line rather than running to the end of the
-      -- output: stderr is appended after stdout, so legendary's chatter lands
-      -- on both sides of the document.
+      -- output: stdout and stderr share one pipe, so legendary's chatter can
+      -- land on both sides of the document.
       local last = #lines
       for offset = index + 1, #lines do
         if is_log_line(utils.trim(lines[offset])) then
