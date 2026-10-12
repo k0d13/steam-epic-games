@@ -3,11 +3,8 @@ local fs = require("fs")
 local log = require("log")
 local utils = require("utils")
 
--- Games installed by the Epic Games Launcher are invisible to legendary until
--- registered with it, and `egl-sync` quietly skips any manifest it can't fully
--- resolve. Its manifests are plain JSON in a fixed place, so the leftovers are
--- read here and handed to `legendary import`, which refetches the manifest from
--- Epic when the local one is unusable.
+-- `egl-sync` quietly skips Epic Games Launcher manifests it can't resolve, so the
+-- leftovers are read here and handed to `legendary import` instead.
 
 local egl = {}
 

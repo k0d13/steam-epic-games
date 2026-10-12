@@ -6,19 +6,8 @@ import { mainPopup, onPopupCreate } from "../services/popups";
 import * as jobs from "../state/jobs";
 import * as library from "../state/library";
 
-// Steam's Manage submenu has no Uninstall for a non-Steam shortcut. The list is
-// hardcoded per app type in an unexported function, and the only way to change
-// which list we get - claiming to be a normal app - would change what a shortcut
-// is everywhere else in the client.
-//
-// So the item is added to the rendered submenu instead. `BuildManageSubmenu` is
-// a method on the context menu's class, which is never exported but does have
-// an instance in every open menu's React tree: the first menu we see hands us
-// the prototype, and every menu after it - including that one, via
-// `forceUpdate` - is ours.
-//
-// Nothing is removed. "Remove non-Steam game" drops the shortcut and un-syncs
-// the game, which is a different thing from uninstalling it.
+// Manage has no Uninstall for shortcuts, so we patch `BuildManageSubmenu`, whose
+// unexported class we find in the first open menu's React tree.
 
 interface ManageMenuInstance {
   BuildManageSubmenu(...args: unknown[]): ReactElement;
@@ -32,10 +21,7 @@ interface Fiber {
   return: Fiber | null;
 }
 
-/**
- * The React fiber for a DOM node. Stored under a key with a build-specific
- * suffix, hence the scan.
- */
+/** The React fiber for a DOM node, under a build-specific key. */
 function getFiber(node: Element): Fiber | undefined {
   for (const key of Object.keys(node)) {
     if (!key.startsWith("__reactFiber$") && !key.startsWith("__reactContainer$")) continue;
@@ -44,15 +30,7 @@ function getFiber(node: Element): Fiber | undefined {
   return undefined;
 }
 
-function isManageMenu(value: unknown): value is ManageMenuInstance {
-  return typeof (value as ManageMenuInstance | null)?.BuildManageSubmenu === "function";
-}
-
-/**
- * The class instance behind a menu somewhere under `root`. The fiber a DOM node
- * carries is that node's own, and the class we want rendered it - an ancestor -
- * so this climbs to the React root before walking down.
- */
+/** The menu class instance under `root`: an ancestor, so climb to the React root first. */
 function findManageMenu(root: Element): ManageMenuInstance | undefined {
   let fiber = getFiber(root);
   if (!fiber) {
@@ -69,7 +47,8 @@ function findManageMenu(root: Element): ManageMenuInstance | undefined {
   while (queue.length > 0) {
     const current = queue.shift();
     if (!current) continue;
-    if (isManageMenu(current.stateNode)) return current.stateNode;
+    const node = current.stateNode as ManageMenuInstance | null;
+    if (typeof node?.BuildManageSubmenu === "function") return node;
     if (current.child) queue.push(current.child);
     if (current.sibling) queue.push(current.sibling);
   }
@@ -77,34 +56,25 @@ function findManageMenu(root: Element): ManageMenuInstance | undefined {
   return undefined;
 }
 
-/**
- * Steam's own uninstall dialog. It renders from the appid alone and confirms by
- * calling `SteamClient.Installs.OpenUninstallWizard`, which installs.ts
- * intercepts - so an Epic game gets Steam's exact dialog for free.
- */
+/** Steam's uninstall dialog. It confirms through `OpenUninstallWizard`, which installs.ts intercepts. */
 type UninstallDialog = (
   appIds: number[],
   ownerWindow: Window | undefined,
   confirmPassword: boolean,
 ) => void;
 
-/** The dialog opener, told apart from the error dialog in the same module. */
-function isUninstallDialog(value: unknown): value is UninstallDialog {
-  if (typeof value !== "function") return false;
-  const source = value.toString();
-  return source.includes("#UninstallDialog_Title") && source.includes("small_mode");
-}
-
 const getUninstallDialog = memo(() => {
-  const dialog = findExport("#UninstallDialog_Title", isUninstallDialog);
+  // `small_mode` tells the dialog opener apart from the error dialog in the same module.
+  const dialog = findExport(
+    "#UninstallDialog_Title",
+    (value): value is UninstallDialog =>
+      typeof value === "function" && value.toString().includes("small_mode"),
+  );
   if (!dialog) console.warn("Steam's uninstall dialog wasn't found, using our own");
   return dialog;
 });
 
-/**
- * Our own dialog, for the day Steam's stops being findable. It calls the job
- * directly, since nothing would have opened `OpenUninstallWizard`.
- */
+/** Our own dialog for when Steam's can't be found; it calls the job directly. */
 function fallbackConfirm(appName: string, name: string) {
   showModal(
     createElement(ConfirmModal, {
@@ -117,12 +87,6 @@ function fallbackConfirm(appName: string, name: string) {
     // Explicit because showModal's default, findSP(), throws on this build.
     mainPopup()?.window,
   );
-}
-
-function confirmUninstall(appId: number, appName: string, name: string) {
-  const dialog = getUninstallDialog();
-  if (dialog) dialog([appId], mainPopup()?.window, false);
-  else fallbackConfirm(appName, name);
 }
 
 /** The item itself, or nothing when this app has no uninstall to offer. */
@@ -139,19 +103,19 @@ function uninstallItem(appId: number): ReactNode {
     {
       key: "epic-uninstall",
       tone: "destructive",
-      onSelected: () => confirmUninstall(appId, game.app_name, game.title),
+      onSelected: () => {
+        const dialog = getUninstallDialog();
+        if (dialog) dialog([appId], mainPopup()?.window, false);
+        else fallbackConfirm(game.app_name, game.title);
+      },
     },
     "Uninstall",
   );
 }
 
 /**
- * Steam offers Cancel on anything in its download queue, running or waiting, so
- * ours does too - it's the only way out of a queued install otherwise.
- *
- * Unlike Steam's, this leaves what was already downloaded where it is: that's
- * what lets Install resume it, and legendary has no notion of a partial install
- * to uninstall.
+ * Cancel for queued, running or paused downloads, like Steam's. Unlike Steam's, it
+ * keeps the partial download so Install can resume it.
  */
 function cancelItem(appId: number): ReactNode {
   const game = library.getByAppId(appId);
@@ -175,8 +139,7 @@ function patchPrototype(instance: ManageMenuInstance) {
   const prototype = Object.getPrototypeOf(instance) as ManageMenuInstance;
 
   return afterPatch(prototype, "BuildManageSubmenu", (args, ret: ReactElement) => {
-    // Bulk selections are Steam's own path: it shows only what every app in
-    // the selection supports, and ours wouldn't be true of all of them.
+    // Bulk selections stay Steam's: it only shows what every selected app supports.
     const apps = args[0] as { appid: number }[] | undefined;
     const app = apps?.length === 1 ? apps[0] : undefined;
     if (!ret || !app) return ret;
@@ -190,18 +153,13 @@ function patchPrototype(instance: ManageMenuInstance) {
   }).unpatch;
 }
 
-/**
- * A cheap test for "worth walking a fiber tree over", since the walk searches
- * the whole tree and DOM mutations are constant.
- */
+/** A cheap check before walking the fiber tree, since DOM mutations are constant. */
 function looksLikeMenu(node: Element, shallow: boolean): boolean {
   const className = typeof node.className === "string" ? node.className : "";
   if (/contextmenu/i.test(className)) return true;
 
-  // The subtree search only for a node mounted at the top of the tree, which is
-  // where a menu's portal goes. Everything else added to a window is a render -
-  // a theme loading is thousands of them, and each would cost a query over its
-  // own subtree.
+  // The subtree query only for top-level nodes, where menu portals mount; a theme
+  // loading is thousands of other renders.
   return shallow && node.querySelector('[class*="ontextMenu"]') !== null;
 }
 
@@ -215,16 +173,13 @@ export function register() {
 
     const instance = findManageMenu(root);
     if (!instance) {
-      // The menu's nodes land in the DOM a commit before its class appears in
-      // the fiber tree, and there are no more mutations once it has opened - so
-      // without the retries we'd be waiting for the next menu.
+      // The class appears a commit after the nodes, and no more mutations follow.
       if (retries > 0) {
         setTimeout(() => capture(root, retries - 1, shallow), 100);
         return;
       }
 
-      // Every context menu comes through here, most of them not an app's, so
-      // this is only worth saying once.
+      // Most context menus aren't an app's, so say it once.
       if (!missed) {
         missed = true;
         console.debug("Saw a context menu with no app actions in it");
@@ -235,24 +190,21 @@ export function register() {
     unpatch = patchPrototype(instance);
     console.debug("Patched the manage menu");
 
-    // The menu that handed us the prototype was built before the patch, so it
-    // would be the one without our item in it.
+    // The menu that handed us the prototype was built before the patch.
     instance.forceUpdate();
 
     for (const observer of observers) observer.disconnect();
     observers.length = 0;
   }
 
-  // A context menu is a popup only sometimes; otherwise it renders into the
-  // window it was opened from. So both are watched until one finds the class.
+  // A context menu is sometimes a popup, sometimes in its opener's window.
   function observe(root: Element | undefined) {
     if (!root) return undefined;
 
     const observer = new MutationObserver((records) => {
       for (const record of records) {
         for (const node of record.addedNodes) {
-          // `node instanceof Element` is always false: the menu belongs to
-          // another window, and instanceof doesn't cross realms.
+          // `instanceof Element` fails across windows.
           if (node.nodeType === 1) capture(node as Element, 3, record.target === root);
           if (unpatch) return;
         }
@@ -271,9 +223,8 @@ export function register() {
 
   observe(mainPopup()?.root_element);
 
-  // Every popup, whatever it says it is. The window is empty at create time, so
-  // the observer is what finds the menu; the immediate attempt is for one that
-  // has already rendered.
+  // Popups are empty at creation, so the observer finds the menu; the immediate
+  // try catches one already rendered.
   const unwatch = onPopupCreate((popup) => {
     if (unpatch) return;
 

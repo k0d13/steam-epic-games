@@ -2,9 +2,7 @@ import { createEmitter } from "./emitter";
 import * as library from "./library";
 import * as sizes from "./sizes";
 
-// The frontend's view of the backend's installs. The backend can't push, so
-// this polls, but only while something is running or queued - an idle Steam
-// makes no calls at all. Everything that shows an install reads from here.
+// The backend can't push, so this polls, but only while a job is running or queued.
 
 const POLL_MS = 1000;
 
@@ -40,12 +38,8 @@ const shownPercent = (job: Job | undefined) =>
   job?.progress ? Math.round(job.progress.percent) : undefined;
 
 /**
- * Fold one poll's answer in, and report what came of it.
- *
- * `finished` is the transition worth acting on, since it's what changes whether
- * the game is installed. `changed` is whether a repaint would draw anything
- * different - a poll that saw the same percent as the last one shouldn't cost a
- * pass over every overview and a nudge to Steam's router.
+ * Fold in one poll. `finished` changes whether a game is installed; `changed` is
+ * false when a repaint would draw nothing new.
  */
 function apply(jobs: Job[]) {
   const finished: string[] = [];
@@ -62,8 +56,7 @@ function apply(jobs: Job[]) {
     byAppName.set(job.app_name, job);
   }
 
-  // A job that has vanished was cancelled, which leaves what it downloaded on
-  // disk - so that counts as finishing too.
+  // A vanished job was cancelled, leaving its download on disk, so it counts as finished.
   const seen = new Set(jobs.map((job) => job.app_name));
   for (const appName of byAppName.keys()) {
     if (seen.has(appName)) continue;
@@ -93,13 +86,10 @@ async function poll() {
   const { finished, changed } = apply(jobs);
 
   if (finished.length > 0) {
-    // Whatever it was measured against has just been installed, updated or
-    // deleted, so the "Space Required" we cached for it is no longer the truth.
+    // The cached "Space Required" predates whatever this job just did.
     for (const appName of finished) sizes.forget(appName);
 
-    // Before the emit: the job has stopped running but the library still says
-    // the game isn't installed, and repainting in between flashes Install
-    // between Installing and Play.
+    // Before the emit, or the repaint flashes Install between Installing and Play.
     await library.loadInstalled();
   }
 
@@ -108,12 +98,8 @@ async function poll() {
 }
 
 /**
- * Keep polling while anything is running or waiting to, and stop when nothing
- * is. Idle is the normal state, and a timer firing every second behind an idle
- * Steam is how a plugin gets blamed for someone's frame rate.
- *
- * Queued counts: the backend starts the next job off this very poll, so letting
- * the timer stop with a queue behind it would leave it there forever.
+ * Poll only while anything is running or queued. Queued counts because the backend
+ * starts the next job off this poll.
  */
 function schedule() {
   if (timer !== undefined) return;
@@ -122,11 +108,7 @@ function schedule() {
   timer = setTimeout(() => void poll(), POLL_MS);
 }
 
-/**
- * Read the backend's jobs once, and start polling if any of them are running.
- * Emits either way, unlike the poll: this is called from the paths that have
- * just changed something and want the UI to say so.
- */
+/** Read the jobs once and start polling if needed. Always emits, unlike the poll. */
 export async function refresh() {
   apply(Object.values(await backend.get_jobs()));
   emitter.emit();
@@ -136,8 +118,7 @@ export async function refresh() {
 /** Take a freshly started job on, without waiting for the next poll to see it. */
 async function track(appName: string, job: Job | null) {
   if (!job) {
-    // The backend spawns the runner before it answers, so the install may be
-    // underway with nothing watching it. Ask what is actually running.
+    // The runner may have started anyway, so ask what's actually running.
     console.warn("No job came back from the backend", { appName });
     try {
       await refresh();
@@ -155,10 +136,7 @@ async function track(appName: string, job: Job | null) {
   return job;
 }
 
-/**
- * Start, or resume, an install - legendary's `install` is both. Comes back
- * queued rather than running if one of ours is already going.
- */
+/** Start or resume an install; comes back queued if another job is running. */
 export async function install(appName: string, basePath?: string, gameFolder?: string) {
   return track(appName, await backend.start_install(appName, basePath, gameFolder));
 }
@@ -169,9 +147,8 @@ export async function update(appName: string) {
 }
 
 /**
- * Restart a paused job as whatever it was. Resuming is re-running the command,
- * and an update re-run as a plain install would reinstall the game from nothing
- * the moment legendary decided the partial download wasn't usable.
+ * Restart a paused job as what it was: an update re-run as an install could
+ * reinstall from scratch if legendary rejects the partial download.
  */
 export async function resume(appName: string) {
   return get(appName)?.kind === "update" ? update(appName) : install(appName);
@@ -183,8 +160,7 @@ export async function uninstall(appName: string) {
 
 /** Pause everything of ours. What Steam's global "pause all downloads" maps to. */
 export async function pauseAll() {
-  // The queue too, or "pause all downloads" stops the one that's running and
-  // the backend immediately starts the next.
+  // The queue too, or the backend starts the next job straight away.
   for (const job of [...active(), ...queued()]) await backend.pause_job(job.app_name);
   await refresh();
 }

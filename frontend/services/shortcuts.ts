@@ -4,10 +4,8 @@ import { createEmitter } from "../state/emitter";
 import * as library from "../state/library";
 import * as artwork from "./artwork";
 
-// Every Epic game becomes a real non-Steam shortcut, which is what gets us
-// collections, search, Big Picture and playtime for free. Created through
-// SteamClient.Apps rather than shortcuts.vdf, so Steam allocates the appid and
-// we never touch binary VDF.
+// Real shortcuts get collections, search, Big Picture and playtime for free.
+// Created through SteamClient.Apps so Steam allocates the appid.
 
 export interface SyncResult {
   added: number;
@@ -27,9 +25,7 @@ interface SyncState {
   lastResult?: SyncResult;
 }
 
-// A sync outlives the panel that started it: it takes minutes over a few hundred
-// games and the panel is a dialog people close. So its progress lives here and
-// the panel is just a subscriber, or closing it would lose the bar.
+// Progress lives here, not in the panel, since a sync outlives the dialog.
 
 let state: SyncState = { active: false, done: 0, total: 0 };
 
@@ -45,14 +41,8 @@ export function getSyncState(): SyncState {
   return state;
 }
 
-/**
- * How many shortcuts to create before yielding back to the event loop. Each one
- * round-trips to the Steam client, and a first sync of a few hundred games would
- * otherwise hold the UI thread long enough to look like a hang.
- */
+/** Shortcuts per batch before yielding, so a first sync doesn't freeze the UI. */
 const BATCH_SIZE = 10;
-
-const yieldToUi = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 async function createShortcut(game: EpicGame): Promise<number | undefined> {
   const launch = await backend.get_launch_command(game.app_name);
@@ -92,10 +82,7 @@ function removeShortcut(appName: string, appId: number) {
   console.debug("Removed a shortcut", { appName, appId });
 }
 
-/**
- * Reconcile the Epic library against Steam's shortcuts. Only touches what
- * differs, so running it again once everything is in place is cheap.
- */
+/** Reconcile the Epic library with Steam's shortcuts, touching only what differs. */
 export async function sync(games: EpicGame[]): Promise<SyncResult> {
   const result: SyncResult = { added: 0, removed: 0, failed: 0, artworkApplied: 0 };
 
@@ -119,8 +106,7 @@ export async function sync(games: EpicGame[]): Promise<SyncResult> {
     const known = appIds.getAll();
     const owned = new Set(games.map((game) => game.app_name));
 
-    // A game that left the account leaves a shortcut that launches into an
-    // ownership error.
+    // A game that left the account would launch into an ownership error.
     for (const [appName, appId] of Object.entries(known)) {
       if (owned.has(appName)) continue;
       removeShortcut(appName, appId);
@@ -154,15 +140,13 @@ export async function sync(games: EpicGame[]): Promise<SyncResult> {
       if (++sinceYield >= BATCH_SIZE) {
         sinceYield = 0;
 
-        // A shortcut Steam knows about but we have no appid for yet counts as
-        // installed, so a new one claims to be until this runs. Once a batch
-        // keeps that window down to a few games.
+        // Unmapped shortcuts read as installed, so reindex each batch to keep that short.
         if (addedSinceReindex > 0) {
           addedSinceReindex = 0;
           library.reindexAppIds();
         }
 
-        await yieldToUi();
+        await new Promise((resolve) => setTimeout(resolve, 0));
       }
     }
 
@@ -174,8 +158,7 @@ export async function sync(games: EpicGame[]): Promise<SyncResult> {
     result.error = reason instanceof Error ? reason.message : String(reason);
     return result;
   } finally {
-    // Unconditional: the appid map has been written to either way, and the
-    // library is what every patch reads.
+    // The appid map changed either way, and every patch reads the library.
     library.reindexAppIds();
     setState({ active: false, done: 0, total: 0, lastResult: result });
   }

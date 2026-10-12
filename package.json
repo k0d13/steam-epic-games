@@ -1,6 +1,7 @@
 {
   "name": "epic-games",
   "version": "0.0.0",
+  "license": "CC-BY-NC-ND-4.0",
   "scripts": {
     "dev": "starlight watch",
     "build": "starlight pack",

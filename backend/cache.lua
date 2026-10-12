@@ -3,16 +3,12 @@ local json = require("json")
 local log = require("log")
 local utils = require("utils")
 
--- Small JSON documents on disk. The ones written here are all caches: losing
--- one costs a refresh, so nothing here tries harder than that.
+-- JSON caches on disk. Losing one only costs a refresh.
 
 local cache = {}
 
----Decode a JSON document, or nil if it plainly isn't one.
----
----A cjson error takes down Millennium's whole Lua VM, `pcall` or not, so
----anything that doesn't even open and close like a document is turned away
----before cjson sees it.
+---Decode JSON, or nil for anything not shaped like a document: a cjson error
+---kills Millennium's whole Lua VM, `pcall` or not.
 ---@param text string|nil
 ---@return any|nil
 function cache.decode(text)
@@ -42,8 +38,7 @@ function cache.read(path, label)
   return decoded
 end
 
----Write a JSON file through a temp file, so a crash mid-write can't leave a
----truncated document for the next boot to fail on.
+---Write through a temp file so a crash mid-write can't leave a truncated document.
 ---@param path string
 ---@param value table
 ---@param label string
@@ -58,8 +53,7 @@ function cache.write(path, value, label)
     return false
   end
 
-  -- rename() won't replace an existing file on Windows. Losing the cache in the
-  -- window between the two is survivable; the next refresh rebuilds it.
+  -- rename() won't overwrite on Windows; a cache lost in between is just rebuilt.
   if fs.is_file(path) then
     fs.remove(path)
   end

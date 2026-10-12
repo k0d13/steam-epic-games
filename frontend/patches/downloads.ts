@@ -2,21 +2,8 @@ import * as appIds from "../state/app-ids";
 import * as jobs from "../state/jobs";
 import * as sizes from "../state/sizes";
 
-// The downloads page draws its sections - Active, Queued, Not queued, Completed
-// - out of four getters on the downloads store, and all four start from one:
-// `AllTransfers`, the list the native side publishes for the client being
-// viewed. Our installs are added to what that getter answers, as items in the
-// shape the native side sends, so the page files them where it would a Steam
-// download of its own.
-//
-// The page doesn't watch the list. It snapshots the sections whenever the
-// store dispatches its items-changed callback, so every change here dispatches
-// too.
-//
-// The buttons need nothing extra: Pause and Resume on the active row are
-// EnableAllDownloads, Download on a queued one is ResumeAppUpdate, and the ✕ is
-// RemoveFromDownloadList - all already routed to legendary by installs.ts. The
-// ✕ on a finished row goes through `dismiss` instead of cancelling anything.
+// Every section of the downloads page derives from the store's `AllTransfers`, so our
+// jobs are appended there in the native shape. The page only re-reads on dispatch.
 
 /** How long a finished install stays under Completed. */
 const COMPLETED_FOR_MS = 60 * 60 * 1000;
@@ -106,9 +93,8 @@ export function etaSeconds(eta: string | null | undefined) {
 }
 
 /**
- * Bytes for a job's progress. legendary counts chunks, not bytes, so the
- * figure is the percentage of Epic's download size - and only for a fresh
- * install, since an update's size isn't something we can ask for.
+ * legendary counts chunks, so bytes are its percentage of Epic's download size,
+ * which we only know for fresh installs.
  */
 export function bytesFor(job: Job) {
   if (job.kind !== "install") return [0, 0] as const;
@@ -165,8 +151,7 @@ function ours(theirs: DownloadItem[]): DownloadItem[] {
     );
   }
 
-  // Paused is "removed from the queue" to Steam, which is also where its own
-  // paused downloads go, with a button to put them back.
+  // Steam files paused downloads as unqueued, with a button to resume.
   for (const job of jobs.paused().filter(isDownload)) {
     const appId = appIds.getAppId(job.app_name);
     if (appId === undefined) continue;
@@ -245,9 +230,7 @@ export function register() {
     return () => {};
   }
 
-  // An own property in front of the prototype's getter, so taking it away again
-  // is a delete. The store is a plain class instance, not a proxy, so this is
-  // all mobx would have seen of it anyway.
+  // An own property shadowing the prototype getter, so unpatching is a delete.
   Object.defineProperty(store, "AllTransfers", {
     configurable: true,
     get(this: DownloadsStore) {

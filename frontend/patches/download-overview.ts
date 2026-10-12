@@ -3,16 +3,8 @@ import * as appIds from "../state/app-ids";
 import * as jobs from "../state/jobs";
 import { bytesFor, etaSeconds, PROGRESS_DOWNLOAD } from "./downloads";
 
-// The app page's progress bar doesn't come from the overview's
-// `status_percentage`, whatever the grid tile does. For a game that is actively
-// downloading, Steam reads the percentage out of the client's download overview
-// instead - so with only the status set, the page says "Downloading" and draws
-// no bar at all. Writing the overview completes it, and gives us Steam's
-// "Downloading 12%" detail text for free.
-//
-// There is one of these for the whole client, and it also drives the downloads
-// page. Claiming it while Steam is downloading something of its own would show
-// our numbers against their game, so we take it only when it's idle.
+// The app page's bar reads the client's single download overview, not the tile's
+// `status_percentage`. We only claim it while Steam isn't downloading anything itself.
 
 /** Only the fields we touch; the real overview carries several dozen. */
 interface DownloadOverview {
@@ -51,17 +43,12 @@ const logClaimed = once((overview: DownloadOverview, appId: number, appName: str
   console.debug("Claimed the download overview", {
     appId,
     appName,
-    // Different from what we wrote means it's read-only on this build and the
-    // app page's bar will stay empty.
+    // A mismatch means it's read-only on this build.
     got: overview.update_appid,
   });
 });
 
-/**
- * Point the client's download overview at whichever of our installs is running,
- * or release it once none is. Called on every jobs tick, which is also what
- * repaints the page.
- */
+/** Point the download overview at our running install, or release it. Runs every jobs tick. */
 export function sync() {
   const overview = getOverview();
   if (!overview) return;
@@ -72,8 +59,7 @@ export function sync() {
   const appId = job && appIds.getAppId(job.app_name);
 
   if (job && appId !== undefined) {
-    // Steam's own download wins. Ours keeps its status and its tile progress,
-    // it just doesn't get the app page's bar until Steam has finished.
+    // Steam's own download wins; ours waits for the app page's bar.
     if (overview.update_appid !== 0 && overview.update_appid !== claimed) return;
 
     claimed = appId;

@@ -1,24 +1,13 @@
 /**
- * The store half of the plugin. Steam's store is a web page rather than part of
- * the client's React tree, so it gets its own bundle, loaded by Millennium into
- * every steampowered.com page and running with nothing the client half has -
- * no stores, no appid mapping, only the backend.
- *
- * All it does is say "you already own this on Epic" on a store page for a game
- * that is in the Epic library, so nobody buys a second copy. It says it the way
- * Steam says the same thing about a game you own here: the same bar in the same
- * place, wearing Steam's own `game_area_already_owned` classes so it picks up
- * the store's fonts and metrics, with only the colour of the flag to say the
- * library it means is a different one.
+ * Marks store pages for games in the Epic library with Steam's own "already owned"
+ * bar. Its own bundle, since the store isn't part of the client's React tree.
  */
 
 const BANNER_ID = "epic-games-owned";
 
 /**
- * Titles differ between the two stores in punctuation and edition wording far
- * more than in words, so both sides are flattened to letters and digits before
- * they're compared. Roman-numeral and "the" differences are left alone: they
- * are rare next to the risk of matching two different games.
+ * Letters and digits only, since store titles mostly differ in punctuation. Roman
+ * numerals and "the" are left alone to avoid matching different games.
  */
 function normalize(title: string): string {
   return title
@@ -49,9 +38,7 @@ function storeTitle(): string | undefined {
   return meta?.content?.trim() || undefined;
 }
 
-// Steam's own owned bar is styled by the page. These rules only restate enough
-// of it to survive a build where the classes have moved, and recolour the flag,
-// which is the one thing that shouldn't look like Steam's.
+// Restates enough of Steam's styling to survive moved classes, and recolours the flag.
 const STYLE = `
   #${BANNER_ID} {
     position: relative;
@@ -100,8 +87,7 @@ function render(game: EpicGame) {
   text.className = `already_in_library ${BANNER_ID}-text`;
 
   const name = document.createElement("b");
-  // Epic's title rather than Steam's, so a match on a stripped edition name is
-  // visible as one instead of looking like the page is talking about itself.
+  // Epic's title, so a match on a stripped edition name is visible as one.
   name.textContent = game.title;
 
   text.append(
@@ -115,8 +101,7 @@ function render(game: EpicGame) {
 
   banner.append(text, flag);
 
-  // Above the purchase area, which is what someone is about to click. Anything
-  // else on the page is a fallback for a layout that doesn't have one.
+  // Above the purchase area; the rest are fallbacks for other layouts.
   const target =
     document.querySelector("#game_area_purchase") ??
     document.querySelector(".game_page_autocollapse") ??
@@ -132,8 +117,7 @@ export default async function main() {
   const title = storeTitle();
   if (!title) return;
 
-  // Always the backend's cache: this runs on every store page, and reading Epic
-  // itself takes seconds. Whatever the client half last cached is what we see.
+  // The backend's cache: this runs on every store page, and asking Epic takes seconds.
   const library = await backend.get_library();
 
   const wanted = new Set(keys(title));
