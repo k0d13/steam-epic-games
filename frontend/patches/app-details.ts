@@ -1,5 +1,5 @@
 import { callOriginal, replacePatch } from "@steambrew/client";
-import { logger } from "../index";
+import { logger } from "../logger";
 import { once } from "../services/once";
 import * as jobs from "../state/jobs";
 import * as library from "../state/library";
@@ -39,14 +39,6 @@ type DetailsCallback = (details: AppDetails) => void;
 
 interface AppsApi extends Record<PropertyKey, unknown> {
   RegisterForAppDetails(appId: number, callback: DetailsCallback): { unregister(): void };
-}
-
-function getStore(): AppDetailsStore | undefined {
-  return Reflect.get(globalThis, "appDetailsStore") as AppDetailsStore | undefined;
-}
-
-function getApps(): AppsApi {
-  return SteamClient.Apps as unknown as AppsApi;
 }
 
 const logApplied = once((details: AppDetails, appName: string) => {
@@ -104,7 +96,8 @@ function apply(details: AppDetails) {
 export function register() {
   // replacePatch, because the point is to swap out an argument: `args` is what
   // the original is called with, so our wrapper goes in front of every update.
-  const patch = replacePatch(getApps(), "RegisterForAppDetails", (args) => {
+  const apps = SteamClient.Apps as unknown as AppsApi;
+  const patch = replacePatch(apps, "RegisterForAppDetails", (args) => {
     const [, callback] = args as [number, DetailsCallback];
 
     args[1] = (details: AppDetails) => {
@@ -137,7 +130,7 @@ export function register() {
  * the same object gives its observers no reason to re-render.
  */
 export function refreshAll() {
-  const store = getStore();
+  const store = Reflect.get(globalThis, "appDetailsStore") as AppDetailsStore | undefined;
   if (!store || library.isEmpty()) return;
 
   for (const data of store.m_mapAppData.values()) {

@@ -56,12 +56,7 @@ export async function loadSummaries() {
  */
 async function refreshPlayed() {
   for (const [appName, summary] of summaries) {
-    if (pending.has(appName) || !isStale(appName, summary)) continue;
-    pending.add(appName);
-
-    const result = await rpc.GetAchievements(appName, true);
-    pending.delete(appName);
-    if (result) record(appName, result);
+    if (isStale(appName, summary)) await refresh(appName);
   }
 }
 

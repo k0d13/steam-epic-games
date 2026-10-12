@@ -1,6 +1,5 @@
 import { callOriginal, replacePatch } from "@steambrew/client";
-import { logger } from "../index";
-import { NON_STEAM_APP_APPID_MASK } from "../state/app-ids";
+import { logger } from "../logger";
 import * as jobs from "../state/jobs";
 import * as library from "../state/library";
 import * as downloads from "./downloads";
@@ -13,24 +12,13 @@ import * as wizard from "./install-wizard";
 // Every one falls through to Steam's own implementation for anything that isn't
 // ours: these are global, and real Steam downloads go through them too.
 
-/** One of our games by appid, if it's one of ours at all. */
-function epicGame(appId: number) {
-  if (appId < NON_STEAM_APP_APPID_MASK) return undefined;
-  return library.getByAppId(appId);
-}
-
-/** Which of our games an appid is, if it's one of ours at all. */
-function epicAppName(appId: number): string | undefined {
-  return epicGame(appId)?.appName;
-}
-
 /** Split a selection into our games and Steam's - a multi-select can be both. */
 function partition(appIds: number[] | undefined) {
   const ours: number[] = [];
   const theirs: number[] = [];
 
   for (const appId of appIds ?? []) {
-    (epicGame(appId) ? ours : theirs).push(appId);
+    (library.getByAppId(appId) ? ours : theirs).push(appId);
   }
 
   return { ours, theirs };
@@ -67,7 +55,7 @@ export function register() {
       // One dialog and one store field, so a multi-select of Epic games can
       // only open it for the first. `ours` is non-empty by the check above.
       const [first] = ours as [number, ...number[]];
-      const game = epicGame(first);
+      const game = library.getByAppId(first);
       if (game) void wizard.open(first, game.appName, game.folderName);
 
       return undefined;
@@ -85,8 +73,8 @@ export function register() {
         if (theirs.length > 0) bridge.Installs.OpenUninstallWizard(theirs, confirmed);
 
         for (const appId of ours) {
-          const appName = epicAppName(appId);
-          if (appName) void jobs.uninstall(appName);
+          const game = library.getByAppId(appId);
+          if (game) void jobs.uninstall(game.appName);
         }
 
         return undefined;
@@ -97,7 +85,7 @@ export function register() {
     // legendary has no resume: re-running the command continues it, so the only
     // question is which command this game wants.
     replacePatch(bridge.Downloads, "ResumeAppUpdate", ([appId]: [number, string?]) => {
-      const game = epicGame(appId);
+      const game = library.getByAppId(appId);
       if (!game) return callOriginal;
 
       if (jobs.get(game.appName)) void jobs.resume(game.appName);
@@ -114,10 +102,10 @@ export function register() {
       // A finished row's ✕ only takes it off the downloads page.
       if (downloads.dismiss(appId)) return undefined;
 
-      const appName = epicAppName(appId);
-      if (!appName) return callOriginal;
+      const game = library.getByAppId(appId);
+      if (!game) return callOriginal;
 
-      void jobs.cancel(appName);
+      void jobs.cancel(game.appName);
       return undefined;
     }),
 

@@ -1,5 +1,5 @@
 import { afterPatch } from "@steambrew/client";
-import { logger } from "../index";
+import { logger } from "../logger";
 import { type Achievement, type GameAchievements } from "../rpc";
 import { findExport } from "../services/modules";
 import * as achievements from "../state/achievements";
@@ -173,12 +173,6 @@ interface AchievementStore {
   GetPlayerAchievements(appId: number, accountId: number): StoreResult<unknown>;
 }
 
-/** Every achievement of ours for an appid, or undefined for anything else. */
-function forAppId(appId: number): SteamAchievement[] | undefined {
-  const game = library.getByAppId(appId);
-  return game ? listFor(game.appName) : undefined;
-}
-
 /**
  * The app details page component. Found by the section names it lists rather
  * than by anything Steam's build could rename - "playtestinvites" is a string
@@ -242,7 +236,7 @@ function group(list: SteamAchievement[], withHidden: boolean): MyAchievements {
  * only.
  *
  * A game whose achievements haven't arrived yet reads as loading rather than as
- * an error, so the page shows its spinner and not "no stats" - `forAppId` has
+ * an error, so the page shows its spinner and not "no stats" - `listFor` has
  * started the fetch by then, and the repaint on arrival brings the answer.
  */
 function patchGetter<T>(
@@ -253,12 +247,11 @@ function patchGetter<T>(
   // All three getters hand back the same envelope, so the loosest of them
   // stands in for whichever one is being patched.
   return afterPatch(store, method as "GetPlayerAchievements", (args, result) => {
-    const [appId] = args;
+    const game = library.getByAppId(args[0]);
+    if (!game) return result;
 
-    const ours = forAppId(appId);
-    if (ours) return { data: build(ours) };
-
-    return library.getByAppId(appId) ? { loading: true } : result;
+    const ours = listFor(game.appName);
+    return ours ? { data: build(ours) } : { loading: true };
   });
 }
 

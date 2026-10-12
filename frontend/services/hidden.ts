@@ -1,4 +1,4 @@
-import { logger } from "../index";
+import { logger } from "../logger";
 import { type EpicGame } from "../rpc";
 import * as appIds from "../state/app-ids";
 import { NON_STEAM_APP_APPID_MASK } from "../state/app-ids";
@@ -42,26 +42,7 @@ function steamTitles(): Set<string> {
   return titles;
 }
 
-export interface Duplicate {
-  game: EpicGame;
-  appId: number;
-}
-
-/** Epic games with a shortcut whose title is also owned on Steam. */
-export function findDuplicates(games: EpicGame[]): Duplicate[] {
-  const titles = steamTitles();
-  const duplicates: Duplicate[] = [];
-
-  for (const game of games) {
-    const appId = appIds.getAppId(game.appName);
-    if (appId === undefined || !titles.has(normalize(game.title))) continue;
-    duplicates.push({ game, appId });
-  }
-
-  return duplicates;
-}
-
-export function isHidden(appId: number): boolean {
+function isHidden(appId: number): boolean {
   try {
     return collections().BIsHidden?.(appId) ?? false;
   } catch (reason: unknown) {
@@ -94,32 +75,38 @@ function setHidden(ids: number[], hidden: boolean): number {
   return ids.length;
 }
 
+/** Shortcuts of ours, still visible, whose title is also owned on Steam. */
+function visibleDuplicates(games: EpicGame[]): number[] {
+  const titles = steamTitles();
+  const ids: number[] = [];
+
+  for (const game of games) {
+    const appId = appIds.getAppId(game.appName);
+    if (appId === undefined || !titles.has(normalize(game.title)) || isHidden(appId)) continue;
+    ids.push(appId);
+  }
+
+  return ids;
+}
+
+const hiddenShortcuts = () => Object.values(appIds.getAll()).filter(isHidden);
+
 /** Hide every Epic shortcut duplicating a Steam game. Returns how many moved. */
 export function hideDuplicates(games: EpicGame[]): number {
-  const ids = findDuplicates(games)
-    .map(({ appId }) => appId)
-    .filter((appId) => !isHidden(appId));
-
-  const hidden = setHidden(ids, true);
+  const hidden = setHidden(visibleDuplicates(games), true);
   logger.info("Hid duplicate Epic shortcuts", { hidden });
   return hidden;
 }
 
 /** Unhide every shortcut this plugin created. Returns how many moved. */
 export function showAll(): number {
-  const ids = Object.values(appIds.getAll()).filter((appId) => isHidden(appId));
-
-  const shown = setHidden(ids, false);
+  const shown = setHidden(hiddenShortcuts(), false);
   logger.info("Unhid Epic shortcuts", { shown });
   return shown;
 }
 
 /** How many duplicates are still visible, for a menu that offers to hide them. */
-export function hideableCount(games: EpicGame[]): number {
-  return findDuplicates(games).filter(({ appId }) => !isHidden(appId)).length;
-}
+export const hideableCount = (games: EpicGame[]) => visibleDuplicates(games).length;
 
 /** How many of our shortcuts are hidden, for a menu that offers to show them. */
-export function hiddenCount(): number {
-  return Object.values(appIds.getAll()).filter(isHidden).length;
-}
+export const hiddenCount = () => hiddenShortcuts().length;

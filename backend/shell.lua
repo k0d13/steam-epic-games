@@ -110,16 +110,6 @@ function shell.is_locked(path)
   return not (ok and wrote ~= false)
 end
 
----@param args (string|number)[]|nil
----@return string[]
-local function to_strings(args)
-  local result = {}
-  for index, arg in ipairs(args or {}) do
-    result[index] = tostring(arg)
-  end
-  return result
-end
-
 ---Escape a string for a single-quoted PowerShell literal.
 ---@param value string
 ---@return string
@@ -127,15 +117,18 @@ function shell.ps_quote(value)
   return "'" .. value:gsub("'", "''") .. "'"
 end
 
----A one line VBScript that runs `command` with no window at all and doesn't
----wait for it.
+---A one line VBScript that runs a PowerShell script with no window at all and
+---doesn't wait for it.
 ---
 ---`WScript.Shell.Run` with a window style of 0 is the only way to start a
 ---console application and see nothing: `powershell -WindowStyle Hidden` still
 ---flashes one, because by the time PowerShell can hide the window it exists.
----@param command string A command line, already quoted
+---@param script_path string
 ---@return string
-function shell.vbs_launcher(command)
+function shell.vbs_launcher(script_path)
+  local command = 'powershell -NoProfile -ExecutionPolicy Bypass -File "'
+    .. (script_path:gsub("/", "\\"))
+    .. '"'
   return 'CreateObject("WScript.Shell").Run "' .. command:gsub('"', '""') .. '", 0, False'
 end
 
@@ -222,7 +215,6 @@ while ($true) {
       $Start.CreateNoWindow = $true
       $Start.RedirectStandardOutput = $true
       $Start.RedirectStandardError = $true
-      if ($Request.cwd) { $Start.WorkingDirectory = $Request.cwd }
 
       $Process = [System.Diagnostics.Process]::Start($Start)
       # Read as tasks, not one after the other: a program that fills one pipe
@@ -308,14 +300,7 @@ local function launch()
   end
 
   utils.write_file(file("version"), FINGERPRINT)
-  utils.write_file(
-    file("launcher"),
-    shell.vbs_launcher(
-      'powershell -NoProfile -ExecutionPolicy Bypass -File "'
-        .. (file("script"):gsub("/", "\\"))
-        .. '"'
-    )
-  )
+  utils.write_file(file("launcher"), shell.vbs_launcher(file("script")))
 
   -- The one console window left, at startup rather than once a second.
   trace.event("daemon.spawn")
@@ -378,7 +363,7 @@ end
 ---Flashes a window, which is the whole thing this module exists to avoid, but a
 ---plugin that works badly beats one that doesn't work.
 ---
----`options.timeout` cannot be honoured here: `utils.exec` returns only once the
+---`timeout` cannot be honoured here: `utils.exec` returns only once the
 ---command has, and the daemon being down is exactly the case where there is no
 ---PowerShell to hang a watchdog off. A command that never exits takes the Lua
 ---state with it.
@@ -403,20 +388,16 @@ end
 ---
 ---Requests run side by side, so two of these overlap rather than queue.
 ---@param exe string
----@param args string[]|nil
----@param options { cwd?: string }|nil
+---@param args string[]
 ---@return string|nil id Hand this to `shell.poll`
 ---@return string? error
-function shell.start(exe, args, options)
-  options = options or {}
-
-  local arguments = to_strings(args)
+function shell.start(exe, args)
   if not shell.ensure() then
     return nil, "The command daemon is not running"
   end
 
   local id = utils.uuid()
-  local payload = json.encode({ exe = exe, arguments = arguments, cwd = options.cwd })
+  local payload = json.encode({ exe = exe, arguments = args })
 
   -- Written under another name and renamed in, so the daemon can never pick up
   -- half a request. It only watches for `.json`.
@@ -499,7 +480,7 @@ end
 
 ---Give up on a command that is still queued, so its answer is never collected.
 ---@param id string
-function shell.forget(id)
+local function forget(id)
   for _, path in ipairs({
     file("requests") .. "/" .. id .. ".json",
     file("responses") .. "/" .. id .. ".out",
@@ -513,21 +494,21 @@ end
 
 ---Run a program and block until it exits.
 ---@param exe string
----@param args string[]|nil
----@param options { cwd?: string, timeout?: integer }|nil
+---@param args string[]
+---@param timeout integer|nil Milliseconds to wait, two minutes if nil
 ---@return string output stdout followed by stderr
 ---@return integer code -1 if the command could not be run at all
-function shell.run(exe, args, options)
-  options = options or {}
+function shell.run(exe, args, timeout)
+  timeout = timeout or TIMEOUT
 
-  local id, err = shell.start(exe, args, options)
+  local id, err = shell.start(exe, args)
   if not id then
     logger:warn(tostring(err))
     trace.anomaly("shell.fallback", { exe = exe, error = tostring(err) })
-    return fallback(exe, to_strings(args))
+    return fallback(exe, args)
   end
 
-  local deadline = utils.time_ms() + (options.timeout or TIMEOUT)
+  local deadline = utils.time_ms() + timeout
   while true do
     local output, code = shell.poll(id)
     if output then
@@ -536,8 +517,8 @@ function shell.run(exe, args, options)
 
     if utils.time_ms() > deadline then
       logger:warn("Command timed out: " .. exe)
-      trace.anomaly("shell.timeout", { exe = exe, ms = options.timeout or TIMEOUT })
-      shell.forget(id)
+      trace.anomaly("shell.timeout", { exe = exe, ms = timeout })
+      forget(id)
       return "", -1
     end
     nap(5)

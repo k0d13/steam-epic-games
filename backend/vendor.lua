@@ -57,16 +57,6 @@ local function digest(path)
   return nil
 end
 
----Is the file at `path` the executable we pinned?
----@param path string
----@return boolean
-local function verified(path)
-  if not fs.is_file(path) then
-    return false
-  end
-  return digest(path) == SHA256
-end
-
 ---Fetch a URL to a file, blocking until it's there. The PowerShell fallback is
 ---for a Windows old enough to be missing curl.exe.
 ---@param destination string
@@ -76,7 +66,7 @@ local function fetch(destination)
 
   -- Five minutes: this is a 30MB download over whatever connection the machine
   -- has, and the usual timeout would give up on a slow one.
-  shell.run("curl.exe", { "-fsSL", "--retry", "2", "-o", target, URL }, { timeout = 300000 })
+  shell.run("curl.exe", { "-fsSL", "--retry", "2", "-o", target, URL }, 300000)
   if fs.is_file(destination) then
     return true
   end
@@ -92,7 +82,7 @@ local function fetch(destination)
       .. "' -OutFile '"
       .. target
       .. "'",
-  }, { timeout = 300000 })
+  }, 300000)
 
   return fs.is_file(destination)
 end
@@ -103,11 +93,10 @@ end
 ---@return string|nil path
 ---@return string? error
 function vendor.ensure()
-  if verified(PATH) then
-    return PATH
-  end
-
   if fs.is_file(PATH) then
+    if digest(PATH) == SHA256 then
+      return PATH
+    end
     logger:warn("Vendored legendary does not match the pin, refetching")
     fs.remove(PATH)
   end

@@ -1,12 +1,12 @@
-import { logger } from "../index";
+import { logger } from "../logger";
 import rpc, { type Job } from "../rpc";
 import { createEmitter } from "./emitter";
 import * as library from "./library";
 import * as sizes from "./sizes";
 
 // The frontend's view of the backend's installs. The backend can't push, so
-// this polls, but only while something is running or queued - an idle Steam makes no
-// calls at all. Everything that shows an install reads from here.
+// this polls, but only while something is running or queued - an idle Steam
+// makes no calls at all. Everything that shows an install reads from here.
 
 const POLL_MS = 1000;
 
@@ -20,12 +20,6 @@ let timer: ReturnType<typeof setTimeout> | undefined;
 /** The current job for one game, running or finished, if it has ever had one. */
 export function get(appName: string): Job | undefined {
   return byAppName.get(appName);
-}
-
-/** The job for a Steam appid, for the patches, which only ever have one of those. */
-export function getByAppId(appId: number): Job | undefined {
-  const game = library.getByAppId(appId);
-  return game && byAppName.get(game.appName);
 }
 
 export function active(): Job[] {
@@ -185,13 +179,6 @@ export async function resume(appName: string) {
 
 export async function uninstall(appName: string) {
   return track(appName, await rpc.StartUninstall(appName));
-}
-
-/** Stop an install, keeping the partial download. `install` resumes it. */
-export async function pause(appName: string) {
-  const stopped = await rpc.PauseJob(appName);
-  await refresh();
-  return stopped;
 }
 
 /** Pause everything of ours. What Steam's global "pause all downloads" maps to. */

@@ -123,12 +123,10 @@ end
 ---game's name broke, since the name itself is the thing that won't encode.
 ---@param value string
 ---@param position integer
----@param radius? integer Bytes either side, 16 by default
 ---@return string
-function text.window(value, position, radius)
-  radius = radius or 16
-  local from = math.max(1, position - radius)
-  local to = math.min(#value, position + radius)
+function text.window(value, position)
+  local from = math.max(1, position - 16)
+  local to = math.min(#value, position + 16)
 
   local bytes = {}
   for i = from, to do

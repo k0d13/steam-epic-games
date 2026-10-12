@@ -1,4 +1,5 @@
-import rpc, { type EpicGame } from "./rpc";
+import { logger } from "../frontend/logger";
+import { getLibrary, type EpicGame } from "./rpc";
 
 /**
  * The store half of the plugin. Steam's store is a web page rather than part of
@@ -13,21 +14,6 @@ import rpc, { type EpicGame } from "./rpc";
  * the store's fonts and metrics, with only the colour of the flag to say the
  * library it means is a different one.
  */
-
-// The client half's badge, so the store's console lines read as the same
-// plugin's. Kept here rather than shared with it: the two bundles have no
-// module in common, and one import would pull the client half into the store.
-const BADGE = "Steam Epic Games";
-const BADGE_STYLE = "background: #2a2a2a; color: white; border-radius: 2px;";
-function log(write: (...args: unknown[]) => void, ...args: unknown[]) {
-  write(`%c ${BADGE} %c`, BADGE_STYLE, "background: transparent;", ...args);
-}
-export const logger = {
-  debug: (...args: unknown[]) => log(console.debug, ...args),
-  info: (...args: unknown[]) => log(console.info, ...args),
-  warn: (...args: unknown[]) => log(console.warn, ...args),
-  error: (...args: unknown[]) => log(console.error, ...args),
-};
 
 const BANNER_ID = "epic-games-owned";
 
@@ -151,7 +137,7 @@ export default async function WebkitMain() {
 
   let library;
   try {
-    library = await rpc.GetLibrary();
+    library = await getLibrary();
   } catch (error) {
     logger.error("Failed to read the Epic library", error);
     return;

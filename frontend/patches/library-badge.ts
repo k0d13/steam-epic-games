@@ -1,5 +1,5 @@
 import { type SteamAppOverview } from "@steambrew/client";
-import { logger } from "../index";
+import { logger } from "../logger";
 import { mainPopup, onPopupCreate } from "../services/popups";
 import * as library from "../state/library";
 
@@ -196,15 +196,14 @@ export function register() {
 
   // The library lives in the desktop window, but a detached one is a popup of
   // its own, so every window gets the same treatment.
-  const unwatch = onPopupCreate((popup, handlers) => {
+  const unwatch = onPopupCreate((popup) => {
     const watcher = add(popup.root_element);
     if (!watcher) return;
 
-    handlers.onOpen(() => watcher.restamp());
-    handlers.onClose(() => {
+    return () => {
       watcher.disconnect();
       watchers.delete(watcher);
-    });
+    };
   });
 
   // A game that's just been synced has artwork on screen already, drawn before

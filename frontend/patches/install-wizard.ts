@@ -1,5 +1,5 @@
 import { callOriginal, replacePatch } from "@steambrew/client";
-import { logger } from "../index";
+import { logger } from "../logger";
 import rpc from "../rpc";
 import { findExport } from "../services/modules";
 import { memo } from "../services/once";
@@ -88,16 +88,16 @@ interface Bridge {
   Apps: Apps;
 }
 
-function isGameActionsStore(value: unknown): value is GameActionsStore {
-  return typeof (value as GameActionsStore | null)?.GetInstallManager === "function";
-}
-
 /**
  * The store singleton, found by the source of one of its getters, which is a
  * string Steam's build can't rename.
  */
 const getStore = memo(() => {
-  const store = findExport("GetInstallManager(){return this.m_InstallManager}", isGameActionsStore);
+  const store = findExport(
+    "GetInstallManager(){return this.m_InstallManager}",
+    (value): value is GameActionsStore =>
+      typeof (value as GameActionsStore | null)?.GetInstallManager === "function",
+  );
   if (!store) logger.warn("Steam's install wizard store wasn't found");
   return store;
 });
@@ -134,18 +134,16 @@ function folderByIndex(index: number) {
  * cached from the game's page anyway.
  */
 export async function open(appId: number, appName: string, folderName?: string) {
-  const current = getStore();
-  if (!current) return false;
+  if (!getStore()) return;
 
   const bridge = SteamClient as unknown as Bridge;
   folders = (await bridge.InstallFolder.GetInstallFolders()).filter((folder) => folder.bIsMounted);
-  if (folders.length === 0) {
-    logger.warn("Steam reported no install folders");
-    return false;
-  }
 
   const chosen = folders.find((folder) => folder.bIsDefaultFolder) ?? folders[0];
-  if (!chosen) return false;
+  if (!chosen) {
+    logger.warn("Steam reported no install folders");
+    return;
+  }
 
   const size = await rpc.GetGameSize(appName);
 
@@ -176,7 +174,6 @@ export async function open(appId: number, appName: string, folderName?: string) 
   };
 
   publish();
-  return true;
 }
 
 export function register() {

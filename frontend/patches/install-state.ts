@@ -1,8 +1,7 @@
 import { beforePatch, EDisplayStatus, type SteamAppOverview } from "@steambrew/client";
-import { logger } from "../index";
+import { logger } from "../logger";
 import { once } from "../services/once";
 import { forceFakeLocationChange } from "../services/popups";
-import { NON_STEAM_APP_APPID_MASK } from "../state/app-ids";
 import * as jobs from "../state/jobs";
 import * as library from "../state/library";
 
@@ -145,10 +144,7 @@ export function register() {
     collectionStore,
     "OnAppOverviewChange",
     ([apps]: [SteamAppOverview[]]) => {
-      for (const app of apps) {
-        if (app.appid < NON_STEAM_APP_APPID_MASK) continue;
-        applyInstallState(app);
-      }
+      for (const app of apps) applyInstallState(app);
     },
   );
 
@@ -165,13 +161,7 @@ export function register() {
  * objects throws "t is not iterable" out of UpdateApps.
  */
 export function refreshAll() {
-  // By appid rather than filtered out of `allApps`: this runs on every library
-  // and job change, and `allApps` is thousands of overviews for our handful.
-  const apps = library
-    .appIdsWithGames()
-    .map((appId) => appStore.GetAppOverviewByAppID(appId))
-    .filter((app): app is SteamAppOverview => app !== undefined);
-
+  const apps = library.overviews();
   if (apps.length === 0) return;
 
   for (const app of apps) applyInstallState(app);

@@ -15,7 +15,7 @@ local grid = {}
 ---@param account_id integer|string|nil
 ---@return string|nil path
 ---@return string? error
-function grid.path(account_id)
+local function grid_path(account_id)
   local userdata = millennium.steam_path() .. "/userdata"
 
   ---@type string|nil
@@ -61,7 +61,7 @@ local ICON_EXTENSIONS = { "png", "ico" }
 ---@return string|nil path Where the icon ended up
 ---@return string? error
 function grid.place_icon(app_id, account_id)
-  local path, err = grid.path(account_id)
+  local path, err = grid_path(account_id)
   if not path then
     return nil, err
   end

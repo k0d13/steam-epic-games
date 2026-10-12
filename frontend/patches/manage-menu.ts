@@ -1,6 +1,6 @@
 import { afterPatch, ConfirmModal, MenuItem, showModal } from "@steambrew/client";
 import { createElement, cloneElement, Children, type ReactElement, type ReactNode } from "react";
-import { logger } from "../index";
+import { logger } from "../logger";
 import { findExport } from "../services/modules";
 import { memo } from "../services/once";
 import { mainPopup, onPopupCreate } from "../services/popups";
@@ -172,17 +172,13 @@ function cancelItem(appId: number): ReactNode {
   );
 }
 
-interface OverviewLike {
-  appid: number;
-}
-
 function patchPrototype(instance: ManageMenuInstance) {
   const prototype = Object.getPrototypeOf(instance) as ManageMenuInstance;
 
   return afterPatch(prototype, "BuildManageSubmenu", (args, ret: ReactElement) => {
     // Bulk selections are Steam's own path: it shows only what every app in
     // the selection supports, and ours wouldn't be true of all of them.
-    const apps = args[0] as OverviewLike[] | undefined;
+    const apps = args[0] as { appid: number }[] | undefined;
     const app = apps?.length === 1 ? apps[0] : undefined;
     if (!ret || !app) return ret;
 
@@ -279,13 +275,12 @@ export function register() {
   // Every popup, whatever it says it is. The window is empty at create time, so
   // the observer is what finds the menu; the immediate attempt is for one that
   // has already rendered.
-  const unwatch = onPopupCreate((popup, handlers) => {
+  const unwatch = onPopupCreate((popup) => {
     if (unpatch) return;
 
     const disconnect = observe(popup.root_element);
     capture(popup.root_element);
-    handlers.onOpen(() => capture(popup.root_element));
-    handlers.onClose(() => disconnect?.());
+    return disconnect;
   });
 
   logger.debug("Registered the manage menu patch");

@@ -156,7 +156,12 @@ local function import_leftover_egl_installs(owned, installed_by_name)
   local titles = {}
   for _, manifest in ipairs(egl.get_manifests()) do
     if owned_names[manifest.app_name] and not installed_by_name[manifest.app_name] then
-      table.insert(commands, egl.import_args(manifest.app_name, manifest.install_path))
+      -- `--skip-dlcs` avoids a prompt with no stdin to answer it; DLC follows
+      -- the base game.
+      table.insert(
+        commands,
+        { "-y", "import", "--skip-dlcs", manifest.app_name, manifest.install_path }
+      )
       table.insert(titles, manifest.title)
     end
   end
@@ -273,8 +278,11 @@ function library.refresh(force)
 
   -- The EGL sync goes first: it's what makes launcher installs visible to the
   -- list-installed after it. Its failure is only logged, since not having EGL
-  -- is normal.
-  logger:info("Epic Games Launcher sync: " .. utils.trim(legendary.run(egl.sync_args())))
+  -- is normal. `--import-only` because a full sync also exports legendary's
+  -- installs into EGL, which isn't ours to do to another launcher; `--one-shot`
+  -- and `-y` answer the prompts, since there's no stdin here.
+  local synced = legendary.run({ "-y", "egl-sync", "--import-only", "--one-shot" })
+  logger:info("Epic Games Launcher sync: " .. utils.trim(synced))
 
   local owned, err = legendary.decode_json(legendary.run(list_args))
   if type(owned) ~= "table" then

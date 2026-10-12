@@ -1,5 +1,5 @@
 import { callOriginal, replacePatch } from "@steambrew/client";
-import { logger } from "../index";
+import { logger } from "../logger";
 import * as achievements from "../state/achievements";
 import * as library from "../state/library";
 
@@ -19,29 +19,8 @@ interface ProgressCache {
   GetAchievementProgress(appId: number): number;
 }
 
-function getCache(): ProgressCache | undefined {
-  return Reflect.get(globalThis, "appAchievementProgressCache") as ProgressCache | undefined;
-}
-
-/**
- * One game's completion, 0 to 100, or undefined for anything that isn't ours or
- * that we've never read. Counts only, and never fetches: this runs once per game
- * per render of the whole library, and a command apiece would be a subprocess
- * storm. The details page is what fills the cache, plus the whole-library seed
- * at startup.
- */
-function progressFor(appId: number): number | undefined {
-  const game = library.getByAppId(appId);
-  if (!game) return undefined;
-
-  const summary = achievements.getSummary(game.appName);
-  if (!summary || summary.total === 0) return undefined;
-
-  return Math.round((summary.unlocked / summary.total) * 100);
-}
-
 export function register() {
-  const cache = getCache();
+  const cache = Reflect.get(globalThis, "appAchievementProgressCache") as ProgressCache | undefined;
   if (!cache) {
     logger.warn("Could not find the achievement progress cache, the completion sort stays empty");
     return () => {};
@@ -51,22 +30,25 @@ export function register() {
     // A game of ours with no achievements says so; Steam's own default for an
     // unknown appid is `true`, which would leave every uncached Epic game
     // sorting as 0% rather than as having none.
-    replacePatch(cache, "BGameHasAchievements", (args: [number]) => {
-      const [appId] = args;
+    replacePatch(cache, "BGameHasAchievements", ([appId]: [number]) => {
       const game = library.getByAppId(appId);
       if (!game) return callOriginal as unknown as boolean;
 
-      const summary = achievements.getSummary(game.appName);
-      return summary ? summary.total > 0 : false;
+      return (achievements.getSummary(game.appName)?.total ?? 0) > 0;
     }),
 
-    replacePatch(cache, "GetAchievementProgress", (args: [number]) => {
-      const progress = progressFor(args[0]);
-      // Anything not ours falls through, and so does a game of ours we have no
-      // counts for - except that one can't queue a CM update it would only miss
-      // on, so it answers 0 rather than nothing.
-      if (progress !== undefined) return progress;
-      return library.getByAppId(args[0]) ? 0 : (callOriginal as unknown as number);
+    // Counts only, and never fetches: this runs once per game per render of the
+    // whole library, and a command apiece would be a subprocess storm. The
+    // details page is what fills the cache, plus the whole-library seed at
+    // startup.
+    replacePatch(cache, "GetAchievementProgress", ([appId]: [number]) => {
+      const game = library.getByAppId(appId);
+      if (!game) return callOriginal as unknown as number;
+
+      // A game of ours we have no counts for can't queue a CM update it would
+      // only miss on, so it answers 0 rather than falling through.
+      const summary = achievements.getSummary(game.appName);
+      return summary?.total ? Math.round((summary.unlocked / summary.total) * 100) : 0;
     }),
   ];
 
