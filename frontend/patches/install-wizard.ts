@@ -1,6 +1,4 @@
-import { callOriginal, replacePatch } from "@steambrew/client";
-import { logger } from "../logger";
-import rpc from "../rpc";
+import { callOriginal, replacePatch } from "millennium";
 import { findExport } from "../services/modules";
 import { memo } from "../services/once";
 import * as jobs from "../state/jobs";
@@ -98,7 +96,7 @@ const getStore = memo(() => {
     (value): value is GameActionsStore =>
       typeof (value as GameActionsStore | null)?.GetInstallManager === "function",
   );
-  if (!store) logger.warn("Steam's install wizard store wasn't found");
+  if (!store) console.warn("Steam's install wizard store wasn't found");
   return store;
 });
 
@@ -141,11 +139,11 @@ export async function open(appId: number, appName: string, folderName?: string) 
 
   const chosen = folders.find((folder) => folder.bIsDefaultFolder) ?? folders[0];
   if (!chosen) {
-    logger.warn("Steam reported no install folders");
+    console.warn("Steam reported no install folders");
     return;
   }
 
-  const size = await rpc.GetGameSize(appName);
+  const size = await backend.get_game_size(appName);
 
   pending = {
     appName,
@@ -222,7 +220,7 @@ export function register() {
         try {
           bridge.Apps.CreateDesktopShortcutForApp(request.currentAppID);
         } catch (reason: unknown) {
-          logger.warn("Could not create the desktop shortcut", reason);
+          console.warn("Could not create the desktop shortcut", reason);
         }
       }
 
@@ -239,7 +237,7 @@ export function register() {
     }),
   ];
 
-  logger.debug("Registered the install wizard patches");
+  console.debug("Registered the install wizard patches");
   return () => {
     // A wizard left on screen once the patches are gone has buttons that ask
     // the native client about an appid it has never heard of.

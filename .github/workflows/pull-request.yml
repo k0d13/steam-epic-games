@@ -9,13 +9,12 @@ on:
     paths:
       - "package.json"
       - "pnpm-lock.yaml"
-      - "plugin.json"
+      - "millennium.toml"
       - "tsconfig.json"
       - ".oxfmtrc.json"
       - "frontend/**"
-      - "webkit/**"
+      - "webview/**"
       - "backend/**"
-      - "types/**"
       - "scripts/**"
       - ".changeset/**"
       # Every workflow and release script, not only the ones this run uses: a

@@ -1,6 +1,4 @@
-import { ELibraryAssetType } from "@steambrew/client";
-import { logger } from "../logger";
-import { type EpicGame } from "../rpc";
+import { ELibraryAssetType } from "millennium";
 import { createStore } from "../state/storage";
 import * as icons from "./icons";
 
@@ -57,12 +55,12 @@ async function fetchAsBase64(url: string): Promise<{ base64: string; type: "jpg"
 export async function apply(appId: number, game: EpicGame) {
   // No Logo: that's the transparent wordmark over the hero image, which Epic
   // barely ships. Steam draws the title as text without one.
-  const assets: [string | undefined, ELibraryAssetType][] = [
-    [game.artPortrait, ELibraryAssetType.Capsule],
-    [game.artHero, ELibraryAssetType.Hero],
+  const assets: [string | null, ELibraryAssetType][] = [
+    [game.art_portrait, ELibraryAssetType.Capsule],
+    [game.art_hero, ELibraryAssetType.Hero],
     // Same shape as Epic's wide capsule, and without one the app page header
     // is a grey placeholder.
-    [game.artHero, ELibraryAssetType.Header],
+    [game.art_hero, ELibraryAssetType.Header],
   ];
 
   // Before the rest: Steam writes the icon as `<appid>.png`, the same stem a
@@ -77,12 +75,12 @@ export async function apply(appId: number, game: EpicGame) {
       await SteamClient.Apps.SetCustomArtworkForApp(appId, base64, type, assetType);
       applied++;
     } catch (e) {
-      logger.debug("Failed to apply artwork", { appName: game.appName, assetType, error: e });
+      console.debug("Failed to apply artwork", { appName: game.app_name, assetType, error: e });
     }
   }
 
   // Only on a hit, so a game whose downloads all failed is retried next time.
-  if (applied > 0) done.set(game.appName, true);
+  if (applied > 0) done.set(game.app_name, true);
 
   return applied;
 }

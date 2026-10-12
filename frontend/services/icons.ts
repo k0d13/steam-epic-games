@@ -1,6 +1,4 @@
-import { ELibraryAssetType } from "@steambrew/client";
-import { logger } from "../logger";
-import rpc, { type EpicGame } from "../rpc";
+import { ELibraryAssetType } from "millennium";
 
 // The sidebar icon is the one piece of artwork that isn't just another
 // SetCustomArtworkForApp call: a shortcut's icon comes from a path in
@@ -25,7 +23,7 @@ function accountId(): number | undefined {
     // double holds exactly, and being off by one points at no folder at all.
     return Number(BigInt(steamId) & 0xffffffffn);
   } catch (e) {
-    logger.debug("Could not read the current SteamID", e);
+    console.debug("Could not read the current SteamID", e);
     return undefined;
   }
 }
@@ -71,20 +69,20 @@ async function cropToIcon(url: string): Promise<string> {
 
 /** Give one shortcut an icon, and say whether that worked. */
 export async function apply(appId: number, game: EpicGame): Promise<boolean> {
-  const source = game.artPortrait ?? game.artHero;
+  const source = game.art_portrait ?? game.art_hero;
   if (!source) return false;
 
   try {
     const base64 = await cropToIcon(source);
     await SteamClient.Apps.SetCustomArtworkForApp(appId, base64, "png", ELibraryAssetType.Icon);
 
-    const path = await rpc.PlaceIcon(appId, accountId());
+    const path = await backend.place_icon(appId, accountId());
     if (!path) return false;
 
     SteamClient.Apps.SetShortcutIcon(appId, path.replaceAll("/", "\\"));
     return true;
   } catch (e) {
-    logger.debug("Failed to apply an icon", { appName: game.appName, error: e });
+    console.debug("Failed to apply an icon", { appName: game.app_name, error: e });
     return false;
   }
 }

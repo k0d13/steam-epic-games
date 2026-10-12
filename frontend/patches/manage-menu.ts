@@ -1,6 +1,5 @@
-import { afterPatch, ConfirmModal, MenuItem, showModal } from "@steambrew/client";
+import { afterPatch, ConfirmModal, MenuItem, showModal } from "millennium";
 import { createElement, cloneElement, Children, type ReactElement, type ReactNode } from "react";
-import { logger } from "../logger";
 import { findExport } from "../services/modules";
 import { memo } from "../services/once";
 import { mainPopup, onPopupCreate } from "../services/popups";
@@ -98,7 +97,7 @@ function isUninstallDialog(value: unknown): value is UninstallDialog {
 
 const getUninstallDialog = memo(() => {
   const dialog = findExport("#UninstallDialog_Title", isUninstallDialog);
-  if (!dialog) logger.warn("Steam's uninstall dialog wasn't found, using our own");
+  if (!dialog) console.warn("Steam's uninstall dialog wasn't found, using our own");
   return dialog;
 });
 
@@ -132,7 +131,7 @@ function uninstallItem(appId: number): ReactNode {
   if (!game?.installed) return undefined;
 
   // A job of either kind is already touching these files, or is about to.
-  const job = jobs.get(game.appName);
+  const job = jobs.get(game.app_name);
   if (job?.state === "running" || job?.state === "queued") return undefined;
 
   return createElement(
@@ -140,7 +139,7 @@ function uninstallItem(appId: number): ReactNode {
     {
       key: "epic-uninstall",
       tone: "destructive",
-      onSelected: () => confirmUninstall(appId, game.appName, game.title),
+      onSelected: () => confirmUninstall(appId, game.app_name, game.title),
     },
     "Uninstall",
   );
@@ -156,7 +155,7 @@ function uninstallItem(appId: number): ReactNode {
  */
 function cancelItem(appId: number): ReactNode {
   const game = library.getByAppId(appId);
-  const job = game && jobs.get(game.appName);
+  const job = game && jobs.get(game.app_name);
   if (job?.kind !== "install" && job?.kind !== "update") return undefined;
   if (job.state !== "queued" && job.state !== "running" && job.state !== "paused") {
     return undefined;
@@ -166,7 +165,7 @@ function cancelItem(appId: number): ReactNode {
     MenuItem,
     {
       key: "epic-cancel",
-      onSelected: () => void jobs.cancel(job.appName),
+      onSelected: () => void jobs.cancel(job.app_name),
     },
     job.kind === "update" ? "Cancel update" : "Cancel download",
   );
@@ -228,13 +227,13 @@ export function register() {
       // this is only worth saying once.
       if (!missed) {
         missed = true;
-        logger.debug("Saw a context menu with no app actions in it");
+        console.debug("Saw a context menu with no app actions in it");
       }
       return;
     }
 
     unpatch = patchPrototype(instance);
-    logger.debug("Patched the manage menu");
+    console.debug("Patched the manage menu");
 
     // The menu that handed us the prototype was built before the patch, so it
     // would be the one without our item in it.
@@ -283,7 +282,7 @@ export function register() {
     return disconnect;
   });
 
-  logger.debug("Registered the manage menu patch");
+  console.debug("Registered the manage menu patch");
 
   return () => {
     unwatch();

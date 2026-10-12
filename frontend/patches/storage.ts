@@ -1,5 +1,4 @@
-import { afterPatch } from "@steambrew/client";
-import { logger } from "../logger";
+import { afterPatch } from "millennium";
 import { getLastPlayed } from "../services/playtime";
 import * as library from "../state/library";
 
@@ -80,20 +79,20 @@ function folderFor(folders: InstallFolder[], installPath: string) {
 function withOurGames(folders: InstallFolder[]) {
   for (const appId of library.appIdsWithGames()) {
     const game = library.getByAppId(appId);
-    if (!game?.installed || !game.installPath) continue;
+    if (!game?.installed || !game.install_path) continue;
 
-    const folder = folderFor(folders, game.installPath);
+    const folder = folderFor(folders, game.install_path);
     if (!folder) continue;
 
     // An answer the native side already had our app in would draw it twice.
     if (folder.vecApps.some((app) => app.nAppID === appId)) continue;
 
-    const size = game.installSize ?? 0;
+    const size = game.install_size ?? 0;
     folder.vecApps.push({
       nAppID: appId,
       strAppName: game.title,
       strSortAs: game.title,
-      rtLastPlayed: getLastPlayed(game.appName),
+      rtLastPlayed: getLastPlayed(game.app_name),
       nUsedSize: size,
       nAppSize: size,
       nDLCSize: 0,
@@ -119,7 +118,7 @@ export function refresh() {
   if (typeof store?.OnInstallFolderChanges !== "function") return;
 
   store.OnInstallFolderChanges().catch((reason: unknown) => {
-    logger.warn("Could not refresh Steam's install folders", reason);
+    console.warn("Could not refresh Steam's install folders", reason);
   });
 }
 
@@ -133,7 +132,7 @@ export function register() {
   // The store read the folders before we were here to add to them.
   refresh();
 
-  logger.debug("Registered the storage patch");
+  console.debug("Registered the storage patch");
   return () => {
     patch.unpatch();
     refresh();

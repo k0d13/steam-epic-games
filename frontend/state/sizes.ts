@@ -1,4 +1,3 @@
-import rpc, { type GameSize } from "../rpc";
 import { createEmitter } from "./emitter";
 
 // Sizes are read one game at a time from a Steam render, which needs an answer
@@ -29,7 +28,7 @@ export function ensure(appName: string) {
   if (known.has(appName) || pending.has(appName)) return;
   pending.add(appName);
 
-  void rpc.GetGameSize(appName, stale.has(appName)).then((size) => {
+  void backend.get_game_size(appName, stale.has(appName)).then((size) => {
     pending.delete(appName);
     stale.delete(appName);
 

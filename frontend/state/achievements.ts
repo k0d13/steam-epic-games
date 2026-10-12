@@ -1,4 +1,3 @@
-import rpc, { type AchievementSummary, type GameAchievements } from "../rpc";
 import { getLastPlayed } from "../services/playtime";
 import { createEmitter } from "./emitter";
 
@@ -38,14 +37,15 @@ const summaries = new Map<string, AchievementSummary>();
  * round trip to Epic, so it's safe at startup.
  */
 export async function loadSummaries() {
-  const cached = await rpc.GetCachedAchievements();
-  if (cached.size === 0) return;
+  // An empty list arrives as `{}` (Lua has one table type); Object.values reads both.
+  const cached = Object.values(await backend.get_cached_achievements());
+  if (cached.length === 0) return;
 
-  for (const [appName, summary] of cached) summaries.set(appName, summary);
+  for (const summary of cached) summaries.set(summary.app_name, summary);
   emitter.emit();
 
   // Held back: each game it re-reads is a legendary run, and those go through
-  // the one Lua state every other RPC needs.
+  // the one Lua state every other backend call needs.
   setTimeout(() => void refreshPlayed(), STARTUP_GRACE_MS);
 }
 
@@ -68,7 +68,7 @@ export async function refresh(appName: string) {
   if (pending.has(appName)) return;
   pending.add(appName);
 
-  const result = await rpc.GetAchievements(appName, true);
+  const result = await backend.get_achievements(appName, true);
   pending.delete(appName);
   if (result) record(appName, result);
 }
@@ -85,10 +85,10 @@ export function getSummary(appName: string): AchievementSummary | undefined {
 function record(appName: string, result: GameAchievements) {
   known.set(appName, result);
   summaries.set(appName, {
-    appName,
+    app_name: appName,
     total: result.total,
     unlocked: result.unlocked,
-    fetchedAt: result.fetchedAt,
+    fetched_at: result.fetched_at,
   });
   emitter.emit();
 }
@@ -99,7 +99,7 @@ export function get(appName: string): GameAchievements | undefined {
 }
 
 /** Enough of an answer to date it, which both a full read and a summary are. */
-type Dated = { total: number; fetchedAt: number } | null | undefined;
+type Dated = { total: number; fetched_at: number } | null | undefined;
 
 function isStale(appName: string, entry: Dated): boolean {
   // A game with none at all is never worth asking about again - plenty of Epic
@@ -110,9 +110,9 @@ function isStale(appName: string, entry: Dated): boolean {
   // hold. This is Steam's own rule for its achievement cache, and it only sees
   // launches through Steam - the age check below is what catches a session
   // started from the Epic launcher instead.
-  if (getLastPlayed(appName) > entry.fetchedAt) return true;
+  if (getLastPlayed(appName) > entry.fetched_at) return true;
 
-  return Date.now() - entry.fetchedAt * 1000 > STALE_AFTER_MS;
+  return Date.now() - entry.fetched_at * 1000 > STALE_AFTER_MS;
 }
 
 /**
@@ -128,7 +128,7 @@ export function ensure(appName: string) {
   if ((known.has(appName) && !stale) || pending.has(appName)) return;
   pending.add(appName);
 
-  void rpc.GetAchievements(appName, stale).then((result) => {
+  void backend.get_achievements(appName, stale).then((result) => {
     pending.delete(appName);
 
     // Misses are recorded too: retrying every render is a subprocess a frame.

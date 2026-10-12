@@ -1,5 +1,4 @@
-import { beforePatch, type SteamAppOverview } from "@steambrew/client";
-import { logger } from "../logger";
+import { beforePatch, type SteamAppOverview } from "millennium";
 import { forceFakeLocationChange } from "../services/popups";
 import * as library from "../state/library";
 
@@ -19,15 +18,15 @@ interface MutableOverview {
 
 function applyActivity(overview: SteamAppOverview) {
   const game = library.getByAppId(overview.appid);
-  if (!game?.purchasedAt) return;
+  if (!game?.purchased_at) return;
 
   const app = overview as unknown as MutableOverview;
 
-  app.rt_purchased_time = game.purchasedAt;
+  app.rt_purchased_time = game.purchased_at;
   app.rt_recent_activity_time = Math.max(
     app.rt_last_time_played ?? 0,
     app.rt_recent_activity_time ?? 0,
-    game.purchasedAt,
+    game.purchased_at,
   );
 }
 
@@ -40,7 +39,7 @@ export function register() {
     },
   );
 
-  logger.debug("Registered the activity patch");
+  console.debug("Registered the activity patch");
   return patch.unpatch;
 }
 
@@ -52,5 +51,5 @@ export function refreshAll() {
   for (const app of apps) applyActivity(app);
 
   forceFakeLocationChange();
-  logger.debug("Refreshed the Epic activity dates", { count: apps.length });
+  console.debug("Refreshed the Epic activity dates", { count: apps.length });
 }

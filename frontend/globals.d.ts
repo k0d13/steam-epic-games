@@ -1,4 +1,4 @@
-import { type SteamAppOverview } from "@steambrew/client";
+import { type SteamAppOverview } from "millennium";
 
 // The client globals the library is built from, which @steambrew/client either
 // doesn't type or types only the parts of that it uses itself. Declared here

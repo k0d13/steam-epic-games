@@ -6,10 +6,8 @@ import {
   MenuSeparator,
   ProgressBarWithInfo,
   showContextMenu,
-} from "@steambrew/client";
+} from "millennium";
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
-import { logger } from "../logger";
-import { type EpicGame } from "../rpc";
 import * as artwork from "../services/artwork";
 import * as collection from "../services/collection";
 import * as hidden from "../services/hidden";
@@ -67,22 +65,19 @@ export function LibraryPanel() {
       // that legendary's catalog cache would miss.
       result = await library.load(refresh, refresh);
     } catch (reason: unknown) {
-      logger.warn("GetLibrary failed", reason);
+      console.warn("get_library failed", reason);
       setError("The plugin's backend didn't respond.");
       setLoading(false);
       return;
     }
 
-    if (!result.ok) {
-      setError(result.error ?? "Couldn't read your library");
-    } else {
-      setGames(result.games);
-      setRefreshedAt(result.refreshedAt);
-      setSynced(shortcuts.syncedCount(result.games));
-    }
+    setError(result.error ?? undefined);
+    setGames(result.games);
+    setRefreshedAt(result.refreshed_at);
+    setSynced(shortcuts.syncedCount(result.games));
 
     setLoading(false);
-    return result.ok ? result.refreshedAt : undefined;
+    return result.error ? undefined : result.refreshed_at;
   }, []);
 
   useEffect(() => {

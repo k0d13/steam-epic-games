@@ -1,8 +1,7 @@
-import { definePlugin, DialogControlsSection, IconsModule } from "@steambrew/client";
+import { definePlugin, DialogControlsSection, IconsModule } from "millennium";
 import { useCallback, useState } from "react";
 import { AuthPanel } from "./components/auth-panel";
 import { LibraryPanel } from "./components/library-panel";
-import { logger } from "./logger";
 import * as achievementProgress from "./patches/achievement-progress";
 import * as achievementsPatch from "./patches/achievements";
 import * as activity from "./patches/activity";
@@ -15,7 +14,6 @@ import * as installs from "./patches/installs";
 import * as libraryBadge from "./patches/library-badge";
 import * as manageMenu from "./patches/manage-menu";
 import * as storage from "./patches/storage";
-import { type EpicStatus } from "./rpc";
 import { onGameStopped } from "./services/playtime";
 import * as achievements from "./state/achievements";
 import * as jobs from "./state/jobs";
@@ -67,7 +65,7 @@ export default definePlugin(async () => {
     try {
       unpatches.push(patch());
     } catch (e) {
-      logger.error(`Could not register the ${name} patch`, e);
+      console.error(`Could not register the ${name} patch`, e);
     }
   }
 
@@ -107,7 +105,7 @@ export default definePlugin(async () => {
     // waiting for something to draw it.
     onGameStopped((appId) => {
       const game = library.getByAppId(appId);
-      if (game) void achievements.refresh(game.appName);
+      if (game) void achievements.refresh(game.app_name);
     }),
   ];
 
@@ -142,7 +140,7 @@ export default definePlugin(async () => {
     void library.load(true, true);
   })();
 
-  logger.info("Plugin loaded");
+  console.info("Plugin loaded");
 
   return {
     title: "Epic Games",

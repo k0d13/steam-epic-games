@@ -1,2 +1,7 @@
 std = "lua51"
-exclude = ["types/**"]
+
+# Every `---@ffi` function is a global, which is how the frontend reaches it.
+# The files defining them also allow `unused_variable`, since nothing in Lua
+# calls them.
+[lints]
+unscoped_variables = "allow"

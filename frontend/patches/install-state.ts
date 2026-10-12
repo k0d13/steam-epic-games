@@ -1,5 +1,4 @@
-import { beforePatch, EDisplayStatus, type SteamAppOverview } from "@steambrew/client";
-import { logger } from "../logger";
+import { beforePatch, EDisplayStatus, type SteamAppOverview } from "millennium";
 import { once } from "../services/once";
 import { forceFakeLocationChange } from "../services/popups";
 import * as jobs from "../state/jobs";
@@ -41,7 +40,7 @@ interface MutableOverview {
 }
 
 const logApplied = once((app: MutableOverview, appName: string, wanted: boolean) => {
-  logger.debug("Install state patch applied", {
+  console.debug("Install state patch applied", {
     appId: app.appid,
     appName,
     wanted,
@@ -68,7 +67,7 @@ function applyInstallState(overview: SteamAppOverview) {
   // needs no UI of its own. `Downloading` rather than `Installing` because it's
   // the status the progress bar reads a percentage for; Installing draws an
   // indeterminate spinner.
-  const job = jobs.get(game.appName);
+  const job = jobs.get(game.app_name);
   const pending = job?.state === "running" || job?.state === "paused" || job?.state === "queued";
   const downloading = job?.kind === "install" && pending;
   // Separate from a download because the game stays installed and launchable
@@ -119,7 +118,7 @@ function applyInstallState(overview: SteamAppOverview) {
       // UpdateRequired is what turns the play bar's Play into Update, and it's
       // the only place the flag legendary gives us is ever shown.
       if (!game.installed) data.display_status = EDisplayStatus.ReadyToInstall;
-      else if (game.needsUpdate) data.display_status = EDisplayStatus.UpdateRequired;
+      else if (game.needs_update) data.display_status = EDisplayStatus.UpdateRequired;
       else data.display_status = EDisplayStatus.ReadyToLaunch;
     }
     data.status_percentage = 0;
@@ -134,9 +133,9 @@ function applyInstallState(overview: SteamAppOverview) {
 
   // The Installed collection tests this rather than the per-client flags, so
   // leaving it set shows an uninstalled game there anyway.
-  app.size_on_disk = game.installed ? `${game.installSize ?? 0}` : undefined;
+  app.size_on_disk = game.installed ? `${game.install_size ?? 0}` : undefined;
 
-  logApplied(app, game.appName, game.installed);
+  logApplied(app, game.app_name, game.installed);
 }
 
 export function register() {
@@ -148,7 +147,7 @@ export function register() {
     },
   );
 
-  logger.debug("Registered the install state patch");
+  console.debug("Registered the install state patch");
   return patch.unpatch;
 }
 
@@ -167,5 +166,5 @@ export function refreshAll() {
   for (const app of apps) applyInstallState(app);
 
   forceFakeLocationChange();
-  logger.debug("Refreshed the Epic overviews", { count: apps.length });
+  console.debug("Refreshed the Epic overviews", { count: apps.length });
 }

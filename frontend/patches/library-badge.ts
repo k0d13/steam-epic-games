@@ -1,5 +1,4 @@
-import { type SteamAppOverview } from "@steambrew/client";
-import { logger } from "../logger";
+import { type SteamAppOverview } from "millennium";
 import { mainPopup, onPopupCreate } from "../services/popups";
 import * as library from "../state/library";
 
@@ -212,7 +211,7 @@ export function register() {
     for (const watcher of watchers) watcher.restamp();
   });
 
-  logger.debug("Registered the library badge patch");
+  console.debug("Registered the library badge patch");
 
   return () => {
     unwatch();

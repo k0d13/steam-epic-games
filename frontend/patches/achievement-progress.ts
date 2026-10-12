@@ -1,5 +1,4 @@
-import { callOriginal, replacePatch } from "@steambrew/client";
-import { logger } from "../logger";
+import { callOriginal, replacePatch } from "millennium";
 import * as achievements from "../state/achievements";
 import * as library from "../state/library";
 
@@ -22,7 +21,7 @@ interface ProgressCache {
 export function register() {
   const cache = Reflect.get(globalThis, "appAchievementProgressCache") as ProgressCache | undefined;
   if (!cache) {
-    logger.warn("Could not find the achievement progress cache, the completion sort stays empty");
+    console.warn("Could not find the achievement progress cache, the completion sort stays empty");
     return () => {};
   }
 
@@ -34,7 +33,7 @@ export function register() {
       const game = library.getByAppId(appId);
       if (!game) return callOriginal as unknown as boolean;
 
-      return (achievements.getSummary(game.appName)?.total ?? 0) > 0;
+      return (achievements.getSummary(game.app_name)?.total ?? 0) > 0;
     }),
 
     // Counts only, and never fetches: this runs once per game per render of the
@@ -47,12 +46,12 @@ export function register() {
 
       // A game of ours we have no counts for can't queue a CM update it would
       // only miss on, so it answers 0 rather than falling through.
-      const summary = achievements.getSummary(game.appName);
+      const summary = achievements.getSummary(game.app_name);
       return summary?.total ? Math.round((summary.unlocked / summary.total) * 100) : 0;
     }),
   ];
 
-  logger.debug("Registered the achievement progress patch");
+  console.debug("Registered the achievement progress patch");
 
   return () => {
     for (const patch of patches) patch.unpatch();

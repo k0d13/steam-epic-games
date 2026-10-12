@@ -1,4 +1,3 @@
-import { logger } from "../logger";
 import { once } from "../services/once";
 import * as appIds from "../state/app-ids";
 import * as jobs from "../state/jobs";
@@ -49,7 +48,7 @@ function getOverview(): DownloadOverview | undefined {
 let claimed: number | undefined;
 
 const logClaimed = once((overview: DownloadOverview, appId: number, appName: string) => {
-  logger.debug("Claimed the download overview", {
+  console.debug("Claimed the download overview", {
     appId,
     appName,
     // Different from what we wrote means it's read-only on this build and the
@@ -70,7 +69,7 @@ export function sync() {
   const job = jobs
     .active()
     .find((candidate) => candidate.kind === "install" || candidate.kind === "update");
-  const appId = job && appIds.getAppId(job.appName);
+  const appId = job && appIds.getAppId(job.app_name);
 
   if (job && appId !== undefined) {
     // Steam's own download wins. Ours keeps its status and its tile progress,
@@ -95,7 +94,7 @@ export function sync() {
       stage.estimated_time_remaining_sec = overview.overall_estimated_time_remaining_sec;
     }
 
-    logClaimed(overview, appId, job.appName);
+    logClaimed(overview, appId, job.app_name);
     return;
   }
 

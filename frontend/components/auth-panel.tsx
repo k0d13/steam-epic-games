@@ -1,7 +1,5 @@
-import { DialogButton, Field, TextField } from "@steambrew/client";
+import { DialogButton, Field, TextField } from "millennium";
 import { useCallback, useEffect, useState } from "react";
-import { logger } from "../logger";
-import rpc, { type EpicStatus } from "../rpc";
 
 /**
  * Open a URL outside Steam. Which of these exists varies by client build, and a
@@ -16,18 +14,18 @@ function openInBrowser(url: string) {
   };
 
   if (typeof client?.URL?.ExecuteSteamURL === "function") {
-    logger.debug("Opening login page via SteamClient.URL.ExecuteSteamURL");
+    console.debug("Opening login page via SteamClient.URL.ExecuteSteamURL");
     client.URL.ExecuteSteamURL(`steam://openurl/${url}`);
     return true;
   }
 
   if (typeof client?.System?.OpenInSystemBrowser === "function") {
-    logger.debug("Opening login page via SteamClient.System.OpenInSystemBrowser");
+    console.debug("Opening login page via SteamClient.System.OpenInSystemBrowser");
     client.System.OpenInSystemBrowser(url);
     return true;
   }
 
-  logger.debug("Opening login page via window.open");
+  console.debug("Opening login page via window.open");
   return window.open(url, "_blank") !== null;
 }
 
@@ -73,13 +71,13 @@ export function AuthPanel({ onStatus }: { onStatus: (status: EpicStatus) => void
   // legendary..." forever with nothing to say why.
   useEffect(() => {
     let cancelled = false;
-    rpc
-      .GetStatus()
+    backend
+      .get_status()
       .then((result) => {
         if (!cancelled) applyStatus(result);
       })
       .catch((reason: unknown) => {
-        logger.warn("GetStatus failed", reason);
+        console.warn("get_status failed", reason);
         if (!cancelled) setUnreachable(true);
       });
     return () => {
@@ -90,26 +88,27 @@ export function AuthPanel({ onStatus }: { onStatus: (status: EpicStatus) => void
   const onRetry = useCallback(async () => {
     setBusy(true);
     try {
-      applyStatus(await rpc.GetStatus(true));
+      applyStatus(await backend.get_status(true));
     } catch (reason: unknown) {
-      logger.warn("GetStatus failed", reason);
+      console.warn("get_status failed", reason);
       setUnreachable(true);
     }
     setBusy(false);
   }, [applyStatus]);
 
   const onSignIn = useCallback(() => {
-    const opened = openInBrowser(status?.loginUrl ?? "https://legendary.gl/epiclogin");
+    const opened = openInBrowser(status?.login_url ?? "https://legendary.gl/epiclogin");
     setAwaitingCode(true);
     setError(opened ? undefined : "Couldn't open your browser. Use the address below instead.");
-  }, [status?.loginUrl]);
+  }, [status?.login_url]);
 
   const onSubmitCode = useCallback(async () => {
     setBusy(true);
     setError(undefined);
 
-    const result = await rpc.SignIn(extractCode(code));
-    if (!result.ok) {
+    const result = await backend.sign_in(extractCode(code));
+    applyStatus(result);
+    if (!result.authenticated) {
       setError(result.error ?? "Sign in failed");
       setBusy(false);
       return;
@@ -118,7 +117,6 @@ export function AuthPanel({ onStatus }: { onStatus: (status: EpicStatus) => void
     // Single use, so clear it: pasting it again would only fail.
     setCode("");
     setAwaitingCode(false);
-    applyStatus(result.status);
     setBusy(false);
   }, [applyStatus, code]);
 
@@ -126,8 +124,7 @@ export function AuthPanel({ onStatus }: { onStatus: (status: EpicStatus) => void
     setBusy(true);
     setError(undefined);
 
-    const result = await rpc.SignOut();
-    applyStatus(result.status);
+    applyStatus(await backend.sign_out());
     setBusy(false);
   }, [applyStatus]);
 
