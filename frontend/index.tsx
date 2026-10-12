@@ -7,6 +7,7 @@ import * as achievementsPatch from "./patches/achievements";
 import * as activity from "./patches/activity";
 import * as appDetails from "./patches/app-details";
 import * as downloadOverview from "./patches/download-overview";
+import * as downloads from "./patches/downloads";
 import * as installState from "./patches/install-state";
 import * as installWizard from "./patches/install-wizard";
 import * as installs from "./patches/installs";
@@ -72,6 +73,7 @@ export default definePlugin(async () => {
     ["achievements", achievementsPatch.register],
     ["achievement progress", achievementProgress.register],
     ["storage", storage.register],
+    ["downloads", downloads.register],
   ] as const) {
     try {
       unpatches.push(patch());
@@ -93,6 +95,7 @@ export default definePlugin(async () => {
     setTimeout(() => {
       repaintQueued = false;
       downloadOverview.sync();
+      downloads.sync();
       installState.refreshAll();
       activity.refreshAll();
       appDetails.refreshAll();

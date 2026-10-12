@@ -3,6 +3,7 @@ import { logger } from "../index";
 import { NON_STEAM_APP_APPID_MASK } from "../state/app-ids";
 import * as jobs from "../state/jobs";
 import * as library from "../state/library";
+import * as downloads from "./downloads";
 import * as wizard from "./install-wizard";
 
 // Steam's Install, Pause and Resume buttons all end up in one of a few
@@ -110,6 +111,9 @@ export function register() {
     // we keep it, since Install against a partial download is legendary's
     // resume and there's nothing else that would pick those bytes back up.
     replacePatch(bridge.Downloads, "RemoveFromDownloadList", ([appId]: [number, string?]) => {
+      // A finished row's ✕ only takes it off the downloads page.
+      if (downloads.dismiss(appId)) return undefined;
+
       const appName = epicAppName(appId);
       if (!appName) return callOriginal;
 
