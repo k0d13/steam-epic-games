@@ -2,6 +2,7 @@ import { logger } from "../index";
 import { once } from "../services/once";
 import * as appIds from "../state/app-ids";
 import * as jobs from "../state/jobs";
+import { bytesFor, etaSeconds, PROGRESS_DOWNLOAD } from "./downloads";
 
 // The app page's progress bar doesn't come from the overview's
 // `status_percentage`, whatever the grid tile does. For a game that is actively
@@ -24,7 +25,16 @@ interface DownloadOverview {
   overall_estimated_time_remaining_sec: number;
   update_network_bytes_per_second: number;
   paused: boolean;
+  /** One entry per EAppUpdateProgress stage; the downloads page reads Download. */
+  progress?: {
+    bytes_in_progress: number;
+    bytes_total: number;
+    estimated_time_remaining_sec: number;
+  }[];
 }
+
+/** legendary reports MiB/s; Steam wants bytes. */
+const MIB = 1024 * 1024;
 
 interface DownloadsStore {
   LocalDownloadOverview?: DownloadOverview;
@@ -75,8 +85,15 @@ export function sync() {
     overview.update_is_upload = false;
     overview.paused = false;
     overview.overall_percent_complete = job.progress?.percent ?? 0;
-    overview.overall_estimated_time_remaining_sec = -1;
-    overview.update_network_bytes_per_second = job.progress?.speed ?? 0;
+    overview.overall_estimated_time_remaining_sec = etaSeconds(job.progress?.eta);
+    overview.update_network_bytes_per_second = (job.progress?.speed ?? 0) * MIB;
+
+    // The downloads page's active row prints these as "x of y".
+    const stage = overview.progress?.[PROGRESS_DOWNLOAD];
+    if (stage) {
+      [stage.bytes_in_progress, stage.bytes_total] = bytesFor(job);
+      stage.estimated_time_remaining_sec = overview.overall_estimated_time_remaining_sec;
+    }
 
     logClaimed(overview, appId, job.appName);
     return;
@@ -97,4 +114,11 @@ export function release() {
   overview.overall_percent_complete = 0;
   overview.overall_estimated_time_remaining_sec = -1;
   overview.update_network_bytes_per_second = 0;
+
+  const stage = overview.progress?.[PROGRESS_DOWNLOAD];
+  if (stage) {
+    stage.bytes_in_progress = 0;
+    stage.bytes_total = 0;
+    stage.estimated_time_remaining_sec = -1;
+  }
 }
