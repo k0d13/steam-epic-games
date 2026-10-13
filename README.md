@@ -28,24 +28,10 @@ first time it runs.
 
 ## Setup
 
-1. Open the **Epic Games** panel from Millennium's plugin list.
-2. Press **Sign in**. Epic's login page opens in your browser.
-3. Epic will show you a page of text. Copy all of it, paste it into the panel,
-   and press **Continue**.
-4. Press **Add to Steam**.
+1. In Steam, open **Store > Epic Games Store** and sign in to Epic there.
+2. Open the **Epic Games** panel from Millennium's plugin list. It shows the
+   account you signed in with and your Epic library.
+3. Press **Add to Steam**.
 
 The first run takes a few minutes on a large account. After that it only picks
-up what's changed.
-
-> [!NOTE]
-> The code Epic gives you is good for one use and expires quickly. If
-> **Continue** doesn't work, press **Sign in** again for a fresh one.
-
-## Notes & Troubleshooting
-
-### Why does a terminal flash on screen when Steam starts?
-
-Steam gives Legendary nowhere to run, so the plugin starts a hidden background
-helper when Steam loads and runs every command through that instead. Starting it
-is the one thing that can't be hidden, hence the flash. You should only see it
-once per Steam launch.
+up what's changed. Signing out of the Epic store signs the plugin out too.
