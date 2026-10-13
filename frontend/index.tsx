@@ -1,6 +1,5 @@
-import { definePlugin, DialogControlsSection, IconsModule } from "millennium";
-import { useCallback, useState } from "react";
-import { AuthPanel } from "./components/auth-panel";
+import { definePlugin, DialogButton, DialogControlsSection, Field, IconsModule } from "millennium";
+import { useState, useSyncExternalStore } from "react";
 import { LibraryPanel } from "./components/library-panel";
 import * as achievementProgress from "./patches/achievement-progress";
 import * as achievementsPatch from "./patches/achievements";
@@ -15,7 +14,9 @@ import * as libraryBadge from "./patches/library-badge";
 import * as manageMenu from "./patches/manage-menu";
 import * as storage from "./patches/storage";
 import * as storeMenu from "./patches/store-menu";
+import * as epicSession from "./services/epic-session";
 import { onGameStopped } from "./services/playtime";
+import * as account from "./state/account";
 import * as achievements from "./state/achievements";
 import * as jobs from "./state/jobs";
 import * as library from "./state/library";
@@ -23,21 +24,50 @@ import * as library from "./state/library";
 // IconsModule varies between Steam builds; a missing icon mustn't break the plugin.
 const PluginIcon = IconsModule?.Download ?? IconsModule?.Settings ?? (() => null);
 
-// Setup lives here, reachable whether or not anything is signed in.
+// Sign in and out happen on Epic's store in Steam's browser (see epic-session), so
+// the panel only reports the account.
 function Panel() {
-  const [authenticated, setAuthenticated] = useState(false);
+  const status = useSyncExternalStore(account.subscribe, account.get);
+  const [busy, setBusy] = useState(false);
 
-  // Stable identity, or AuthPanel's status effect would re-run on every render.
-  const onStatus = useCallback((status: EpicStatus) => {
-    setAuthenticated(status.authenticated);
-  }, []);
+  // Forcing a status re-runs the download, for a machine that was offline.
+  const onRetry = async () => {
+    setBusy(true);
+    try {
+      await backend.get_status(true);
+    } catch (reason: unknown) {
+      console.warn("get_status failed", reason);
+    }
+    setBusy(false);
+  };
+
+  let description: string;
+  if (!status) description = "Checking for Legendary...";
+  else if (!status.available)
+    description = status.error ?? "Legendary could not be downloaded or run.";
+  else if (status.authenticated) description = `Signed in as ${status.account}`;
+  else
+    description =
+      "Not signed in. Open Store > Epic Games Store and sign in there, and this " +
+      "picks up your account.";
 
   // One section: Steam drops the separator on a section's last field, so two
   // would leave the rows touching.
   return (
     <DialogControlsSection>
-      <AuthPanel onStatus={onStatus} />
-      {authenticated && <LibraryPanel />}
+      <Field
+        label="Epic account"
+        description={description}
+        childrenContainerWidth="min"
+        bottomSeparator={status?.authenticated ? "standard" : "none"}
+      >
+        {status && !status.available && (
+          <DialogButton disabled={busy} onClick={onRetry}>
+            {busy ? "Downloading..." : "Retry"}
+          </DialogButton>
+        )}
+      </Field>
+      {status?.authenticated && <LibraryPanel />}
     </DialogControlsSection>
   );
 }
@@ -85,6 +115,12 @@ export default definePlugin(async () => {
   };
 
   const unsubscribes = [
+    // The store decides who's signed in. Signed out, the backend's library is
+    // empty; signed in as someone, it's theirs to fetch.
+    account.watch((status) => void library.load(status.authenticated)),
+    // Signs legendary in and out with the store in Steam's browser.
+    epicSession.start(),
+
     // Running installs repaint every second: the progress bar reads off the overview.
     library.subscribe(repaint),
     // Not on the repaint: the storage page only changes when what's installed does.

@@ -320,6 +320,15 @@ end
 ---@param force? boolean
 ---@return Library
 function get_library(refresh, force)
+  -- The store decides who's signed in; a signed out library is an empty one.
+  if not legendary.get_status().authenticated then
+    if #games > 0 then
+      games, refreshed_at = {}, 0
+      save()
+    end
+    return { games = games, refreshed_at = refreshed_at }
+  end
+
   local err
   if refresh then
     local _
