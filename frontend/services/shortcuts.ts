@@ -77,6 +77,7 @@ async function createShortcut(game: EpicGame): Promise<number | undefined> {
 
 function removeShortcut(appName: string, appId: number) {
   SteamClient.Apps.RemoveShortcut(appId);
+  startDirs.delete(appId);
   appIds.removeAppName(appName);
   artwork.forget(appName);
   console.debug("Removed a shortcut", { appName, appId });
@@ -161,6 +162,36 @@ export async function sync(games: EpicGame[]): Promise<SyncResult> {
     // The appid map changed either way, and every patch reads the library.
     library.reindexAppIds();
     setState({ active: false, done: 0, total: 0, lastResult: result });
+  }
+}
+
+// A shortcut is made before its game exists, so it starts in legendary's folder.
+// Games that read files relative to their working directory need their own, so
+// it follows the install. Set once a session per shortcut, then on each change.
+
+/** The working directory each shortcut was last given this session. */
+const startDirs = new Map<number, string>();
+
+/** legendary's folder, for shortcuts whose game isn't installed. */
+let launcherDir: Promise<string | undefined> | undefined;
+
+/** Point every shortcut's working directory at its game folder, or legendary's. */
+export async function alignStartDirs() {
+  // The folder is the same for every game, so any name will do.
+  launcherDir ??= backend
+    .get_launch_command("")
+    .then((launch) => launch?.start_dir || undefined)
+    .catch(() => undefined);
+
+  const fallback = await launcherDir;
+
+  for (const appId of library.appIdsWithGames()) {
+    const game = library.getByAppId(appId);
+    const dir = (game?.installed && game.install_path) || fallback;
+    if (!dir || startDirs.get(appId) === dir) continue;
+
+    SteamClient.Apps.SetShortcutStartDir(appId, dir);
+    startDirs.set(appId, dir);
   }
 }
 
