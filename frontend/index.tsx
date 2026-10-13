@@ -73,7 +73,24 @@ function Panel() {
   );
 }
 
+function Unsupported() {
+  return (
+    <DialogControlsSection>
+      <Field
+        label="Windows only"
+        description="Epic Games doesn't support this platform yet, so it has left your library as it was."
+        bottomSeparator="none"
+      />
+    </DialogControlsSection>
+  );
+}
+
 export default definePlugin(async () => {
+  if (!navigator.userAgent.includes("Windows")) {
+    console.warn("Not on Windows, so nothing was patched");
+    return { title: "Epic Games", icon: <PluginIcon />, content: <Unsupported /> };
+  }
+
   // Before the library loads, so overviews built meanwhile are patched. Guarded so
   // a patch that no longer applies only costs its own feature.
   const unpatches: (() => void)[] = [];
