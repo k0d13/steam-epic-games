@@ -1,17 +1,13 @@
+--# selene: allow(unused_variable)
 local fs = require("fs")
+local log = require("log")
 local millennium = require("millennium")
 
--- Steam's grid folder is where custom artwork ends up. The frontend hands Steam
--- the bytes, since Lua here can neither fetch an image nor decode base64; this
--- is the part that has to happen on disk afterwards.
+-- The frontend hands Steam the artwork bytes, since Lua here can't fetch or decode
+-- base64; this tidies the grid folder afterwards.
 
-local grid = {}
-
----Where Steam keeps the custom artwork it's been given for this user.
----
----`account_id` is the 32-bit account id, not the 64-bit SteamID: that's what
----names the userdata folder. Falls back to the only folder present, which is
----the normal case on a single-account machine.
+---This user's grid folder. `account_id` is the 32-bit id that names the userdata
+---folder; without it, the only folder present is used.
 ---@param account_id integer|string|nil
 ---@return string|nil path
 ---@return string? error
@@ -24,8 +20,7 @@ local function grid_path(account_id)
     account = nil
 
     for _, entry in ipairs(fs.list(userdata) or {}) do
-      -- "0" is Steam's placeholder for "no account", and with more than one we
-      -- have no business guessing which is signed in.
+      -- "0" means no account; with several we can't tell which is signed in.
       if entry.is_directory and entry.name ~= "0" then
         if account then
           return nil, "several Steam accounts on this machine"
@@ -45,25 +40,20 @@ local function grid_path(account_id)
   return path
 end
 
----Extensions an icon can arrive as. Ours is a PNG we draw ourselves, but the
----grid folder is shared with anything else that writes icons and SteamGridDB's
----are usually `.ico`. Deliberately not jpg: `<app_id>.jpg` is the header image,
----and looking for one would rename that into an icon.
+---ico for SteamGridDB's icons. Not jpg: `<app_id>.jpg` is the header image.
 local ICON_EXTENSIONS = { "png", "ico" }
 
----Move the icon Steam just wrote to the name Steam actually reads it back from.
----
----SetCustomArtworkForApp writes `<grid>/<app_id>.<ext>`, but a shortcut's icon
----comes from `<app_id>_icon.<ext>`. Renamed rather than copied, or the stray
----file is left competing with the `<app_id>.jpg` header.
+---@ffi
+---SetCustomArtworkForApp writes `<app_id>.<ext>` but shortcuts read `<app_id>_icon.<ext>`.
+---Moved, not copied, or the leftover competes with the `.jpg` header.
 ---@param app_id integer|string
----@param account_id integer|string|nil
+---@param account_id? integer|string
 ---@return string|nil path Where the icon ended up
----@return string? error
-function grid.place_icon(app_id, account_id)
+function place_icon(app_id, account_id)
   local path, err = grid_path(account_id)
   if not path then
-    return nil, err
+    log.warn("Could not place the icon for " .. tostring(app_id) .. ": " .. tostring(err))
+    return nil
   end
 
   local id = tostring(app_id)
@@ -78,12 +68,11 @@ function grid.place_icon(app_id, account_id)
   end
 
   if not source then
-    return nil, "Steam wrote no icon for " .. id .. " in " .. path
+    log.warn("Steam wrote no icon for " .. id .. " in " .. path)
+    return nil
   end
 
-  -- Every extension, not just the one we're about to write: an icon left from
-  -- another source is what Steam would go on reading otherwise. Also because
-  -- rename won't replace an existing file on Windows.
+  -- Every extension: a stale icon would win, and rename won't overwrite on Windows.
   for _, candidate in ipairs(ICON_EXTENSIONS) do
     local existing = path .. "/" .. id .. "_icon." .. candidate
     if fs.is_file(existing) then
@@ -93,10 +82,9 @@ function grid.place_icon(app_id, account_id)
 
   local target = path .. "/" .. id .. "_icon." .. extension
   if not fs.rename(source, target) then
-    return nil, "could not rename " .. source
+    log.warn("Could not rename " .. source)
+    return nil
   end
 
   return target
 end
-
-return grid

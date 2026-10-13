@@ -1,21 +1,10 @@
-import { type SteamAppOverview } from "@steambrew/client";
-import { logger } from "../logger";
+import { type SteamAppOverview } from "millennium";
 import { mainPopup, onPopupCreate } from "../services/popups";
 import * as library from "../state/library";
 
-// A little Epic mark on the artwork in the library, so an Epic game is tellable
-// from a Steam one at a glance: on the list's icons, and on the grid capsules
-// the collection views and the home shelves are built from.
-//
-// Steam puts no appid in that DOM and neither of the components that could add
-// one can be patched: the icon component is a webpack export behind a
-// non-configurable getter, and the row above it is a mobx class whose `render`
-// replaces itself with a non-writable one on the instance the first time it
-// runs. So the appid is read back off the React fiber instead and written onto
-// the artwork as an attribute, which leaves the badge itself pure CSS - nothing
-// here has to change to move it, resize it or redraw it.
+// An Epic mark on library artwork. The components can't be patched, so the appid is
+// read off the React fiber and set as an attribute, leaving the badge pure CSS.
 
-/** Everything about how the badge looks, in one place. */
 const BADGE = {
   /** Share of the icon's width. Steam draws those at around 24px. */
   iconSize: "55%",
@@ -69,13 +58,8 @@ const CSS = `
 `;
 
 /**
- * What Steam draws a game's artwork into, and which shape of badge each takes.
- * Hashed class names sit beside readable ones, and these cover the library
- * whole: `GameIcon` is the list's icon and `Capsule` every grid tile, in the
- * collection views and on the home shelves alike. Home's recent-game cards are
- * a `FeaturedCapsule` instead, which is the whole card, footer included - so
- * the badge goes on its artwork child, where it lands in the same corner of the
- * art as everywhere else rather than down in the footer.
+ * Artwork containers and their badge shape. A `FeaturedCapsule` is the whole card,
+ * so the badge goes on its art child rather than in the footer.
  */
 const TARGETS = {
   '[class~="GameIcon"]': "icon",
@@ -95,11 +79,7 @@ function getFiber(node: Element): Fiber | undefined {
   return undefined;
 }
 
-/**
- * The appid the artwork is drawn for. Its own fiber doesn't carry one - it's on
- * components above it, which hold the app either as `appid`, as an overview
- * under `app`, or as the list entry's `item`.
- */
+/** The artwork's appid, held above it as `appid`, `app` (an overview) or `item`. */
 function findAppId(element: Element): number | undefined {
   for (let fiber: Fiber | null | undefined = getFiber(element); fiber; fiber = fiber.return) {
     const props = fiber.memoizedProps;
@@ -119,8 +99,7 @@ function findAppId(element: Element): number | undefined {
 
 /** Mark, or unmark, every piece of artwork under `root`. */
 function stamp(root: Element) {
-  // Nothing signed in means nothing can match, and the observer sees every
-  // mutation in the window - a theme loading is thousands of them.
+  // Nothing can match, and a theme loading is thousands of mutations.
   if (library.isEmpty()) {
     for (const element of root.querySelectorAll(`[${ATTRIBUTE}]`)) {
       element.removeAttribute(ATTRIBUTE);
@@ -131,35 +110,26 @@ function stamp(root: Element) {
   for (const [selector, kind] of Object.entries(TARGETS)) {
     for (const element of root.querySelectorAll(selector)) {
       const appId = findAppId(element);
-      // Removed as well as added: the library recycles its rows and its tiles,
-      // so artwork that was ours a scroll ago is drawn for a Steam game now.
+      // Removed too: the library recycles tiles, so ours may now show a Steam game.
       if (appId !== undefined && library.getByAppId(appId)) element.setAttribute(ATTRIBUTE, kind);
       else element.removeAttribute(ATTRIBUTE);
     }
   }
 }
 
-function addStyle(document: Document) {
-  if (document.getElementById(STYLE_ID)) return;
-
-  const style = document.createElement("style");
-  style.id = STYLE_ID;
-  style.textContent = CSS;
-  document.head.appendChild(style);
-}
-
-/**
- * Watch one window: its artwork now, and again whenever the library changes.
- * Both kinds of change matter - scrolling adds rows and tiles, and a recycled
- * one only has its image swapped.
- */
+/** Watch one window's artwork; scrolling adds tiles and recycling only swaps `src`. */
 function watch(root: Element | undefined) {
   if (!root?.ownerDocument) return undefined;
 
-  addStyle(root.ownerDocument);
+  const document = root.ownerDocument;
+  if (!document.getElementById(STYLE_ID)) {
+    const style = document.createElement("style");
+    style.id = STYLE_ID;
+    style.textContent = CSS;
+    document.head.appendChild(style);
+  }
 
-  // Coalesced, since one scroll is a burst of records and stamping reads
-  // layout-free fiber props for every piece of artwork on screen.
+  // Coalesced, since one scroll is a burst of records.
   let queued = false;
   const restamp = () => {
     if (queued) return;
@@ -194,8 +164,7 @@ export function register() {
 
   add(mainPopup()?.root_element);
 
-  // The library lives in the desktop window, but a detached one is a popup of
-  // its own, so every window gets the same treatment.
+  // A detached library window is a popup of its own.
   const unwatch = onPopupCreate((popup) => {
     const watcher = add(popup.root_element);
     if (!watcher) return;
@@ -206,13 +175,12 @@ export function register() {
     };
   });
 
-  // A game that's just been synced has artwork on screen already, drawn before
-  // we knew the appid was ours.
+  // Newly synced games already have artwork on screen.
   const unsubscribe = library.subscribe(() => {
     for (const watcher of watchers) watcher.restamp();
   });
 
-  logger.debug("Registered the library badge patch");
+  console.debug("Registered the library badge patch");
 
   return () => {
     unwatch();

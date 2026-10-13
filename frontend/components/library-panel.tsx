@@ -1,4 +1,5 @@
 import {
+  ConfirmModal,
   DialogButton,
   Field,
   Menu,
@@ -6,18 +7,17 @@ import {
   MenuSeparator,
   ProgressBarWithInfo,
   showContextMenu,
-} from "@steambrew/client";
+  showModal,
+} from "millennium";
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
-import { logger } from "../logger";
-import { type EpicGame } from "../rpc";
 import * as artwork from "../services/artwork";
 import * as collection from "../services/collection";
 import * as hidden from "../services/hidden";
+import { mainPopup } from "../services/popups";
 import * as shortcuts from "../services/shortcuts";
 import * as library from "../state/library";
 
-// Two rows, one button each - the panel is too narrow for more. Everything past
-// the primary action lives in the context menu that button opens.
+// The panel only fits one button per row; the rest live in the context menu.
 
 /** "3 hours ago", roughly - close enough to answer "is this stale?". */
 function describeAge(refreshedAt: number) {
@@ -35,12 +35,19 @@ function describeAge(refreshedAt: number) {
   return `updated ${Math.floor(hours / 24)}d ago`;
 }
 
+function plural(count: number, noun: string) {
+  return `${count} ${noun}${count === 1 ? "" : "s"}`;
+}
+
 /** Describe a finished sync, for a panel that may not have been open for it. */
 function describeResult(result: shortcuts.SyncResult) {
-  return (
-    `Added ${result.added}, removed ${result.removed}, ${result.artworkApplied} images` +
-    (result.failed ? `, ${result.failed} failed` : "")
-  );
+  const counts =
+    `added ${result.added}, removed ${result.removed}, ${plural(result.artworkApplied, "image")}` +
+    (result.failed ? `, ${result.failed} failed` : "");
+
+  // The counts alone would read as a finished sync.
+  if (result.error) return `Sync stopped partway (${counts}): ${result.error}`;
+  return counts.charAt(0).toUpperCase() + counts.slice(1);
 }
 
 export function LibraryPanel() {
@@ -51,43 +58,36 @@ export function LibraryPanel() {
   const [synced, setSynced] = useState(0);
   const [note, setNote] = useState<string | undefined>(undefined);
 
-  // A sync outlives this panel, so its progress is read from the service:
-  // closing the dialog mid-sync must not lose the bar.
+  // Read from the service so closing the dialog mid-sync doesn't lose the bar.
   const sync = useSyncExternalStore(shortcuts.subscribeToSync, shortcuts.getSyncState);
 
   const load = useCallback(async (refresh: boolean): Promise<number | undefined> => {
     setLoading(true);
     setError(undefined);
 
-    // Only the call is guarded, or a failure anywhere in the UI would be
-    // reported as the backend not responding.
+    // Only the call is guarded, so UI errors aren't blamed on the backend.
     let result;
     try {
-      // `force` too: the reason to press Refresh is a change at Epic's end
-      // that legendary's catalog cache would miss.
+      // `force` too: Refresh is for changes legendary's catalog cache would miss.
       result = await library.load(refresh, refresh);
     } catch (reason: unknown) {
-      logger.warn("GetLibrary failed", reason);
+      console.warn("get_library failed", reason);
       setError("The plugin's backend didn't respond.");
       setLoading(false);
       return;
     }
 
-    if (!result.ok) {
-      setError(result.error ?? "Couldn't read your library");
-    } else {
-      setGames(result.games);
-      setRefreshedAt(result.refreshedAt);
-      setSynced(shortcuts.syncedCount(result.games));
-    }
+    setError(result.error ?? undefined);
+    setGames(result.games);
+    setRefreshedAt(result.refreshed_at);
+    setSynced(shortcuts.syncedCount(result.games));
 
     setLoading(false);
-    return result.ok ? result.refreshedAt : undefined;
+    return result.error ? undefined : result.refreshed_at;
   }, []);
 
   useEffect(() => {
-    // Nothing goes out to Epic on its own, so a first run has an empty cache -
-    // and this is the one place with a panel on screen to say so.
+    // Nothing asks Epic on its own, so a first run fetches here.
     void load(false).then((loaded) => {
       if (loaded === 0) void load(true);
     });
@@ -98,16 +98,14 @@ export function LibraryPanel() {
 
     setNote(undefined);
 
-    // The service owns the progress and the result, since both have to survive
-    // this panel closing.
+    // The service owns progress and result so they survive the panel closing.
     await shortcuts.sync(games);
     setSynced(shortcuts.syncedCount(games));
   }, [games]);
 
   const onManage = useCallback(
     (event: React.MouseEvent<HTMLButtonElement>) => {
-      // Counted as the menu opens: hiding a game anywhere else in Steam changes
-      // both of these without the panel hearing about it.
+      // Counted on open: hiding elsewhere in Steam changes these unannounced.
       const hideable = games ? hidden.hideableCount(games) : 0;
       const alreadyHidden = hidden.hiddenCount();
       const uncollected = games ? collection.missingCount(games) : 0;
@@ -118,7 +116,7 @@ export function LibraryPanel() {
           <MenuItem
             onSelected={() => {
               artwork.forgetAll();
-              setNote("Artwork cleared. Sync again to fetch it.");
+              void onSync();
             }}
           >
             Redownload artwork
@@ -136,14 +134,16 @@ export function LibraryPanel() {
                   );
                 } else {
                   setNote(
-                    `All ${result.total} games are already in "${collection.COLLECTION_NAME}".`,
+                    result.total === 1
+                      ? `Your game is already in "${collection.COLLECTION_NAME}".`
+                      : `All ${result.total} games are already in "${collection.COLLECTION_NAME}".`,
                   );
                 }
               });
             }}
           >
             {uncollected > 0
-              ? `Add ${uncollected} to an "${collection.COLLECTION_NAME}" collection`
+              ? `Add ${plural(uncollected, "game")} to an "${collection.COLLECTION_NAME}" collection`
               : `"${collection.COLLECTION_NAME}" collection is up to date`}
           </MenuItem>
           <MenuSeparator />
@@ -154,18 +154,20 @@ export function LibraryPanel() {
               const count = hidden.hideDuplicates(games);
               setNote(
                 count > 0
-                  ? `Hid ${count} game${count === 1 ? "" : "s"} you also own on Steam.`
+                  ? `Hid ${plural(count, "game")} you also own on Steam.`
                   : "Nothing to hide.",
               );
             }}
           >
-            {hideable > 0 ? `Hide ${hideable} duplicates of Steam games` : "No duplicates to hide"}
+            {hideable > 0
+              ? `Hide ${plural(hideable, "duplicate")} of Steam games`
+              : "No duplicates to hide"}
           </MenuItem>
           <MenuItem
             disabled={alreadyHidden === 0}
             onSelected={() => {
               const count = hidden.showAll();
-              setNote(`Unhid ${count} game${count === 1 ? "" : "s"}.`);
+              setNote(`Unhid ${plural(count, "game")}.`);
             }}
           >
             Show all hidden Epic games
@@ -173,12 +175,28 @@ export function LibraryPanel() {
           <MenuSeparator />
           <MenuItem
             tone="destructive"
-            onSelected={() => {
-              shortcuts.removeAll();
-              library.reindexAppIds();
-              setSynced(0);
-              setNote("Removed every shortcut this plugin created.");
-            }}
+            // Confirmed: it's last in a gamepad-driven menu and only a full sync undoes it.
+            onSelected={() =>
+              showModal(
+                <ConfirmModal
+                  strTitle="Remove all shortcuts"
+                  strDescription={
+                    "This removes every Epic game this plugin added to your Steam library. " +
+                    "Installed games stay on disk, and Add to Steam brings them back."
+                  }
+                  strOKButtonText="Remove all"
+                  bDestructiveWarning
+                  onOK={() => {
+                    shortcuts.removeAll();
+                    library.reindexAppIds();
+                    setSynced(0);
+                    setNote("Removed every shortcut this plugin created.");
+                  }}
+                />,
+                // Explicit because showModal's default, findSP(), throws on this build.
+                mainPopup()?.window,
+              )
+            }
           >
             Remove all shortcuts
           </MenuItem>
@@ -189,8 +207,7 @@ export function LibraryPanel() {
     [onSync, games],
   );
 
-  // A sync that finished while this panel was closed still has to update the
-  // count it's showing.
+  // A sync that finished while the panel was closed still updates the count.
   useEffect(() => {
     if (sync.active || !games) return;
     setSynced(shortcuts.syncedCount(games));
@@ -208,7 +225,7 @@ export function LibraryPanel() {
           error ??
           (games === undefined
             ? "Reading your library..."
-            : `${total} games, ${installed} installed - ${describeAge(refreshedAt)}`)
+            : `${plural(total, "game")}, ${installed} installed, ${describeAge(refreshedAt)}`)
         }
         childrenContainerWidth="min"
         bottomSeparator={total > 0 ? "standard" : "none"}
@@ -221,8 +238,7 @@ export function LibraryPanel() {
       {total > 0 && (
         <Field
           label="Steam shortcuts"
-          // In place of the description rather than a row of its own, which
-          // would overrun the panel.
+          // In the description, since a row of its own would overrun the panel.
           description={
             sync.active ? (
               <ProgressBarWithInfo
@@ -233,8 +249,10 @@ export function LibraryPanel() {
               (note ??
               (sync.lastResult && describeResult(sync.lastResult)) ??
               (synced === total
-                ? `All ${total} games are in your Steam library.`
-                : `${synced} of ${total} games are in your Steam library.`))
+                ? total === 1
+                  ? "Your game is in your Steam library."
+                  : `All ${total} games are in your Steam library.`
+                : `${synced} of ${plural(total, "game")} are in your Steam library.`))
             )
           }
           childrenContainerWidth="min"

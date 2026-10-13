@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Publish a stable release:
-#   1. Zip plugin.json + .millennium/ into <name>-<version>.zip
+#   1. Copy the built .millennium/<name>.star to <name>-<version>.star
 #   2. Push an empty release commit whose message is this version's changelog,
-#      then tag it and create a GitHub release with the zip attached
+#      then tag it and create a GitHub release with the .star attached
 #   3. Push an update branch to a fork of SteamClientHomeBrew/PluginDatabase
 #      advancing this plugin's submodule pointer to the new release commit
 #   4. Leave a commit comment with a prefilled "compare" link so the maintainer
@@ -19,18 +19,12 @@
 #                            owner's account.
 set -euo pipefail
 
-name=$(jq -r .name plugin.json)
-version=$(jq -r .version plugin.json)
+name=$(sed -n 's/^id = "\(.*\)"/\1/p' millennium.toml)
+version=$(sed -n 's/^version = "\(.*\)"/\1/p' millennium.toml)
 tag="v${version}"
-zip_name="${name}-${version}.zip"
+asset="${name}-${version}.star"
 
-# --- Zip --------------------------------------------------------------------
-
-if [ ! -f "$zip_name" ]; then
-  zip_targets=(plugin.json .millennium)
-  [ -d backend ] && zip_targets+=(backend)
-  zip -r "$zip_name" "${zip_targets[@]}"
-fi
+cp ".millennium/${name}.star" "$asset"
 
 # --- Release commit and tag -------------------------------------------------
 
@@ -91,7 +85,7 @@ git push origin "$tag"
 # --- GitHub release ---------------------------------------------------------
 
 if ! gh release view "$tag" >/dev/null 2>&1; then
-  gh release create "$tag" "$zip_name" --title "$tag" --notes-file "$notes_file"
+  gh release create "$tag" "$asset" --title "$tag" --notes-file "$notes_file"
 fi
 
 # --- Plugin database update branch ------------------------------------------
@@ -210,7 +204,7 @@ GH_TOKEN="$GITHUB_TOKEN" gh api \
 # How changesets/action learns that something was published: one NDJSON event
 # per released package, written to the file it points CHANGESETS_OUTPUT at. The
 # v1 magic stdout line no longer does anything. `packageName` has to match the
-# workspace package, which is package.json's name rather than plugin.json's.
+# workspace package, which is package.json's name rather than millennium.toml's id.
 if [ -n "${CHANGESETS_OUTPUT:-}" ]; then
   jq -nc --arg tag "$tag" --arg pkg "$(jq -r .name package.json)" \
     '{type: "git-tag", tag: $tag, packageName: $pkg}' >> "$CHANGESETS_OUTPUT"

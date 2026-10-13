@@ -1,12 +1,6 @@
-import { logger } from "../logger";
-
 /**
- * A record kept in localStorage and mirrored in memory: a sync reads once per
- * game and writes back for most of them, and re-parsing the document each time
- * is UI-thread work for an answer we already have.
- *
- * `key` should be versioned, so a change to what's stored throws the old
- * entries away rather than half-reading them.
+ * A localStorage record mirrored in memory, so syncs don't re-parse it per game.
+ * Version `key` so a format change drops old entries rather than half-reading them.
  */
 export function createStore<T>(key: string) {
   let cache: Record<string, T> | undefined;
@@ -19,7 +13,7 @@ export function createStore<T>(key: string) {
       const parsed: unknown = raw ? JSON.parse(raw) : {};
       cache = typeof parsed === "object" && parsed !== null ? (parsed as Record<string, T>) : {};
     } catch (e) {
-      logger.debug(`Failed to read ${key}`, e);
+      console.debug(`Failed to read ${key}`, e);
       cache = {};
     }
 
@@ -32,7 +26,7 @@ export function createStore<T>(key: string) {
     try {
       localStorage.setItem(key, JSON.stringify(entries));
     } catch (e) {
-      logger.debug(`Failed to write ${key}`, e);
+      console.debug(`Failed to write ${key}`, e);
     }
   }
 

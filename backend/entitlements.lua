@@ -1,13 +1,8 @@
 local cache = require("cache")
 local utils = require("utils")
 
--- When an account was granted a game, which is the closest thing Epic has to
--- Steam's purchase date. `legendary list` doesn't carry it, but legendary keeps
--- the entitlements it fetches alongside its own catalog cache, refreshed by the
--- same `list` we already run, so it is read straight off disk here.
---
--- Entitlements are keyed by namespace rather than by app: a game and its DLC
--- share one, so the earliest grant in a namespace is the base game's.
+-- Grant dates stand in for Steam's purchase date, read from legendary's on-disk
+-- cache. A game shares its namespace with its DLC, so the earliest grant is the game's.
 
 local entitlements = {}
 
@@ -33,9 +28,8 @@ local function config_path()
   return home .. "/.config/legendary"
 end
 
----Unix seconds out of one "2020-12-09T14:25:48.859Z" grant date. Always UTC, so
----the arithmetic is done here rather than through `os.time`, which reads a date
----table as local time.
+---Unix seconds from a UTC grant date like "2020-12-09T14:25:48.859Z". Not through
+---`os.time`, which reads a date table as local time.
 ---@param value string|nil
 ---@return integer|nil seconds
 local function parse_granted(value)
@@ -48,8 +42,7 @@ local function parse_granted(value)
     return nil
   end
 
-  -- Days from the civil epoch, Howard Hinnant's algorithm: it needs no table of
-  -- month lengths and gets leap years right on its own.
+  -- Howard Hinnant's days_from_civil.
   year, month, day = tonumber(year), tonumber(month), tonumber(day)
   local era_year = month <= 2 and year - 1 or year
   local era = math.floor(era_year / 400)

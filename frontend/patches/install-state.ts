@@ -1,25 +1,13 @@
-import { beforePatch, EDisplayStatus, type SteamAppOverview } from "@steambrew/client";
-import { logger } from "../logger";
+import { beforePatch, EDisplayStatus, type SteamAppOverview } from "millennium";
 import { once } from "../services/once";
 import { forceFakeLocationChange } from "../services/popups";
 import * as jobs from "../state/jobs";
 import * as library from "../state/library";
 
-// This is the whole trick.
-//
-// A non-Steam shortcut is installed by definition, so left alone every Epic
-// game claims to be: a Play button for a game that isn't there, and every
-// "Installed" filter and automatic collection full of them.
-//
-// CollectionStore.OnAppOverviewChange is the funnel every overview passes
-// through before the grid, the filters and the sort read it, so correcting
-// install state there gets all three natively.
+// Shortcuts always count as installed. Every overview passes through
+// OnAppOverviewChange before the grid, filters and sort, so we correct it there.
 
-/**
- * States Steam sets while it is running the shortcut itself. The game is
- * installed either way, and overwriting them with ReadyToLaunch leaves the play
- * bar offering Play for a game that's already open.
- */
+/** Steam's running states, which ReadyToLaunch would turn back into a Play button. */
 const RUNNING_STATUSES = new Set<number>([
   EDisplayStatus.Launching,
   EDisplayStatus.Running,
@@ -41,22 +29,19 @@ interface MutableOverview {
 }
 
 const logApplied = once((app: MutableOverview, appName: string, wanted: boolean) => {
-  logger.debug("Install state patch applied", {
+  console.debug("Install state patch applied", {
     appId: app.appid,
     appName,
     wanted,
-    // Different from `wanted` means these are read-only on this Steam build and
-    // none of it is taking effect.
+    // A mismatch with `wanted` means these are read-only on this build.
     gotLocal: app.local_per_client_data?.installed,
     gotSize: app.size_on_disk,
   });
 });
 
 /**
- * Rewrite one overview to match what Epic says. Install state lives in three
- * places that have to agree: `local_per_client_data` drives the app page, the
- * `per_client_data` array drives the grid tile, and `size_on_disk` is what the
- * filters and collections test.
+ * Rewrite one overview to match Epic. `local_per_client_data` drives the app page,
+ * `per_client_data` the grid tile, and `size_on_disk` the filters and collections.
  */
 function applyInstallState(overview: SteamAppOverview) {
   const game = library.getByAppId(overview.appid);
@@ -64,32 +49,24 @@ function applyInstallState(overview: SteamAppOverview) {
 
   const app = overview as unknown as MutableOverview;
 
-  // Steam derives the whole install UI from these two fields, so a running job
-  // needs no UI of its own. `Downloading` rather than `Installing` because it's
-  // the status the progress bar reads a percentage for; Installing draws an
-  // indeterminate spinner.
-  const job = jobs.get(game.appName);
+  // Steam draws the whole install UI from these. `Downloading`, not `Installing`,
+  // since only it gets a percentage bar.
+  const job = jobs.get(game.app_name);
   const pending = job?.state === "running" || job?.state === "paused" || job?.state === "queued";
   const downloading = job?.kind === "install" && pending;
-  // Separate from a download because the game stays installed and launchable
-  // throughout: it is the old build until the new one lands.
+  // The old build stays launchable until the new one lands.
   const updating = job?.kind === "update" && pending;
-  // An uninstall is a directory delete, so there's no percentage to show. A
-  // queued one still says Uninstalling: it is going to happen, and there is no
-  // other status that means "about to lose these files".
+  // No percentage for a delete. Queued still says Uninstalling, as nothing else fits.
   const uninstalling = job?.kind === "uninstall" && pending;
 
-  // Defensive about the array: everything else in this file finds Steam's
-  // shapes rather than trusting them, and a spread is what turns a field that
-  // isn't a list on some build into a thrown TypeError on the render path.
+  // Not trusted to be an array: spreading anything else throws on the render path.
   const perClient = Array.isArray(app.per_client_data) ? app.per_client_data : [];
 
   for (const data of [app.local_per_client_data, ...perClient]) {
     if (!data) continue;
 
     if (uninstalling) {
-      // Still installed until the delete finishes, or it leaves the Installed
-      // collection while it's still on disk.
+      // Still on disk until the delete finishes, so it stays in Installed.
       data.installed = true;
       data.display_status = EDisplayStatus.Uninstalling;
       data.status_percentage = 0;
@@ -116,27 +93,24 @@ function applyInstallState(overview: SteamAppOverview) {
 
     data.installed = game.installed;
     if (!(game.installed && RUNNING_STATUSES.has(data.display_status ?? 0))) {
-      // UpdateRequired is what turns the play bar's Play into Update, and it's
-      // the only place the flag legendary gives us is ever shown.
+      // UpdateRequired turns Play into Update, the only place needs_update shows.
       if (!game.installed) data.display_status = EDisplayStatus.ReadyToInstall;
-      else if (game.needsUpdate) data.display_status = EDisplayStatus.UpdateRequired;
+      else if (game.needs_update) data.display_status = EDisplayStatus.UpdateRequired;
       else data.display_status = EDisplayStatus.ReadyToLaunch;
     }
     data.status_percentage = 0;
   }
 
   if (downloading) {
-    // No `size_on_disk`: a half-downloaded game would join the Installed
-    // collection mid-download.
+    // No `size_on_disk`, or a half-downloaded game joins Installed.
     app.size_on_disk = undefined;
     return;
   }
 
-  // The Installed collection tests this rather than the per-client flags, so
-  // leaving it set shows an uninstalled game there anyway.
-  app.size_on_disk = game.installed ? `${game.installSize ?? 0}` : undefined;
+  // The Installed collection tests this, not the per-client flags.
+  app.size_on_disk = game.installed ? `${game.install_size ?? 0}` : undefined;
 
-  logApplied(app, game.appName, game.installed);
+  logApplied(app, game.app_name, game.installed);
 }
 
 export function register() {
@@ -148,17 +122,13 @@ export function register() {
     },
   );
 
-  logger.debug("Registered the install state patch");
+  console.debug("Registered the install state patch");
   return patch.unpatch;
 }
 
 /**
- * Correct the overviews Steam has already built and get the UI to redraw them,
- * since Steam builds them before the library has loaded.
- *
- * Don't hand the apps back to OnAppOverviewChange: that's Steam's inbound path
- * for freshly deserialized overviews, and calling it with the store's own
- * objects throws "t is not iterable" out of UpdateApps.
+ * Correct overviews Steam built before the library loaded. Not through
+ * OnAppOverviewChange, which throws "t is not iterable" on the store's own objects.
  */
 export function refreshAll() {
   const apps = library.overviews();
@@ -167,5 +137,5 @@ export function refreshAll() {
   for (const app of apps) applyInstallState(app);
 
   forceFakeLocationChange();
-  logger.debug("Refreshed the Epic overviews", { count: apps.length });
+  console.debug("Refreshed the Epic overviews", { count: apps.length });
 }
