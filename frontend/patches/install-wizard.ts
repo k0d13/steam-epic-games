@@ -9,8 +9,12 @@ import * as jobs from "../state/jobs";
 /** The state the wizard's own configuration page is drawn for. */
 const SHOW_CONFIG = 7;
 
-/** Where Epic games go inside a chosen Steam library folder. */
-const INSTALL_SUBDIRECTORY = "Epic Games";
+/**
+ * Where Epic games go inside a chosen Steam library folder. Laid out like Steam's
+ * own `steamapps\common` but kept out of it, since everything in there is
+ * Steam's to manage, and a game sold on both stores can share a folder name.
+ */
+const INSTALL_SUBDIRECTORY = "epicapps\\common";
 
 /** One app in the wizard's list, which for us is always exactly one. */
 interface InstallRequestApp {

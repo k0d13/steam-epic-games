@@ -16,6 +16,7 @@ import * as storage from "./patches/storage";
 import * as storeMenu from "./patches/store-menu";
 import * as epicSession from "./services/epic-session";
 import { onGameStopped } from "./services/playtime";
+import * as shortcuts from "./services/shortcuts";
 import * as account from "./state/account";
 import * as achievements from "./state/achievements";
 import * as jobs from "./state/jobs";
@@ -125,6 +126,8 @@ export default definePlugin(async () => {
     library.subscribe(repaint),
     // Not on the repaint: the storage page only changes when what's installed does.
     library.subscribe(storage.refresh),
+    // A shortcut's working directory follows its game being installed or removed.
+    library.subscribe(() => void shortcuts.alignStartDirs()),
     jobs.subscribe(repaint),
     // Achievements land a round trip to Epic after the page asking for them drew.
     achievements.subscribe(repaint),
