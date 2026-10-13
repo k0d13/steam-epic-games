@@ -3,5 +3,8 @@
   "runtime.version": "Lua 5.1",
   "workspace.library": [".millennium/lsp/lua-types"],
   "workspace.checkThirdParty": false,
-  "format.enable": false
+  "format.enable": false,
+  "workspace": {
+    "library": [".millennium/lsp/lua-types"]
+  }
 }

@@ -96,7 +96,10 @@ $Log.AutoFlush = $true
 
 $percent = 0; $done = 0; $total = 0; $eta = ''; $elapsed = ''; $speed = 0
 
-& $Exe @Arguments 2>&1 | ForEach-Object {
+# A blank line takes the default at a prompt -y doesn't cover, like the selective
+# download one Fortnite gets. Stdin closes after it, so another prompt fails the
+# job instead of hanging it.
+@('') | & $Exe @Arguments 2>&1 | ForEach-Object {
   $line = [string]$_
   $Log.WriteLine($line)
 
