@@ -19,6 +19,7 @@ playtime without leaving the client.
 
 ## Prerequisites
 
+- Windows
 - [Millennium](https://steambrew.app/)
 
 That's it. The plugin talks to Epic through

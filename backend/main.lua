@@ -9,6 +9,12 @@ local millennium = require("millennium")
 require("grid")
 
 local function on_load()
+  if os.getenv("OS") ~= "Windows_NT" then
+    log.error("Epic Games only supports Windows for now")
+    millennium.ready()
+    return
+  end
+
   -- Left behind by versions that ran commands through a PowerShell daemon.
   -- pcall'd because one still running from before a reload holds its lock file.
   pcall(fs.remove_all, DATA .. "/daemon")
