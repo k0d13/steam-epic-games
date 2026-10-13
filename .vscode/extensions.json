@@ -1,11 +1,11 @@
 {
   "recommendations": [
-    "gruntfuggly.todo-tree",
+    "fanaticpythoner.better-todo-tree",
+    "streetsidesoftware.code-spell-checker",
     "hverlin.mise-vscode",
+    "oxc.oxc-vscode",
     "johnnymorganz.stylua",
     "kampfkarren.selene-vscode",
-    "oxc.oxc-vscode",
-    "streetsidesoftware.code-spell-checker",
     "sumneko.lua"
   ]
 }

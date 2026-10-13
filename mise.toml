@@ -5,50 +5,39 @@ stylua = "2.5.2"
 "aqua:Kampfkarren/selene" = "0.31.0"
 "lua-language-server" = "3.19.1"
 
-[tasks."format:ts"]
-description = "Format the frontend with oxfmt"
-run = "pnpm exec oxfmt"
-[tasks."format:lua"]
-description = "Format the backend with stylua"
-run = "stylua backend"
-[tasks.format]
-description = "Format everything"
-depends = ["format:ts", "format:lua"]
+[env]
+_.path = ["{{config_root}}/node_modules/.bin"]
 
-[tasks."format-check:ts"]
-description = "Report frontend formatting without writing"
-run = "pnpm exec oxfmt --check"
-[tasks."format-check:lua"]
-description = "Report backend formatting without writing"
-run = "stylua --check backend"
-[tasks."format-check"]
+[tasks."check:types"]
+description = "Type check the frontend, webview and backend"
+run = [
+  "tsc -p . && tsc -p webview",
+  "lua-language-server --check backend --checklevel Warning --configpath .luarc.json --logpath .ignore/luals",
+]
+[tasks."check:lint"]
+description = "Lint the frontend with oxlint and the backend with selene"
+run = ["oxlint", "selene backend"]
+[tasks."check:format"]
 description = "Report formatting everywhere without writing"
-depends = ["format-check:ts", "format-check:lua"]
-
-[tasks."lint:ts"]
-description = "Lint the frontend with oxlint"
-run = "pnpm exec oxlint"
-[tasks."lint:lua"]
-description = "Lint the backend with selene"
-run = "selene backend"
-[tasks.lint]
-description = "Lint everything"
-depends = ["lint:ts", "lint:lua"]
-
-[tasks."check:ts"]
-description = "Type check the frontend and webview with tsc"
-run = "pnpm exec tsc -p . && pnpm exec tsc -p webview"
-[tasks."check:lua"]
-description = "Type check the backend with lua-language-server"
-run = "mise exec -- lua-language-server --check backend --checklevel Warning --configpath .luarc.json --logpath .ignore/luals"
+run = ["oxfmt --check", "stylua --check backend"]
 [tasks.check]
-description = "Type check everything"
-depends = ["check:ts", "check:lua"]
+description = "Run every check"
+depends = ["check:types", "check:lint", "check:format"]
+
+[tasks."fix:lint"]
+description = "Apply oxlint fixes to the frontend"
+run = "oxlint --fix"
+[tasks."fix:format"]
+description = "Format the frontend with oxfmt and the backend with stylua"
+run = ["oxfmt", "stylua backend"]
+[tasks.fix]
+description = "Fix lint issues, then format everything"
+run = [{ task = "fix:lint" }, { task = "fix:format" }]
 
 [tasks.build]
 description = "Build the plugin for release into .millennium/"
-run = "pnpm exec starlight pack --release -o .millennium"
+run = "starlight pack --release -o .millennium"
 
 [tasks.dev]
 description = "Rebuild into Steam on every change"
-run = "pnpm exec starlight watch"
+run = "starlight watch"

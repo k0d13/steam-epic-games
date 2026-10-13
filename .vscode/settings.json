@@ -1,4 +1,10 @@
 {
+  // Editor
+  "editor.formatOnSave": true,
+  "editor.insertSpaces": true,
+  "editor.rulers": [100],
+  "editor.tabSize": 2,
+
   // Explorer
   "explorer.compactFolders": true,
   "explorer.fileNesting.enabled": true,
@@ -9,46 +15,69 @@
     "*.cjs": "$(capture).cjs.map, $(capture).d.cts, $(capture).d.cts.map"
   },
 
+  // Files
+  "files.eol": "\n",
+  "files.watcherExclude": {
+    "**/.ignore": true,
+    "**/.millennium": true
+  },
   "search.exclude": {
     "**/.ignore": true,
     "**/.millennium": true
   },
-
-  // Editor
-  "editor.insertSpaces": true,
-  "editor.tabSize": 2,
-  // Both formatters write LF; without this a fresh checkout on Windows reopens
-  // every file as CRLF and the first save churns the whole thing.
-  "files.eol": "\n",
 
   // TypeScript
   "js/ts.tsdk.path": "node_modules/typescript/lib",
   "js/ts.tsdk.promptToUseWorkspaceVersion": true,
   "js/ts.preferences.importModuleSpecifierEnding": "js",
   "[typescript]": {
-    "editor.formatOnSave": true,
     "editor.defaultFormatter": "oxc.oxc-vscode",
     "editor.codeActionsOnSave": { "source.fixAll.oxc": "explicit" }
   },
   "[typescriptreact]": {
-    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "oxc.oxc-vscode",
+    "editor.codeActionsOnSave": { "source.fixAll.oxc": "explicit" }
+  },
+  "[javascript]": {
     "editor.defaultFormatter": "oxc.oxc-vscode",
     "editor.codeActionsOnSave": { "source.fixAll.oxc": "explicit" }
   },
   "[json]": {
-    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "oxc.oxc-vscode"
+  },
+  "[jsonc]": {
     "editor.defaultFormatter": "oxc.oxc-vscode"
   },
 
-  // Lua — stylua formats, lua-language-server reads .luarc.json, selene lints.
+  // Lua
   "[lua]": {
-    "editor.formatOnSave": true,
-    "editor.defaultFormatter": "JohnnyMorganz.stylua",
-    "editor.rulers": [100]
+    "editor.defaultFormatter": "JohnnyMorganz.stylua"
   },
   "stylua.searchParentDirectories": true,
 
-  // Spelling — cspell ships no en-AU dictionary; AU spelling follows en-GB.
+  // Better TODO Tree
+  "better-todo-tree.general.tags": ["=====", "TODO"],
+  "better-todo-tree.highlights.customHighlight": {
+    "=====": {
+      "type": "whole-line",
+      "icon": "bookmark",
+      "background": "#00000000",
+      "foreground": "#dadada",
+      "iconColour": "#dadada",
+      "gutterIcon": true,
+      "hideFromTree": true
+    },
+    "TODO": {
+      "type": "whole-line",
+      "icon": "check",
+      "background": "#00000000",
+      "foreground": "#ff9900",
+      "iconColour": "#ff9900",
+      "gutterIcon": true
+    }
+  },
+
+  // Code Spell Checker
   "cSpell.language": "en,en-GB",
   "cSpell.words": [
     "appid",
@@ -60,10 +89,5 @@
     "selene",
     "steambrew",
     "stylua"
-  ],
-
-  // mise — shims first on PATH, so a terminal opens on the pinned tool versions.
-  "terminal.integrated.env.windows": {
-    "PATH": "${env:LOCALAPPDATA}\\mise\\shims;${env:PATH}"
-  }
+  ]
 }
