@@ -2,7 +2,7 @@
 # Bump versions and refresh metadata for a stable release.
 #
 # changesets owns package.json + CHANGELOG.md. We mirror the new version
-# into plugin.json (Millennium's source of truth). Only runs when there are
+# into millennium.toml (Millennium's source of truth). Only runs when there are
 # pending changesets — `changeset version` exits 1 otherwise.
 set -euo pipefail
 
@@ -10,14 +10,12 @@ set -euo pipefail
 
 pnpm exec changeset version
 
-# --- Mirror version into plugin.json ----------------------------------------
+# --- Mirror version into millennium.toml ------------------------------------
 
 new_version=$(jq -r .version package.json)
-tmp=$(mktemp)
-jq --arg v "$new_version" '.version = $v' plugin.json > "$tmp"
-mv "$tmp" plugin.json
+sed -i "s/^version = \".*\"/version = \"${new_version}\"/" millennium.toml
 
 # --- Refresh lockfile and format --------------------------------------------
 
 pnpm install --lockfile-only
-pnpm exec oxfmt plugin.json package.json
+pnpm exec oxfmt package.json

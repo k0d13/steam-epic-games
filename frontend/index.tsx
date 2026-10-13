@@ -1,8 +1,6 @@
-import { definePlugin, DialogControlsSection, IconsModule } from "@steambrew/client";
-import { useCallback, useState } from "react";
-import { AuthPanel } from "./components/auth-panel";
+import { definePlugin, DialogButton, DialogControlsSection, Field, IconsModule } from "millennium";
+import { useState, useSyncExternalStore } from "react";
 import { LibraryPanel } from "./components/library-panel";
-import { logger } from "./logger";
 import * as achievementProgress from "./patches/achievement-progress";
 import * as achievementsPatch from "./patches/achievements";
 import * as activity from "./patches/activity";
@@ -15,41 +13,68 @@ import * as installs from "./patches/installs";
 import * as libraryBadge from "./patches/library-badge";
 import * as manageMenu from "./patches/manage-menu";
 import * as storage from "./patches/storage";
-import { type EpicStatus } from "./rpc";
+import * as storeMenu from "./patches/store-menu";
+import * as epicSession from "./services/epic-session";
 import { onGameStopped } from "./services/playtime";
+import * as account from "./state/account";
 import * as achievements from "./state/achievements";
 import * as jobs from "./state/jobs";
 import * as library from "./state/library";
 
-// IconsModule is typed as `any` and its contents vary between Steam builds, so
-// fall back rather than letting a missing icon take the whole plugin down.
+// IconsModule varies between Steam builds; a missing icon mustn't break the plugin.
 const PluginIcon = IconsModule?.Download ?? IconsModule?.Settings ?? (() => null);
 
-// The plugin's own panel, which is where setup lives. Reachable whether or not
-// anything is signed in, unlike the app properties dialog.
+// Sign in and out happen on Epic's store in Steam's browser (see epic-session), so
+// the panel only reports the account.
 function Panel() {
-  const [authenticated, setAuthenticated] = useState(false);
+  const status = useSyncExternalStore(account.subscribe, account.get);
+  const [busy, setBusy] = useState(false);
 
-  // Stable identity, or AuthPanel's status effect would re-run on every render.
-  const onStatus = useCallback((status: EpicStatus) => {
-    setAuthenticated(status.authenticated);
-  }, []);
+  // Forcing a status re-runs the download, for a machine that was offline.
+  const onRetry = async () => {
+    setBusy(true);
+    try {
+      await backend.get_status(true);
+    } catch (reason: unknown) {
+      console.warn("get_status failed", reason);
+    }
+    setBusy(false);
+  };
 
-  // One section around both, so their fields are siblings: Steam suppresses the
-  // separator on a section's last field, and two sections stacked leave the
-  // account row and the library row touching with nothing between them.
+  let description: string;
+  if (!status) description = "Checking for Legendary...";
+  else if (!status.available)
+    description = status.error ?? "Legendary could not be downloaded or run.";
+  else if (status.authenticated) description = `Signed in as ${status.account}`;
+  else
+    description =
+      "Not signed in. Open Store > Epic Games Store and sign in there, and this " +
+      "picks up your account.";
+
+  // One section: Steam drops the separator on a section's last field, so two
+  // would leave the rows touching.
   return (
     <DialogControlsSection>
-      <AuthPanel onStatus={onStatus} />
-      {authenticated && <LibraryPanel />}
+      <Field
+        label="Epic account"
+        description={description}
+        childrenContainerWidth="min"
+        bottomSeparator={status?.authenticated ? "standard" : "none"}
+      >
+        {status && !status.available && (
+          <DialogButton disabled={busy} onClick={onRetry}>
+            {busy ? "Downloading..." : "Retry"}
+          </DialogButton>
+        )}
+      </Field>
+      {status?.authenticated && <LibraryPanel />}
     </DialogControlsSection>
   );
 }
 
 export default definePlugin(async () => {
-  // Before the library loads, so overviews Steam builds meanwhile go through
-  // the patch. Guarded so a patch that no longer applies costs its own feature
-  // rather than the plugin.
+  // Before the library loads, so overviews built meanwhile are patched. Guarded so
+  // a patch that no longer applies only costs its own feature.
   const unpatches: (() => void)[] = [];
   for (const [name, patch] of [
     ["install state", installState.register],
@@ -63,19 +88,17 @@ export default definePlugin(async () => {
     ["achievement progress", achievementProgress.register],
     ["storage", storage.register],
     ["downloads", downloads.register],
+    ["store menu", storeMenu.register],
   ] as const) {
     try {
       unpatches.push(patch());
     } catch (e) {
-      logger.error(`Could not register the ${name} patch`, e);
+      console.error(`Could not register the ${name} patch`, e);
     }
   }
 
-  // Steam builds its overviews once and keeps them, so every change to the
-  // library has to ask for a repaint.
-  //
-  // Coalesced: the sources of one fire together, an install poll landing a jobs
-  // change and a library change on the same tick.
+  // Steam keeps its overviews, so changes must ask for a repaint. Coalesced, since
+  // a poll often lands a jobs and a library change on the same tick.
   let repaintQueued = false;
   const repaint = () => {
     if (repaintQueued) return;
@@ -92,57 +115,53 @@ export default definePlugin(async () => {
   };
 
   const unsubscribes = [
-    // A running install repaints once a second, since its progress bar is read
-    // off the overview.
+    // The store decides who's signed in. Signed out, the backend's library is
+    // empty; signed in as someone, it's theirs to fetch.
+    account.watch((status) => void library.load(status.authenticated)),
+    // Signs legendary in and out with the store in Steam's browser.
+    epicSession.start(),
+
+    // Running installs repaint every second: the progress bar reads off the overview.
     library.subscribe(repaint),
-    // Not on the repaint: that runs every second of an install, and the storage
-    // page only changes when what's installed does, which is a library change.
+    // Not on the repaint: the storage page only changes when what's installed does.
     library.subscribe(storage.refresh),
     jobs.subscribe(repaint),
     // Achievements land a round trip to Epic after the page asking for them drew.
     achievements.subscribe(repaint),
 
-    // A session just ended is the one moment an achievement cache is certain to
-    // be short, so the game that ended is re-read there and then rather than
-    // waiting for something to draw it.
+    // A session ending is when an achievement cache is certain to be short.
     onGameStopped((appId) => {
       const game = library.getByAppId(appId);
-      if (game) void achievements.refresh(game.appName);
+      if (game) void achievements.refresh(game.app_name);
     }),
   ];
 
   window.addEventListener("beforeunload", () => {
     for (const unsubscribe of unsubscribes) unsubscribe();
-    // The overview is Steam's: our appid left in it survives a reload and
-    // shows a download nothing is writing to.
+    // Our appid would survive a reload in Steam's overview as a dead download.
     downloadOverview.release();
     for (const unpatch of unpatches) unpatch();
   });
 
-  // Not awaited: Millennium brings up plugins and themes off this same startup,
-  // and the first backend call can be a legendary download. Awaiting it held up
-  // the client, themes included, and left this panel unreachable meanwhile.
+  // Not awaited: the first backend call can be a legendary download, and awaiting
+  // it held up the whole client, themes included.
   void (async () => {
-    // Cache only: every shortcut claims to be installed until this resolves, so
-    // it can't wait on Epic. The panel asks for the real thing once it's up.
+    // Cache only: every shortcut reads as installed until this resolves.
     await library.load();
 
-    // Installs are detached, so they outlive a Steam restart: pick up anything
-    // still running and start polling it again.
+    // Installs are detached and outlive a Steam restart, so resume polling them.
     await jobs.refresh();
 
-    // Counts for the games we've already read, so the library home can sort by
-    // completion before anything opens a details page. Last, because the cached
-    // read is followed by a round trip per game that has been played since.
+    // Lets the library home sort by completion early. Last, since it follows up
+    // with a round trip per recently played game.
     void achievements.loadSummaries();
 
-    // legendary only spots a new build by comparing what's installed against a
-    // catalog it has already fetched, so a cached library never grows an
-    // update. Costs a round trip to Epic, so nothing waits on it.
+    // A cached library never shows updates: legendary compares against the catalog
+    // it fetched. Costs a round trip, so nothing waits on it.
     void library.load(true, true);
   })();
 
-  logger.info("Plugin loaded");
+  console.info("Plugin loaded");
 
   return {
     title: "Epic Games",

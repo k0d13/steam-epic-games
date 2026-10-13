@@ -1,15 +1,8 @@
-import rpc, { type AchievementSummary, type GameAchievements } from "../rpc";
 import { getLastPlayed } from "../services/playtime";
 import { createEmitter } from "./emitter";
 
-// The same shape as state/sizes.ts, for the same reason: achievements are read
-// one game at a time from a Steam render, which needs an answer now. Everything
-// answers from memory, and asking about a game we don't have starts a fetch and
-// tells its subscribers when it lands.
-//
-// Unlike a size, this does go stale - the point of an achievement is that the
-// user unlocks it - so a cached answer past its age is served, then quietly
-// refetched behind the render that asked for it.
+// Like state/sizes.ts, answers from memory for Steam's render path. Stale answers
+// are served, then refetched behind the render that asked.
 
 /** How old an answer can get before the next read goes back to Epic. */
 const STALE_AFTER_MS = 10 * 60 * 1000;
@@ -26,57 +19,42 @@ const emitter = createEmitter();
 export const subscribe = emitter.subscribe;
 
 /**
- * Counts only, for every game the backend has cached - including ones nothing
- * has opened the details page for this session. Kept apart from `known` because
- * the library home asks about every game as it draws and must never start a
- * fetch, while `known` holds the full achievement lists a details page needs.
+ * Counts for every game the backend has cached. Kept apart from `known` because the
+ * library home reads every game as it draws and must never start a fetch.
  */
 const summaries = new Map<string, AchievementSummary>();
 
-/**
- * Seed the counts from the backend's cache. One call for the whole library, no
- * round trip to Epic, so it's safe at startup.
- */
+/** Seed the counts from the backend's cache, without asking Epic. */
 export async function loadSummaries() {
-  const cached = await rpc.GetCachedAchievements();
-  if (cached.size === 0) return;
+  // An empty list arrives as `{}` (Lua has one table type); Object.values reads both.
+  const cached = Object.values(await backend.get_cached_achievements());
+  if (cached.length === 0) return;
 
-  for (const [appName, summary] of cached) summaries.set(appName, summary);
+  for (const summary of cached) summaries.set(summary.app_name, summary);
   emitter.emit();
 
-  // Held back: each game it re-reads is a legendary run, and those go through
-  // the one Lua state every other RPC needs.
+  // Held back: each re-read is a legendary run, blocking every other backend call.
   setTimeout(() => void refreshPlayed(), STARTUP_GRACE_MS);
 }
 
-/**
- * Re-read every game that has been played since we last asked Epic about it.
- * One at a time: each is a legendary run, and a machine that has been away for
- * a while would otherwise start a dozen of them at once.
- */
+/** Re-read games played since we last asked Epic, one legendary run at a time. */
 async function refreshPlayed() {
   for (const [appName, summary] of summaries) {
     if (isStale(appName, summary)) await refresh(appName);
   }
 }
 
-/**
- * Ask Epic again for one game, whatever we already hold - for a session just
- * ending, where the whole point is that what we hold is now short.
- */
+/** Ask Epic again for one game, whatever we already hold. */
 export async function refresh(appName: string) {
   if (pending.has(appName)) return;
   pending.add(appName);
 
-  const result = await rpc.GetAchievements(appName, true);
+  const result = await backend.get_achievements(appName, true);
   pending.delete(appName);
   if (result) record(appName, result);
 }
 
-/**
- * How far through a game's achievements the account is, or undefined for a game
- * we've never read. Never fetches: this answers a render of the whole library.
- */
+/** A game's achievement counts, if read. Never fetches: the whole library asks. */
 export function getSummary(appName: string): AchievementSummary | undefined {
   return summaries.get(appName);
 }
@@ -85,10 +63,10 @@ export function getSummary(appName: string): AchievementSummary | undefined {
 function record(appName: string, result: GameAchievements) {
   known.set(appName, result);
   summaries.set(appName, {
-    appName,
+    app_name: appName,
     total: result.total,
     unlocked: result.unlocked,
-    fetchedAt: result.fetchedAt,
+    fetched_at: result.fetched_at,
   });
   emitter.emit();
 }
@@ -99,41 +77,32 @@ export function get(appName: string): GameAchievements | undefined {
 }
 
 /** Enough of an answer to date it, which both a full read and a summary are. */
-type Dated = { total: number; fetchedAt: number } | null | undefined;
+type Dated = { total: number; fetched_at: number } | null | undefined;
 
 function isStale(appName: string, entry: Dated): boolean {
-  // A game with none at all is never worth asking about again - plenty of Epic
-  // titles simply don't have any, and that can't change under us.
+  // Games with none never get any.
   if (!entry || entry.total === 0) return false;
 
-  // Played since we asked, so whatever it unlocked is missing from what we
-  // hold. This is Steam's own rule for its achievement cache, and it only sees
-  // launches through Steam - the age check below is what catches a session
-  // started from the Epic launcher instead.
-  if (getLastPlayed(appName) > entry.fetchedAt) return true;
+  // Steam's own rule. It only sees Steam launches; the age check catches sessions
+  // started from the Epic launcher.
+  if (getLastPlayed(appName) > entry.fetched_at) return true;
 
-  return Date.now() - entry.fetchedAt * 1000 > STALE_AFTER_MS;
+  return Date.now() - entry.fetched_at * 1000 > STALE_AFTER_MS;
 }
 
-/**
- * Make sure we're getting this game's achievements, without waiting for them.
- * Called from a render path, so it has to be safe to call constantly.
- */
+/** Start fetching this game's achievements if needed. Safe to call every render. */
 export function ensure(appName: string) {
-  // The summary stands in for a game nothing has opened this session: it dates
-  // the backend's cache just as well, and without it a game played since that
-  // cache was written would be answered from it.
+  // The summary dates the backend's cache for games nothing has opened this session.
   const entry = known.get(appName) ?? summaries.get(appName);
   const stale = isStale(appName, entry);
   if ((known.has(appName) && !stale) || pending.has(appName)) return;
   pending.add(appName);
 
-  void rpc.GetAchievements(appName, stale).then((result) => {
+  void backend.get_achievements(appName, stale).then((result) => {
     pending.delete(appName);
 
-    // Misses are recorded too: retrying every render is a subprocess a frame.
-    // Except a refresh that came back empty - Epic being unreachable is no
-    // reason to throw away the answer we already have.
+    // Misses are recorded, or every render runs a subprocess. A failed refresh
+    // keeps the answer we already have.
     if (result) {
       record(appName, result);
     } else if (!stale) {

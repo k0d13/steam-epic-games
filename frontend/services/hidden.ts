@@ -1,15 +1,8 @@
-import { logger } from "../logger";
-import { type EpicGame } from "../rpc";
 import * as appIds from "../state/app-ids";
 import { NON_STEAM_APP_APPID_MASK } from "../state/app-ids";
 
-// Owning a game on both stores puts it in the library twice. Steam's own answer
-// is the per-game "Hide this game", so that's what this drives - in bulk, over
-// the Epic shortcuts whose title already belongs to a real Steam game.
-//
-// Neither hiding call is in @steambrew/client's types and neither exists on every
-// client build, so both are found by feature test and a missing one costs only
-// this feature.
+// Hides Epic shortcuts that duplicate a Steam game. The hiding calls are untyped
+// and not on every build, so they're feature tested.
 
 interface Hiding {
   BIsHidden?(appId: number): boolean;
@@ -19,9 +12,8 @@ interface Hiding {
 const collections = () => collectionStore as unknown as Hiding;
 
 /**
- * Titles compared with everything a store could disagree about removed:
- * punctuation, spacing, case and the trademark marks Steam keeps and Epic
- * doesn't. "S.T.A.L.K.E.R. 2" and "STALKER 2" are the same game.
+ * Strip what stores disagree on: punctuation, spacing, case and trademark marks.
+ * "S.T.A.L.K.E.R. 2" and "STALKER 2" are the same game.
  */
 function normalize(title: string) {
   return title
@@ -46,15 +38,12 @@ function isHidden(appId: number): boolean {
   try {
     return collections().BIsHidden?.(appId) ?? false;
   } catch (reason: unknown) {
-    logger.warn("Couldn't read whether an app is hidden", { appId, reason });
+    console.warn("Couldn't read whether an app is hidden", { appId, reason });
     return false;
   }
 }
 
-/**
- * Hide or unhide shortcuts, preferring the store's bulk call - it writes the
- * hidden collection once rather than per game.
- */
+/** Hide or unhide shortcuts, preferring the bulk call that writes the collection once. */
 function setHidden(ids: number[], hidden: boolean): number {
   if (ids.length === 0) return 0;
 
@@ -67,7 +56,7 @@ function setHidden(ids: number[], hidden: boolean): number {
   const single = (SteamClient.Apps as { SetAppHidden?(appId: number, hidden: boolean): void })
     .SetAppHidden;
   if (!single) {
-    logger.warn("This Steam build exposes no way to hide an app");
+    console.warn("This Steam build exposes no way to hide an app");
     return 0;
   }
 
@@ -81,7 +70,7 @@ function visibleDuplicates(games: EpicGame[]): number[] {
   const ids: number[] = [];
 
   for (const game of games) {
-    const appId = appIds.getAppId(game.appName);
+    const appId = appIds.getAppId(game.app_name);
     if (appId === undefined || !titles.has(normalize(game.title)) || isHidden(appId)) continue;
     ids.push(appId);
   }
@@ -94,14 +83,14 @@ const hiddenShortcuts = () => Object.values(appIds.getAll()).filter(isHidden);
 /** Hide every Epic shortcut duplicating a Steam game. Returns how many moved. */
 export function hideDuplicates(games: EpicGame[]): number {
   const hidden = setHidden(visibleDuplicates(games), true);
-  logger.info("Hid duplicate Epic shortcuts", { hidden });
+  console.info("Hid duplicate Epic shortcuts", { hidden });
   return hidden;
 }
 
 /** Unhide every shortcut this plugin created. Returns how many moved. */
 export function showAll(): number {
   const shown = setHidden(hiddenShortcuts(), false);
-  logger.info("Unhid Epic shortcuts", { shown });
+  console.info("Unhid Epic shortcuts", { shown });
   return shown;
 }
 

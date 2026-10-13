@@ -1,14 +1,11 @@
-// Steam draws each of its windows into a popup of its own, and anything that
-// touches the DOM has to be applied to every one of them - the library window,
-// a detached one, a context menu. `g_PopupManager` is where they're announced.
+// Steam draws every window into its own popup, so DOM patches must reach each one.
 
 const DESKTOP_WINDOW_NAME = "SP Desktop_uid0";
 const GAMEPAD_WINDOW_NAME = "SP BPM_uid0";
 
 /**
- * The popup the library is drawn in, desktop or Big Picture. Steam's own APIs
- * that take a window - `showModal`, its dialogs - default to `findSP()`, which
- * doesn't resolve on this build, so this is passed explicitly.
+ * The library's popup, desktop or Big Picture. Pass it to Steam APIs that take a
+ * window, whose `findSP()` default doesn't resolve on this build.
  */
 export function mainPopup(): SteamPopup | undefined {
   return (
@@ -17,12 +14,7 @@ export function mainPopup(): SteamPopup | undefined {
   );
 }
 
-/**
- * Call back for every popup, the ones already open included. The callback may
- * return a teardown, which runs when that popup is destroyed.
- *
- * @returns Cleanup that unregisters from the manager.
- */
+/** Call back for every popup, open ones included; a returned teardown runs on destroy. */
 export function onPopupCreate(handleOpen: (popup: SteamPopup) => void | VoidFunction): () => void {
   const popups = g_PopupManager;
   if (!popups) return () => {};
@@ -54,13 +46,8 @@ export function onPopupCreate(handleOpen: (popup: SteamPopup) => void | VoidFunc
 }
 
 /**
- * Nudge the library window's router hash so everything keyed off the location
- * re-renders. Steam builds its app overviews once and keeps them, so a
- * corrected one is only drawn after something asks for a repaint.
- *
- * Coalesced, because a repaint runs several patches and each asks for one. A
- * hash change re-renders the library and everything else keyed off the
- * location, Millennium re-applying a theme's patches included.
+ * Nudge the router hash so Steam redraws the overviews it otherwise keeps.
+ * Coalesced, since each patch in a repaint asks for one.
  */
 let nudgeQueued = false;
 
@@ -72,8 +59,8 @@ export function forceFakeLocationChange() {
   setTimeout(() => {
     nudgeQueued = false;
 
-    if (MainWindowBrowserManager?.m_lastLocation) {
-      MainWindowBrowserManager.m_lastLocation.hash = `#${Math.random()}`;
+    if (window.MainWindowBrowserManager?.m_lastLocation) {
+      window.MainWindowBrowserManager.m_lastLocation.hash = `#${Math.random()}`;
       return;
     }
 

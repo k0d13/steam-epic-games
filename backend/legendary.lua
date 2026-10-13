@@ -1,8 +1,10 @@
-local disk = require("cache")
+--# selene: allow(unused_variable)
+local cache = require("cache")
 local fs = require("fs")
 local jobs = require("jobs")
 local json = require("json")
-local logger = require("logger")
+local log = require("log")
+local DATA = log.DATA
 local shell = require("shell")
 local utils = require("utils")
 local vendor = require("vendor")
@@ -12,16 +14,14 @@ local vendor = require("vendor")
 
 local legendary = {}
 
---- Where Epic sends the user to log in. The page it lands on prints the
---- authorization code we need.
+--- Epic's login, which lands on a page printing the authorization code.
 local LOGIN_URL = "https://legendary.gl/epiclogin"
 
 ---@type string|nil
 local BINARY = nil
 
----The legendary binary, downloading it if this machine hasn't got it yet.
----Public because a shortcut points at it - Steam launches legendary, not the
----game's own exe.
+---The legendary binary, downloaded on first use. Public because shortcuts launch
+---legendary rather than the game's exe.
 ---@return string|nil path
 ---@return string? error
 function legendary.get_binary()
@@ -33,8 +33,6 @@ function legendary.get_binary()
   BINARY = path
   return path, err
 end
-
--- Commands --------------------------------------------------------------------
 
 ---The subcommand out of one argument list, for a log line.
 ---@param args string[]
@@ -50,24 +48,23 @@ end
 
 ---Run one legendary command and block until it exits.
 ---@param args string[] Arguments to legendary, unquoted
----@param timeout integer|nil Milliseconds to wait, `shell.run`'s default if nil
 ---@return string output stdout followed by stderr, empty if the binary is missing
 ---@return integer status -1 if there was nothing to run
-function legendary.run(args, timeout)
+function legendary.run(args)
   local binary, err = legendary.get_binary()
   if not binary then
-    logger:error("No legendary binary: " .. tostring(err))
+    log.error("No legendary binary: " .. tostring(err))
     return "", -1
   end
 
   local started = utils.time_ms()
-  local output, status = shell.run(binary, args, timeout)
+  local output, status = shell.run(binary, args)
 
   local summary = subcommand(args) .. " in " .. (utils.time_ms() - started) .. "ms"
   if status == 0 then
-    logger:info("Ran " .. summary)
+    log.info("Ran " .. summary)
   else
-    logger:warn("Ran " .. summary .. ", exited " .. status)
+    log.warn("Ran " .. summary .. ", exited " .. status)
   end
 
   return output, status
@@ -98,17 +95,13 @@ end
 ---@return any|nil decoded
 ---@return string? error
 function legendary.decode_json(output)
-  -- The JSON arrives with legendary's log lines mixed in, and those look like
-  -- "[cli] INFO: Logging in..." - so a search for the first "[" finds a log
-  -- line, not the document.
+  -- Log lines like "[cli] INFO: ..." also start with "[", so they're skipped.
   local lines = utils.split(output, "\n")
   for index, line in ipairs(lines) do
     local trimmed = utils.trim(line)
     local opens = trimmed:sub(1, 1)
     if (opens == "{" or opens == "[") and not is_log_line(trimmed) then
-      -- Stops at the next log line rather than running to the end of the
-      -- output: stderr is appended after stdout, so legendary's chatter lands
-      -- on both sides of the document.
+      -- Stop at the next log line: stderr shares the pipe and can follow the document.
       local last = #lines
       for offset = index + 1, #lines do
         if is_log_line(utils.trim(lines[offset])) then
@@ -117,36 +110,36 @@ function legendary.decode_json(output)
         end
       end
 
-      local ok, decoded = pcall(json.decode, table.concat(lines, "\n", index, last))
-      if ok then
+      local decoded = cache.decode(table.concat(lines, "\n", index, last))
+      if decoded ~= nil then
         return decoded
       end
-      return nil, "could not decode legendary output: " .. tostring(decoded)
+      return nil, "could not decode legendary output"
     end
   end
 
-  -- Only the last error line, never the whole output: a legendary that fell over
-  -- prints a Python traceback, and handing kilobytes of it back as an error
-  -- string tells nobody anything and travels through the whole RPC path.
+  -- Only the last error line, not the Python traceback a crash prints.
   return nil, last_error(output) or utils.trim(output):sub(1, 200)
 end
 
--- Status ----------------------------------------------------------------------
-
----@class LegendaryStatus
+---@class EpicStatus
 ---@field available boolean Is the binary present
 ---@field authenticated boolean Is there a logged in Epic account
 ---@field account string|nil Epic display name, when authenticated
 ---@field login_url string Where to send the user to sign in
----@field error string|nil Why we couldn't read a status
+---@field error string|nil Why we couldn't read a status, or why signing in failed
 
---- Cached: reading it costs a subprocess, and it's checked
---- on every panel render.
----@type LegendaryStatus|nil
+---@class LaunchCommand
+---@field exe string
+---@field arguments string
+---@field start_dir string
+
+--- Cached: reading it costs a subprocess, and every panel render checks it.
+---@type EpicStatus|nil
 local status = nil
 
 ---@param refresh boolean|nil Re-read rather than using the cached answer
----@return LegendaryStatus
+---@return EpicStatus
 function legendary.get_status(refresh)
   if status and not refresh then
     return status
@@ -163,8 +156,7 @@ function legendary.get_status(refresh)
     return status
   end
 
-  -- The only command that reports the logged in account. It answers
-  -- "<not logged in>" rather than failing when nobody is.
+  -- The only command that reports the account; prints "<not logged in>" for nobody.
   local output = legendary.run({ "status", "--json" })
   local decoded, decode_error = legendary.decode_json(output)
 
@@ -178,133 +170,86 @@ function legendary.get_status(refresh)
     authenticated = account ~= nil,
     account = account,
     login_url = LOGIN_URL,
-    -- Only when we came away with nothing: a decode complaint about the log
-    -- lines around the document isn't a failure if the account came out of it.
+    -- A decode complaint doesn't matter if the account came out anyway.
     error = account == nil and decode_error or nil,
   }
 
-  logger:info("Status: account=" .. tostring(account))
+  log.info("Status: account=" .. tostring(account))
   return status
 end
 
----Run a legendary command for one game without waiting for it, for work too
----slow to hold the Lua state for. The first call starts it and every call after
----checks on it, until one comes back with the output.
----@param running table<string, string> The command in flight, by app name
----@param app_name string
----@param args string[] Arguments to legendary, unquoted
----@return string|nil output
----@return string? error
----@return boolean? still_running The command has been started, ask again shortly
-local function run_in_background(running, app_name, args)
-  local id = running[app_name]
-  if not id then
-    local binary, err = legendary.get_binary()
-    if not binary then
-      return nil, err
-    end
-
-    local started, start_error = shell.start(binary, args)
-    if not started then
-      return nil, start_error
-    end
-
-    running[app_name] = started
-    return nil, nil, true
-  end
-
-  local output = shell.poll(id)
-  if not output then
-    return nil, nil, true
-  end
-  running[app_name] = nil
-  return output
+---@ffi
+---Is legendary runnable, and is an Epic account signed in? Cached; pass `refresh`
+---after anything that could change the answer.
+---@param refresh? boolean
+---@return EpicStatus
+function get_status(refresh)
+  return legendary.get_status(refresh)
 end
 
--- Sizes ----------------------------------------------------------------------
+---@ffi
+---A game's shortcut command. It runs legendary, which waits on the game so playtime
+---works, survives Epic moving the exe, and works before the game is installed.
+---@param app_name string
+---@return LaunchCommand|nil
+function get_launch_command(app_name)
+  local binary = legendary.get_binary()
+  if not binary then
+    return nil
+  end
 
--- How much room a game needs before it is installed, for the "Space Required"
--- Steam shows beside the Install button. `legendary list` does not carry it and
--- `legendary info` costs a manifest fetch per title, so it is read one game at a
--- time and cached by app name.
---
--- Nothing here can tell that a cached size has gone stale: knowing which build
--- it was measured against would cost the manifest fetch the cache exists to
--- avoid. So the frontend drops a game's size when a job touches it instead.
+  return {
+    exe = binary,
+    arguments = 'launch "' .. app_name .. '"',
+    start_dir = binary:match("^(.*)[\\/]") or "",
+  }
+end
+
+-- Steam's "Space Required", one manifest fetch per game and cached with no way to
+-- tell it's stale, so the frontend drops a game's size when a job touches it.
 
 ---@class GameSize
 ---@field disk integer Bytes the installed game occupies - what Steam calls "Space Required"
 ---@field download integer Bytes actually transferred, which is smaller: Epic ships compressed
 
-local SIZES_PATH = utils.get_backend_path() .. "/data/cache/sizes.json"
+local SIZES_PATH = DATA .. "/cache/sizes.json"
 
 ---@type table<string, GameSize>|nil
 local sizes = nil
 
---- The `legendary info` still running for a game, by app name, so asking twice
---- while the first is in flight waits on that one.
----@type table<string, string>
-local sizing = {}
-
----What one game needs on disk.
----
----A miss costs a manifest fetch from Epic, several seconds of it, which is far
----too long to hold the Lua state for. So a miss starts the command and says so;
----the caller asks again, and the answer is there once it is. Never blocks.
+---@ffi
+---What one game needs on disk. A miss costs a manifest fetch from Epic.
 ---@param app_name string
----@param refresh boolean|nil Re-read even if it's cached
----@return GameSize|nil size
----@return string? error
----@return boolean? still_running The command has been started, ask again shortly
-function legendary.get_size(app_name, refresh)
-  if type(app_name) ~= "string" or app_name == "" then
-    return nil, "No app name provided"
-  end
-
-  sizes = sizes or disk.read(SIZES_PATH, "sizes") or {}
+---@param refresh? boolean Re-read even if it's cached
+---@return GameSize|nil
+function get_game_size(app_name, refresh)
+  sizes = sizes or cache.read(SIZES_PATH, "sizes") or {}
   if sizes[app_name] and not refresh then
     return sizes[app_name]
   end
 
-  local output, run_error, still_running =
-    run_in_background(sizing, app_name, { "info", app_name, "--json" })
-  if not output then
-    return nil, run_error, still_running
-  end
-
-  local decoded, err = legendary.decode_json(output)
-  if type(decoded) ~= "table" then
-    return nil, err or "legendary returned no info"
-  end
-
-  -- No manifest means legendary could not reach Epic, which is the offline
-  -- answer rather than a failure worth showing.
-  local manifest = decoded.manifest
+  local decoded, err = legendary.decode_json(legendary.run({ "info", app_name, "--json" }))
+  -- No manifest means legendary could not reach Epic.
+  local manifest = type(decoded) == "table" and decoded.manifest or nil
   if type(manifest) ~= "table" or type(manifest.disk_size) ~= "number" then
-    return nil, "no manifest for " .. app_name
+    log.warn("Could not size " .. app_name .. ": " .. tostring(err))
+    return nil
   end
 
   sizes[app_name] = {
     disk = manifest.disk_size,
     download = manifest.download_size or manifest.disk_size,
   }
-  disk.write(SIZES_PATH, sizes, "sizes")
+  cache.write(SIZES_PATH, sizes, "sizes")
 
-  logger:info("Sized " .. app_name .. ": " .. manifest.disk_size .. " bytes on disk")
+  log.info("Sized " .. app_name .. ": " .. manifest.disk_size .. " bytes on disk")
   return sizes[app_name]
 end
 
--- Achievements ---------------------------------------------------------------
+-- Cached per game like sizes, but these go stale as the user plays, so `fetched_at`
+-- lets the frontend decide when to ask again.
 
--- Epic's achievements for one game, as `legendary achievements` reports them.
--- Read a game at a time and cached by app name, like sizes above: the command
--- talks to Epic, so it is far too slow to hold the Lua state for.
---
--- Unlike a size, this answer really does go stale - the user unlocks things by
--- playing - so `fetched_at` rides along and the frontend decides when to ask
--- again.
-
-local ACHIEVEMENTS_PATH = utils.get_backend_path() .. "/data/cache/achievements.json"
+local ACHIEVEMENTS_PATH = DATA .. "/cache/achievements.json"
 
 ---@class Achievement
 ---@field id string Epic's internal name, unique within the game
@@ -312,7 +257,7 @@ local ACHIEVEMENTS_PATH = utils.get_backend_path() .. "/data/cache/achievements.
 ---@field description string
 ---@field unlocked boolean
 ---@field progress number 0 to 1
----@field unlocked_at string|nil Epic's timestamp, parsed by the frontend
+---@field unlocked_at string|nil Epic's timestamp, like "2026-06-12 21:21:24.391000+00:00"
 ---@field icon string|nil Icon URL, already locked or unlocked as appropriate
 ---@field rarity number|nil Percent of players holding it
 ---@field hidden boolean Undiscovered, so Steam blurs it
@@ -323,12 +268,14 @@ local ACHIEVEMENTS_PATH = utils.get_backend_path() .. "/data/cache/achievements.
 ---@field fetched_at integer Unix seconds
 ---@field achievements Achievement[]
 
+---@class AchievementSummary
+---@field app_name string
+---@field total integer
+---@field unlocked integer
+---@field fetched_at integer Unix seconds
+
 ---@type table<string, GameAchievements>|nil
 local achievements = nil
-
---- The `legendary achievements` still running for a game, by app name.
----@type table<string, string>
-local achieving = {}
 
 ---Flatten one of legendary's four buckets into our own shape.
 ---@param entries table[]|nil
@@ -358,8 +305,7 @@ end
 ---@return GameAchievements
 local function build_achievements(decoded)
   local list = {}
-  -- Every bucket, in the order Steam wants them read: unlocked first, then
-  -- what's under way, then the rest.
+  -- Steam's order: unlocked, in progress, then the rest.
   collect_achievements(decoded.completed, list)
   collect_achievements(decoded.in_progress, list)
   collect_achievements(decoded.uninitiated, list)
@@ -373,66 +319,43 @@ local function build_achievements(decoded)
   }
 end
 
----One game's achievements.
----
----Read in the background the way `get_size` is: a miss says so rather than
----waiting, and the caller asks again shortly. Never blocks.
+---@ffi
+---One game's achievements. A miss costs a round trip to Epic.
 ---@param app_name string
----@param refresh boolean|nil Ask Epic again even if it's cached
----@return GameAchievements|nil result
----@return string? error
----@return boolean? still_running The command has been started, ask again shortly
-function legendary.get_achievements(app_name, refresh)
-  if type(app_name) ~= "string" or app_name == "" then
-    return nil, "No app name provided"
-  end
-
-  achievements = achievements or disk.read(ACHIEVEMENTS_PATH, "achievements") or {}
+---@param refresh? boolean Ask Epic again even if it's cached
+---@return GameAchievements|nil
+function get_achievements(app_name, refresh)
+  achievements = achievements or cache.read(ACHIEVEMENTS_PATH, "achievements") or {}
   if achievements[app_name] and not refresh then
     return achievements[app_name]
   end
 
-  -- --hidden, because Steam draws undiscovered achievements itself, blurred,
-  -- and dropping them here would leave its counts short of the total.
-  local output, run_error, still_running =
-    run_in_background(achieving, app_name, { "achievements", app_name, "--json", "--hidden" })
-  if not output then
-    return nil, run_error, still_running
-  end
-
+  -- --hidden, since Steam blurs undiscovered ones itself and its counts need them.
+  local output = legendary.run({ "achievements", app_name, "--json", "--hidden" })
   local decoded, err = legendary.decode_json(output)
 
-  -- Plenty of Epic games have no achievements at all, and legendary says so in
-  -- a log line rather than an empty document. Cached like any other answer, or
-  -- every session would ask Epic about them again.
+  -- "None" comes as a log line, not a document. Cached anyway, or every session asks again.
   if type(decoded) ~= "table" and output:find("No achievements found", 1, true) then
     decoded = {}
   elseif type(decoded) ~= "table" then
-    return nil, err or "legendary returned no achievements"
+    log.warn("Could not read achievements for " .. app_name .. ": " .. tostring(err))
+    return nil
   end
 
   local result = build_achievements(decoded)
   achievements[app_name] = result
-  disk.write(ACHIEVEMENTS_PATH, achievements, "achievements")
+  cache.write(ACHIEVEMENTS_PATH, achievements, "achievements")
 
-  logger:info(
-    "Read achievements for " .. app_name .. ": " .. result.unlocked .. "/" .. result.total
-  )
+  log.info("Read achievements for " .. app_name .. ": " .. result.unlocked .. "/" .. result.total)
   return result
 end
 
----Every game we already have achievements cached for, counts only.
----
----Reads nothing from Epic and starts nothing, so the frontend can ask about the
----whole library at once - which is what the library home's "% of Achievements
----Completed" sort needs, since it asks about every game as it draws and a
----command per game would be a subprocess storm.
----
----A list rather than a map keyed by app name: the frontend camelises every key
----it gets back, and an app name is not a key it should be rewriting.
----@return { app_name: string, total: integer, unlocked: integer, fetched_at: integer }[]
-function legendary.get_cached_achievements()
-  achievements = achievements or disk.read(ACHIEVEMENTS_PATH, "achievements") or {}
+---@ffi
+---Cached achievement counts for every game, without asking Epic, for the library's
+---"% of Achievements Completed" sort.
+---@return AchievementSummary[]
+function get_cached_achievements()
+  achievements = achievements or cache.read(ACHIEVEMENTS_PATH, "achievements") or {}
 
   local summaries = {}
   for app_name, entry in pairs(achievements) do
@@ -447,33 +370,32 @@ function legendary.get_cached_achievements()
   return summaries
 end
 
--- Long-running commands ------------------------------------------------------
-
 ---Queue a legendary command as a job.
 ---@param app_name string
 ---@param kind JobKind
 ---@param args string[]
----@return Job|nil job
----@return string? error
+---@return Job|nil
 local function start_job(app_name, kind, args)
   local binary, err = legendary.get_binary()
-  if not binary then
-    return nil, err
+  local job
+  if binary then
+    job, err = jobs.start(app_name, kind, binary, args)
   end
 
-  return jobs.start(app_name, kind, binary, args)
+  if not job then
+    log.warn("Could not start the " .. kind .. " of " .. app_name .. ": " .. tostring(err))
+  end
+  return job
 end
 
----Install, update or resume a game, as a job rather than a wait.
----
----legendary's `install` is also its update and its resume: pointed at a partial
----download, it continues from there.
+---@ffi
+---Install, update or resume a game; progress comes back through `get_jobs`.
+---legendary's `install` resumes a partial download in place.
 ---@param app_name string
----@param base_path string|nil Parent directory to install into, legendary's default if nil
----@param game_folder string|nil Directory name inside it
----@return Job|nil job
----@return string? error
-function legendary.install(app_name, base_path, game_folder)
+---@param base_path? string Parent directory to install into, legendary's default if nil
+---@param game_folder? string Directory name inside it
+---@return Job|nil
+function start_install(app_name, base_path, game_folder)
   local args = { "-y", "install", app_name }
 
   if type(base_path) == "string" and base_path ~= "" then
@@ -488,63 +410,55 @@ function legendary.install(app_name, base_path, game_folder)
   return start_job(app_name, "install", args)
 end
 
----Update an already installed game, as a job.
----
----The same `install` underneath, since legendary fetches only the chunks that
----changed, but `--update-only` makes it refuse a game that isn't installed
----rather than quietly installing the whole thing.
+---@ffi
+---Update an installed game. `--update-only` refuses one that isn't installed
+---rather than quietly installing it.
 ---@param app_name string
----@return Job|nil job
----@return string? error
-function legendary.update(app_name)
+---@return Job|nil
+function start_update(app_name)
   return start_job(app_name, "update", { "-y", "install", app_name, "--update-only" })
 end
 
+---@ffi
+---Remove a game from disk. The Steam shortcut is left alone, since keeping
+---uninstalled games in the library is the point of the plugin.
 ---@param app_name string
----@return Job|nil job
----@return string? error
-function legendary.uninstall(app_name)
+---@return Job|nil
+function start_uninstall(app_name)
   return start_job(app_name, "uninstall", { "-y", "uninstall", app_name })
 end
 
--- Authentication --------------------------------------------------------------
+-- Not `legendary auth --import`: Epic allows one session per client id, so it
+-- would sign the user out of the Epic Games Launcher.
 
--- `legendary auth --import` would lift a login out of the Epic Games Launcher
--- with no browser at all, but Epic allows one session per client id: importing
--- signs the user out of the launcher. Not something to do behind their back.
-
----Finish a sign in with the code from Epic's redirect page.
----
----`--code` is the non-interactive form. Plain `legendary auth` blocks on stdin
----waiting for the code, and there is no stdin here.
----
----legendary exits 0 even when a login fails, so success is read by asking it who
----it thinks we are afterwards.
+---@ffi
+---Finish a sign in with the code from Epic's redirect page; `error` is set on
+---failure. legendary exits 0 either way, so success is read from its status.
 ---@param code string The authorizationCode from Epic's redirect page
----@return boolean success
----@return string? error
-function legendary.authenticate(code)
-  if type(code) ~= "string" or utils.trim(code) == "" then
-    return false, "No code provided"
-  end
-
+---@return EpicStatus
+function sign_in(code)
+  log.info("Signing in with a code from the store's session")
   local output = legendary.run({ "auth", "--code", utils.trim(code) })
-  if legendary.get_status(true).authenticated then
-    return true
+  local current = legendary.get_status(true)
+  if current.authenticated then
+    return current
   end
 
-  -- A failed attempt is not a no-op: legendary clears the stored login before
-  -- trying the new code, so a bad code signs the user out. Hence the wording.
-  return false,
-    last_error(output)
-      or "That code didn't work, it may have expired or already been used. Press Sign in for a fresh one."
+  -- A copy, so the error doesn't stick to the cached status.
+  local result = utils.merge({}, current)
+  -- legendary clears the stored login before trying a code, so a bad one signs out.
+  result.error = last_error(output)
+    or "That code didn't work, it may have expired or already been used. Press Sign in for a fresh one."
+  return result
 end
 
+---@ffi
 ---Sign out, so the next sign in starts clean.
----@return boolean success
-function legendary.sign_out()
+---@return EpicStatus
+function sign_out()
+  log.info("Signing out, the store is signed out")
   legendary.run({ "auth", "--delete" })
-  return not legendary.get_status(true).authenticated
+  return legendary.get_status(true)
 end
 
 return legendary

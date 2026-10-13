@@ -10,7 +10,7 @@ description = "Format the frontend with oxfmt"
 run = "pnpm exec oxfmt"
 [tasks."format:lua"]
 description = "Format the backend with stylua"
-run = "stylua backend types"
+run = "stylua backend"
 [tasks.format]
 description = "Format everything"
 depends = ["format:ts", "format:lua"]
@@ -20,7 +20,7 @@ description = "Report frontend formatting without writing"
 run = "pnpm exec oxfmt --check"
 [tasks."format-check:lua"]
 description = "Report backend formatting without writing"
-run = "stylua --check backend types"
+run = "stylua --check backend"
 [tasks."format-check"]
 description = "Report formatting everywhere without writing"
 depends = ["format-check:ts", "format-check:lua"]
@@ -36,8 +36,8 @@ description = "Lint everything"
 depends = ["lint:ts", "lint:lua"]
 
 [tasks."check:ts"]
-description = "Type check the frontend with tsc"
-run = "pnpm exec tsc --noEmit"
+description = "Type check the frontend and webview with tsc"
+run = "pnpm exec tsc -p . && pnpm exec tsc -p webview"
 [tasks."check:lua"]
 description = "Type check the backend with lua-language-server"
 run = "mise exec -- lua-language-server --check backend --checklevel Warning --configpath .luarc.json --logpath .ignore/luals"
@@ -46,9 +46,9 @@ description = "Type check everything"
 depends = ["check:ts", "check:lua"]
 
 [tasks.build]
-description = "Build the plugin for release"
-run = "pnpm exec millennium-ttc --build prod"
+description = "Build the plugin for release into .millennium/"
+run = "pnpm exec starlight pack --release -o .millennium"
 
 [tasks.dev]
-description = "Build the plugin and deploy it into Steam"
-run = "powershell -ExecutionPolicy Bypass -File dev.ps1"
+description = "Rebuild into Steam on every change"
+run = "pnpm exec starlight watch"

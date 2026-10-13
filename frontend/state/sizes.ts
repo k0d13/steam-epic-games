@@ -1,9 +1,7 @@
-import rpc, { type GameSize } from "../rpc";
 import { createEmitter } from "./emitter";
 
-// Sizes are read one game at a time from a Steam render, which needs an answer
-// now. So everything here answers from memory, and asking for a game we don't
-// have starts a fetch and tells its subscribers when it lands.
+// Answers from memory for Steam's render path; an unknown game starts a fetch and
+// notifies subscribers when it lands.
 
 /** `null` records a game we asked about and got nothing for, so we stop asking. */
 const known = new Map<string, GameSize | null>();
@@ -29,7 +27,7 @@ export function ensure(appName: string) {
   if (known.has(appName) || pending.has(appName)) return;
   pending.add(appName);
 
-  void rpc.GetGameSize(appName, stale.has(appName)).then((size) => {
+  void backend.get_game_size(appName, stale.has(appName)).then((size) => {
     pending.delete(appName);
     stale.delete(appName);
 
@@ -40,13 +38,8 @@ export function ensure(appName: string) {
 }
 
 /**
- * Drop what we know about a game, here and in the backend.
- *
- * The backend caches sizes by app name with no way to tell that Epic has
- * shipped a new build since - knowing which build one was measured against
- * costs the manifest fetch the cache exists to avoid - so a finished job is the
- * signal, and state/jobs.ts calls this on one. Clearing only the map here would
- * refetch the backend's stale answer, hence the flag.
+ * Drop a game's size here and in the backend, whose cache can't tell a new build
+ * shipped. state/jobs.ts calls this when a job finishes.
  */
 export function forget(appName: string) {
   known.delete(appName);
