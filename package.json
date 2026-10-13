@@ -3,9 +3,7 @@
   "version": "0.0.0",
   "license": "CC-BY-NC-ND-4.0",
   "scripts": {
-    "dev": "starlight watch",
-    "build": "starlight pack",
-    "prepare": "starlight lsp"
+    "prepare": "starlight lsp && oxfmt .luarc.json tsconfig.json webview/tsconfig.json"
   },
   "devDependencies": {
     "@changesets/cli": "^3.0.1",
