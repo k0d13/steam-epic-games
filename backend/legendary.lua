@@ -437,6 +437,7 @@ end
 ---@param code string The authorizationCode from Epic's redirect page
 ---@return EpicStatus
 function sign_in(code)
+  log.info("Signing in with a code from the store's session")
   local output = legendary.run({ "auth", "--code", utils.trim(code) })
   local current = legendary.get_status(true)
   if current.authenticated then
@@ -455,6 +456,7 @@ end
 ---Sign out, so the next sign in starts clean.
 ---@return EpicStatus
 function sign_out()
+  log.info("Signing out, the store is signed out")
   legendary.run({ "auth", "--delete" })
   return legendary.get_status(true)
 end
