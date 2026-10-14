@@ -1,5 +1,16 @@
 # epic-games
 
+## 0.2.0
+
+### Minor Changes
+
+- b14ea5a: Shows installed Epic games in Steam's storage settings.
+- 68474ae: Shows Epic installs on Steam's downloads page.
+- 0eb0860: Adds an Epic Games section to Steam's Store menu, with links into the
+  Epic store.
+- f29d5a9: Signs you in by following the Epic store's sign in from Steam's browser,
+  replacing the separate sign-in panel.
+
 ## 0.1.0
 
 ### Minor Changes
