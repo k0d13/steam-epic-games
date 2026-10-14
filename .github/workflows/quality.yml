@@ -46,12 +46,8 @@ jobs:
       - name: Setup toolchain
         uses: ./.github/actions/toolchain
 
-      # Split per language so a red job names the half that broke.
-      - name: Type check the frontend
-        run: mise run check:ts
-
-      - name: Type check the backend
-        run: mise run check:lua
+      - name: Type check the frontend, webview and backend
+        run: mise run check:types
 
   lint:
     name: Linting
@@ -63,14 +59,8 @@ jobs:
       - name: Setup toolchain
         uses: ./.github/actions/toolchain
 
-      - name: Lint the frontend
-        run: mise run lint:ts
+      - name: Lint the frontend and backend
+        run: mise run check:lint
 
-      - name: Lint the backend
-        run: mise run lint:lua
-
-      - name: Check frontend formatting
-        run: mise run format-check:ts
-
-      - name: Check backend formatting
-        run: mise run format-check:lua
+      - name: Check formatting
+        run: mise run check:format
