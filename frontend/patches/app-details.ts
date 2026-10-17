@@ -74,11 +74,31 @@ function apply(details: AppDetails) {
   logApplied(details, game.app_name);
 }
 
+/** Set while registering a read that must see Steam's own details. */
+let unpatched = false;
+
+/**
+ * Register for an app's details without our edits. Every patched read starts a
+ * size and achievements fetch, each a legendary run, which a scan of every
+ * shortcut would queue hundreds of ahead of everything else.
+ */
+export function registerUnpatched(
+  ...args: Parameters<typeof SteamClient.Apps.RegisterForAppDetails>
+): ReturnType<typeof SteamClient.Apps.RegisterForAppDetails> {
+  unpatched = true;
+  try {
+    return SteamClient.Apps.RegisterForAppDetails(...args);
+  } finally {
+    unpatched = false;
+  }
+}
+
 export function register() {
   // replacePatch, so our wrapper can replace the callback argument.
   const apps = SteamClient.Apps as unknown as AppsApi;
   const patch = replacePatch(apps, "RegisterForAppDetails", (args) => {
     const [, callback] = args as [number, DetailsCallback];
+    if (unpatched) return callOriginal as unknown as ReturnType<AppsApi["RegisterForAppDetails"]>;
 
     args[1] = (details: AppDetails) => {
       apply(details);

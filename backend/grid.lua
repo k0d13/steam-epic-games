@@ -88,3 +88,35 @@ function PlaceIcon(app_id, account_id)
 
   return target
 end
+
+---@ffi
+---Delete every grid image of the given shortcuts: `<id>.<ext>`, `<id>p`, `<id>_hero`,
+---`<id>_logo`, `<id>_icon` and the logo position `<id>.json`. Steam leaves them behind
+---when a shortcut is removed.
+---@param app_ids string Comma separated, since a list doesn't cross the bridge
+---@param account_id? integer|string
+---@return integer removed Files deleted
+function RemoveArtwork(app_ids, account_id)
+  local path, err = grid_path(account_id)
+  if not path then
+    log.warn("Could not remove artwork: " .. tostring(err))
+    return 0
+  end
+
+  local wanted = {}
+  for id in tostring(app_ids):gmatch("%d+") do
+    wanted[id] = true
+  end
+
+  local removed = 0
+  for _, entry in ipairs(fs.list(path) or {}) do
+    -- The digits up to the first suffix character, so `12p.png` doesn't read as 12.
+    local id = not entry.is_directory and entry.name:match("^(%d+)[p_%.]") or nil
+    if id and wanted[id] and fs.remove(path .. "/" .. entry.name) then
+      removed = removed + 1
+    end
+  end
+
+  log.info("Removed " .. removed .. " artwork files")
+  return removed
+end

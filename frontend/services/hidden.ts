@@ -63,38 +63,34 @@ function setHidden(ids: number[], hidden: boolean): number {
   return ids.length;
 }
 
-/** Shortcuts of ours, still visible, whose title is also owned on Steam. */
-function visibleDuplicates(games: EpicGame[]): number[] {
+/** Shortcuts of ours whose title is also owned on Steam, hidden or not as asked. */
+function duplicates(games: EpicGame[], hidden: boolean): number[] {
   const titles = steamTitles();
   const ids: number[] = [];
 
   for (const game of games) {
     const appId = appIds.getAppId(game.app_name);
-    if (appId === undefined || !titles.has(normalize(game.title)) || isHidden(appId)) continue;
-    ids.push(appId);
+    if (appId === undefined || !titles.has(normalize(game.title))) continue;
+    if (isHidden(appId) === hidden) ids.push(appId);
   }
 
   return ids;
 }
 
-const hiddenShortcuts = () => Object.values(appIds.getAll()).filter(isHidden);
-
 /** Hide every Epic shortcut duplicating a Steam game. Returns how many moved. */
 export function hideDuplicates(games: EpicGame[]): number {
-  const hidden = setHidden(visibleDuplicates(games), true);
+  const hidden = setHidden(duplicates(games, false), true);
   console.info("Hid duplicate Epic shortcuts", { hidden });
   return hidden;
 }
 
-/** Unhide every shortcut this plugin created. Returns how many moved. */
-export function showAll(): number {
-  const shown = setHidden(hiddenShortcuts(), false);
-  console.info("Unhid Epic shortcuts", { shown });
+/** Unhide the duplicates, leaving games hidden for other reasons alone. */
+export function showDuplicates(games: EpicGame[]): number {
+  const shown = setHidden(duplicates(games, true), false);
+  console.info("Unhid duplicate Epic shortcuts", { shown });
   return shown;
 }
 
-/** How many duplicates are still visible, for a menu that offers to hide them. */
-export const hideableCount = (games: EpicGame[]) => visibleDuplicates(games).length;
-
-/** How many of our shortcuts are hidden, for a menu that offers to show them. */
-export const hiddenCount = () => hiddenShortcuts().length;
+/** How many of our shortcuts duplicate a Steam game, for the toggle to say. */
+export const duplicateCount = (games: EpicGame[]) =>
+  duplicates(games, false).length + duplicates(games, true).length;

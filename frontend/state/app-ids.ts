@@ -20,6 +20,8 @@ export const setAppId = store.set;
 
 export const removeAppName = store.remove;
 
+export const clear = store.clear;
+
 /** Drop entries whose shortcut was deleted by hand, or we'd never recreate it. */
 export function prune(existingAppIds: Set<number>) {
   store.keep((_, appId) => existingAppIds.has(appId));

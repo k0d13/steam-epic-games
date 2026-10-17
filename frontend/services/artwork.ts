@@ -52,7 +52,7 @@ async function fetchAsBase64(url: string): Promise<{ base64: string; type: "jpg"
 const ICON_SIZE = 256;
 
 /** The 32-bit account id naming the userdata folder; only a hint for the backend. */
-function accountId(): number | undefined {
+export function accountId(): number | undefined {
   const steamId = window.App?.m_CurrentUser?.strSteamID;
   if (!steamId) return undefined;
 

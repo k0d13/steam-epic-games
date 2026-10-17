@@ -16,6 +16,7 @@ interface Collection {
   allApps: SteamAppOverview[];
   AsDragDropCollection?(): DragDropCollection | undefined;
   Save?(): Promise<unknown> | void;
+  Delete?(): Promise<unknown> | void;
 }
 
 interface Collections {
@@ -25,6 +26,7 @@ interface Collections {
     source: Collection | undefined,
     apps: SteamAppOverview[],
   ): Collection | undefined;
+  DeleteCollection?(id: string): Promise<unknown> | void;
 }
 
 const collections = () => collectionStore as unknown as Collections;
@@ -107,4 +109,34 @@ export function missingCount(games: EpicGame[]): number {
   const apps = overviews(games);
   const existing = findCollection();
   return existing ? missingFrom(existing, apps).length : apps.length;
+}
+
+/**
+ * Delete the collection, unless it holds anything besides the shortcuts in
+ * `removing`: a game dragged in by hand means the user made it theirs.
+ */
+export async function removeIfEmpty(removing: Set<number>): Promise<boolean> {
+  const existing = findCollection();
+  if (!existing) return false;
+
+  // Steam drops removed shortcuts from the collection a beat later, so they count as gone.
+  if (existing.allApps.some((app) => !removing.has(app.appid))) {
+    console.info("Kept the Epic Games collection, it holds other games", { id: existing.id });
+    return false;
+  }
+
+  try {
+    const store = collections();
+    if (existing.Delete) await existing.Delete();
+    else if (store.DeleteCollection) await store.DeleteCollection(existing.id);
+    else {
+      console.warn("This Steam build exposes no way to delete a collection");
+      return false;
+    }
+  } catch (reason: unknown) {
+    console.warn("Could not delete the Epic Games collection", reason);
+    return false;
+  }
+
+  return true;
 }
