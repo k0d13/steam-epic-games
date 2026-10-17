@@ -51,10 +51,14 @@ async function createShortcut(game: EpicGame): Promise<number | undefined> {
     return undefined;
   }
 
+  // Installed games start in their own folder, so nothing reading the shortcut
+  // ever sees legendary's.
+  const startDir = (game.installed && game.install_path) || launch.start_dir;
+
   const appId = await SteamClient.Apps.AddShortcut(
     game.title,
     launch.exe,
-    launch.start_dir,
+    startDir,
     launch.arguments,
   );
 
@@ -67,7 +71,9 @@ async function createShortcut(game: EpicGame): Promise<number | undefined> {
   // every one of ours "legendary.exe".
   SteamClient.Apps.SetShortcutName(appId, game.title);
   SteamClient.Apps.SetShortcutLaunchOptions(appId, launch.arguments);
-  SteamClient.Apps.SetShortcutStartDir(appId, launch.start_dir);
+  SteamClient.Apps.SetShortcutStartDir(appId, startDir);
+  startDirs.set(appId, startDir);
+  alignedExes.add(appId);
 
   appIds.setAppId(game.app_name, appId);
   console.debug("Created a shortcut", { appName: game.app_name, appId, title: game.title });
@@ -78,6 +84,7 @@ async function createShortcut(game: EpicGame): Promise<number | undefined> {
 function removeShortcut(appName: string, appId: number) {
   SteamClient.Apps.RemoveShortcut(appId);
   startDirs.delete(appId);
+  alignedExes.delete(appId);
   appIds.removeAppName(appName);
   artwork.forget(appName);
   console.debug("Removed a shortcut", { appName, appId });
@@ -161,28 +168,40 @@ export async function sync(games: EpicGame[]): Promise<SyncResult> {
 
 // A shortcut is made before its game exists, so it starts in legendary's folder.
 // Games that read files relative to their working directory need their own, so
-// it follows the install. Set once a session per shortcut, then on each change.
+// it follows the install. The exe follows legendary, which has moved before and
+// would leave older shortcuts launching a stale copy. Set once a session per
+// shortcut, then on each change.
 
 /** The working directory each shortcut was last given this session. */
 const startDirs = new Map<number, string>();
 
-/** legendary's folder, for shortcuts whose game isn't installed. */
-let launcherDir: Promise<string | undefined> | undefined;
+/** Shortcuts whose exe has been pointed at legendary this session. */
+const alignedExes = new Set<number>();
 
-/** Point every shortcut's working directory at its game folder, or legendary's. */
-export async function alignStartDirs() {
-  // The folder is the same for every game, so any name will do.
-  launcherDir ??= backend
+/** legendary's command, the same for every game but its arguments. */
+let launcher: Promise<LaunchCommand | undefined> | undefined;
+
+/** Point every shortcut at legendary, working in its game folder or legendary's. */
+export async function alignShortcuts() {
+  // Any name will do, only the arguments differ.
+  launcher ??= backend
     .GetLaunchCommand("")
-    .then((launch) => launch?.start_dir || undefined)
+    .then((launch) => launch ?? undefined)
     .catch(() => undefined);
 
-  const fallback = await launcherDir;
+  const launch = await launcher;
+  if (!launch) return;
 
   for (const appId of library.appIdsWithGames()) {
+    if (!alignedExes.has(appId)) {
+      // Quoted the way Steam stores it, or a space in the path splits it.
+      SteamClient.Apps.SetShortcutExe(appId, `"${launch.exe}"`);
+      alignedExes.add(appId);
+    }
+
     const game = library.getByAppId(appId);
-    const dir = (game?.installed && game.install_path) || fallback;
-    if (!dir || startDirs.get(appId) === dir) continue;
+    const dir = (game?.installed && game.install_path) || launch.start_dir;
+    if (startDirs.get(appId) === dir) continue;
 
     SteamClient.Apps.SetShortcutStartDir(appId, dir);
     startDirs.set(appId, dir);
