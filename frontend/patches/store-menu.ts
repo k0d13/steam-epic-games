@@ -6,6 +6,7 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
+import { findUp } from "../services/fiber";
 import { findExport } from "../services/modules";
 import { memo } from "../services/once";
 
@@ -181,26 +182,15 @@ interface MenuInstance {
   InternalHideSubMenu?(): void;
 }
 
-interface Fiber {
-  memoizedProps?: { instance?: MenuInstance };
-  return?: Fiber;
-}
-
 /** The menu's controller, which only its React props reach. Kept with the popup. */
 function findInstance(document: Document): MenuInstance | undefined {
   const element = document.querySelector(".contextMenu");
   if (!element) return undefined;
 
-  const key = Object.keys(element).find((name) => name.startsWith("__reactFiber$"));
-  for (
-    let fiber = key ? (Reflect.get(element, key) as Fiber) : undefined;
-    fiber;
-    fiber = fiber.return
-  ) {
-    const instance = fiber.memoizedProps?.instance;
-    if (instance?.m_rctElement) return instance;
-  }
-  return undefined;
+  return findUp(element, (fiber) => {
+    const instance = fiber.memoizedProps?.instance as MenuInstance | undefined;
+    return instance?.m_rctElement ? instance : undefined;
+  });
 }
 
 export function register(): () => void {

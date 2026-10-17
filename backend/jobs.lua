@@ -1,9 +1,10 @@
 --# selene: allow(unused_variable)
 local cache = require("cache")
+local datetime = require("datetime")
 local fs = require("fs")
 local json = require("json")
 local log = require("log")
-local DATA = log.DATA
+local paths = require("paths")
 local shell = require("shell")
 local utils = require("utils")
 
@@ -12,7 +13,7 @@ local utils = require("utils")
 
 local jobs = {}
 
-local ROOT = DATA .. "/jobs"
+local ROOT = paths.DATA .. "/jobs"
 
 --- The files in a job directory. The runner script refers to them as `{lock}` etc.
 local FILES = {
@@ -45,7 +46,7 @@ local SPAWN_GRACE = 15
 
 ---@class Job
 ---@field app_name string
----@field kind string One of JobKind
+---@field kind string One of JobKind; starlight types aliases and literals as `unknown`
 ---@field state string One of JobState
 ---@field pid integer|nil PID of the runner, which owns legendary as a child
 ---@field started_at integer When the job was asked for, which is its place in the queue
@@ -165,9 +166,9 @@ local function spawn(dir, exe, args)
   end
 
   -- Before the launch, or a read in between sees it queued and starts a second runner.
-  utils.write_file(file(dir, "spawned"), tostring(math.floor(utils.time())))
+  utils.write_file(file(dir, "spawned"), tostring(datetime.unix()))
 
-  shell.run("wscript", { (launcher_path:gsub("/", "\\")) })
+  shell.run("wscript", { shell.windows_path(launcher_path) })
   return true
 end
 
@@ -182,7 +183,7 @@ local function is_running(dir, pid, spawned_at)
   if not fs.is_file(lock) then
     -- A PID without the lock means the runner died starting up. Neither means
     -- it's still starting, but only for SPAWN_GRACE.
-    return pid == nil and (utils.time() - (spawned_at or 0)) < SPAWN_GRACE
+    return pid == nil and (datetime.unix() - (spawned_at or 0)) < SPAWN_GRACE
   end
 
   return shell.is_locked(lock)
@@ -360,7 +361,7 @@ function jobs.start(app_name, kind, exe, args)
     json.encode({
       app_name = app_name,
       kind = kind,
-      started_at = math.floor(utils.time()),
+      started_at = datetime.unix(),
       exe = exe,
       args = args,
     })
@@ -398,7 +399,7 @@ end
 ---@ffi
 ---Every job, queued, running or finished. Polled while something downloads.
 ---@return Job[]
-function get_jobs()
+function GetJobs()
   return jobs.list()
 end
 
@@ -407,7 +408,7 @@ end
 ---re-running the install.
 ---@param app_name string
 ---@return boolean stopped
-function pause_job(app_name)
+function PauseJob(app_name)
   local job = jobs.get(app_name)
   if not job or not stop(job) then
     return false
@@ -422,7 +423,7 @@ end
 ---partial install is `uninstall`'s job.
 ---@param app_name string
 ---@return boolean cancelled
-function cancel_job(app_name)
+function CancelJob(app_name)
   local job = jobs.get(app_name)
   if not job then
     return false

@@ -1,6 +1,6 @@
 local fs = require("fs")
 local log = require("log")
-local DATA = log.DATA
+local paths = require("paths")
 local shell = require("shell")
 local utils = require("utils")
 
@@ -22,14 +22,14 @@ local URL = "https://github.com/legendary-gl/legendary/releases/download/"
   .. ASSET
 
 --- Unversioned because every Steam shortcut points here; the hash check catches upgrades.
-local DIR = DATA .. "/vendor"
+local DIR = paths.DATA .. "/vendor"
 local PATH = DIR .. "/legendary.exe"
 
 ---A file's lowercase SHA-256 via certutil, which ships with Windows.
 ---@param path string
 ---@return string|nil
 local function digest(path)
-  local output, code = shell.run("certutil", { "-hashfile", (path:gsub("/", "\\")), "SHA256" })
+  local output, code = shell.run("certutil", { "-hashfile", shell.windows_path(path), "SHA256" })
   if code ~= 0 then
     log.warn("certutil could not hash " .. path .. ", exited " .. code)
     return nil
@@ -51,7 +51,7 @@ end
 ---@param destination string
 ---@return boolean ok
 local function fetch(destination)
-  local target = (destination:gsub("/", "\\"))
+  local target = shell.windows_path(destination)
 
   shell.run("curl.exe", { "-fsSL", "--retry", "2", "-o", target, URL })
   if fs.is_file(destination) then

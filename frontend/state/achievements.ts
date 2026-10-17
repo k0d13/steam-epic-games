@@ -27,7 +27,7 @@ const summaries = new Map<string, AchievementSummary>();
 /** Seed the counts from the backend's cache, without asking Epic. */
 export async function loadSummaries() {
   // An empty list arrives as `{}` (Lua has one table type); Object.values reads both.
-  const cached = Object.values(await backend.get_cached_achievements());
+  const cached = Object.values(await backend.GetCachedAchievements());
   if (cached.length === 0) return;
 
   for (const summary of cached) summaries.set(summary.app_name, summary);
@@ -49,7 +49,7 @@ export async function refresh(appName: string) {
   if (pending.has(appName)) return;
   pending.add(appName);
 
-  const result = await backend.get_achievements(appName, true);
+  const result = await backend.GetAchievements(appName, true);
   pending.delete(appName);
   if (result) record(appName, result);
 }
@@ -98,7 +98,7 @@ export function ensure(appName: string) {
   if ((known.has(appName) && !stale) || pending.has(appName)) return;
   pending.add(appName);
 
-  void backend.get_achievements(appName, stale).then((result) => {
+  void backend.GetAchievements(appName, stale).then((result) => {
     pending.delete(appName);
 
     // Misses are recorded, or every render runs a subprocess. A failed refresh

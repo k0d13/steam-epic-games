@@ -27,7 +27,7 @@ export function ensure(appName: string) {
   if (known.has(appName) || pending.has(appName)) return;
   pending.add(appName);
 
-  void backend.get_game_size(appName, stale.has(appName)).then((size) => {
+  void backend.GetGameSize(appName, stale.has(appName)).then((size) => {
     pending.delete(appName);
     stale.delete(appName);
 

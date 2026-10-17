@@ -79,7 +79,7 @@ async function capture(tab: Tab) {
   }
 
   if (code) {
-    const result = await backend.sign_in(code);
+    const result = await backend.SignIn(code);
     if (result.authenticated) console.info("Signed legendary in from the store as", result.account);
     else console.warn("Signing legendary in from the store failed", result.error);
   } else {
@@ -102,14 +102,14 @@ async function follow(tab: Tab, url: string) {
   // The header draws after the page; until then there's nothing to go on.
   if (loggedIn !== "true" && loggedIn !== "false") return;
 
-  const status = await backend.get_status(false);
+  const status = await backend.GetStatus(false);
   if (!status.available) return;
 
   if (loggedIn === "false") {
     tab.tried = false;
     if (status.authenticated) {
       console.info("The store is signed out, so signing legendary out");
-      await backend.sign_out();
+      await backend.SignOut();
     }
     return;
   }

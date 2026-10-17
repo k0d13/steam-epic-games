@@ -1,32 +1,10 @@
 local cache = require("cache")
-local utils = require("utils")
+local paths = require("paths")
 
 -- Grant dates stand in for Steam's purchase date, read from legendary's on-disk
 -- cache. A game shares its namespace with its DLC, so the earliest grant is the game's.
 
 local entitlements = {}
-
----Where legendary keeps its config and caches.
----@return string
-local function config_path()
-  local override = utils.getenv("LEGENDARY_CONFIG_PATH")
-  if override and override ~= "" then
-    return override
-  end
-
-  local xdg = utils.getenv("XDG_CONFIG_HOME")
-  if xdg and xdg ~= "" then
-    return xdg .. "/legendary"
-  end
-
-  -- legendary expands `~` itself, which on Windows is the user profile.
-  local home = utils.getenv("USERPROFILE")
-  if not home or home == "" then
-    home = utils.getenv("HOME") or ""
-  end
-
-  return home .. "/.config/legendary"
-end
 
 ---Unix seconds from a UTC grant date like "2020-12-09T14:25:48.859Z". Not through
 ---`os.time`, which reads a date table as local time.
@@ -62,7 +40,9 @@ end
 function entitlements.get_granted()
   local granted = {}
   for _, entitlement in
-    ipairs(cache.read(config_path() .. "/entitlements.json", "legendary entitlements") or {})
+    ipairs(
+      cache.read(paths.legendary_config() .. "/entitlements.json", "legendary entitlements") or {}
+    )
   do
     local namespace = entitlement.namespace
     local at = parse_granted(entitlement.grantDate)

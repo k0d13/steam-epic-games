@@ -1,10 +1,11 @@
 --# selene: allow(unused_variable)
 local cache = require("cache")
+local datetime = require("datetime")
 local egl = require("egl")
 local entitlements = require("entitlements")
 local legendary = require("legendary")
 local log = require("log")
-local DATA = log.DATA
+local paths = require("paths")
 local utils = require("utils")
 
 -- `legendary list` (owned) merged with `list-installed` (on disk): owned but
@@ -13,7 +14,7 @@ local utils = require("utils")
 local library = {}
 
 --- Cached so a cold start can draw the library before it has spoken to Epic.
-local CACHE_PATH = DATA .. "/cache/library.json"
+local CACHE_PATH = paths.DATA .. "/cache/library.json"
 
 ---@class EpicGame
 ---@field app_name string Epic's internal id, and our stable key for everything
@@ -276,7 +277,7 @@ function library.refresh(force)
   end)
 
   games = merged
-  refreshed_at = math.floor(utils.time())
+  refreshed_at = datetime.unix()
   save()
 
   log.info("Refreshed library: " .. #games .. " games")
@@ -319,7 +320,7 @@ end
 ---@param refresh? boolean
 ---@param force? boolean
 ---@return Library
-function get_library(refresh, force)
+function GetLibrary(refresh, force)
   -- The store decides who's signed in; a signed out library is an empty one.
   if not legendary.get_status().authenticated then
     if #games > 0 then
@@ -340,7 +341,7 @@ end
 ---@ffi
 ---Re-read only what's installed, without asking Epic. For after an install or uninstall.
 ---@return Library
-function get_installed()
+function GetInstalled()
   local _, err = library.refresh_installed()
   return { games = games, refreshed_at = refreshed_at, error = err }
 end

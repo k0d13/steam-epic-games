@@ -41,7 +41,7 @@ const withGames = (library: Library): Library => ({
 
 /** Load the library, from the backend's cache unless `refresh` is set. */
 export async function load(refresh = false, force = false) {
-  const result = withGames(await backend.get_library(refresh, force));
+  const result = withGames(await backend.GetLibrary(refresh, force));
   if (result.error) console.error("Failed to load the Epic library", result.error);
 
   reindex(result.games);
@@ -50,7 +50,7 @@ export async function load(refresh = false, force = false) {
 
 /** Re-read installs without asking Epic, for an install or uninstall finishing. */
 export async function loadInstalled() {
-  const result = withGames(await backend.get_installed());
+  const result = withGames(await backend.GetInstalled());
   if (result.error) console.warn("Failed to re-read the installed games", result.error);
 
   reindex(result.games);

@@ -100,6 +100,9 @@ export function register() {
   };
 }
 
+/** What we last sent for an app, so an unchanged pass costs no re-render. */
+const applied = new Map<number, string>();
+
 /**
  * Correct the details Steam already holds through AppDetailsChanged. A copy, or
  * observers see the same reference and don't re-render.
@@ -128,6 +131,3 @@ export function refreshAll() {
     store.AppDetailsChanged(updated);
   }
 }
-
-/** What we last sent for an app, so an unchanged pass costs no re-render. */
-const applied = new Map<number, string>();

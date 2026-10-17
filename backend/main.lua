@@ -2,14 +2,14 @@ local fs = require("fs")
 local legendary = require("legendary")
 local library = require("library")
 local log = require("log")
-local DATA = log.DATA
 local millennium = require("millennium")
+local paths = require("paths")
+local utils = require("utils")
 
--- Loaded for its `---@ffi` functions; the other modules are required above.
 require("grid")
 
 local function on_load()
-  if os.getenv("OS") ~= "Windows_NT" then
+  if utils.getenv("OS") ~= "Windows_NT" then
     log.error("Epic Games only supports Windows for now")
     millennium.ready()
     return
@@ -17,9 +17,9 @@ local function on_load()
 
   -- Left behind by versions that ran commands through a PowerShell daemon.
   -- pcall'd because one still running from before a reload holds its lock file.
-  pcall(fs.remove_all, DATA .. "/daemon")
+  pcall(fs.remove_all, paths.DATA .. "/daemon")
 
-  -- Cache only, so the first get_library is answered from disk.
+  -- Cache only, so the first GetLibrary is answered from disk.
   library.load()
 
   millennium.ready()

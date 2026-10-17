@@ -49,7 +49,7 @@ local ICON_EXTENSIONS = { "png", "ico" }
 ---@param app_id integer|string
 ---@param account_id? integer|string
 ---@return string|nil path Where the icon ended up
-function place_icon(app_id, account_id)
+function PlaceIcon(app_id, account_id)
   local path, err = grid_path(account_id)
   if not path then
     log.warn("Could not place the icon for " .. tostring(app_id) .. ": " .. tostring(err))

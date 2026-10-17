@@ -1,7 +1,10 @@
 import { createStore } from "./storage";
 
-/** Steam hands out appids above this to non-Steam shortcuts, which ours are. */
-export const NON_STEAM_APP_APPID_MASK = 2147483648;
+/** Steam sets this bit on the appids it hands non-Steam shortcuts, which ours are. */
+const SHORTCUT_APPID_BIT = 0x80000000;
+
+/** Is this a non-Steam shortcut's appid, ours or anyone's? */
+export const isShortcut = (appId: number) => appId >= SHORTCUT_APPID_BIT;
 
 // Epic app name to shortcut appid; losing it orphans every shortcut. Versioned, so
 // a change to how shortcuts are made starts fresh.

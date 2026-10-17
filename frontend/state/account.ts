@@ -24,9 +24,9 @@ export function watch(onChange: (status: EpicStatus) => void): () => void {
   const check = async () => {
     let next: EpicStatus;
     try {
-      next = await backend.get_status(false);
+      next = await backend.GetStatus(false);
     } catch (reason: unknown) {
-      console.warn("get_status failed", reason);
+      console.warn("GetStatus failed", reason);
       return;
     }
     if (stopped) return;

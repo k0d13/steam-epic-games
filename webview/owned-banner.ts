@@ -118,7 +118,7 @@ export async function markOwned() {
   if (!title) return;
 
   // The backend's cache: this runs on every store page, and asking Epic takes seconds.
-  const library = await backend.get_library();
+  const library = await backend.GetLibrary();
 
   const wanted = new Set(keys(title));
   // An empty list arrives as `{}` (Lua has one table type); Object.values reads both.

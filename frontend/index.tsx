@@ -1,6 +1,5 @@
-import { definePlugin, DialogButton, DialogControlsSection, Field, IconsModule } from "millennium";
-import { useState, useSyncExternalStore } from "react";
-import { LibraryPanel } from "./components/library-panel";
+import { definePlugin, IconsModule } from "millennium";
+import { PluginPanel, UnsupportedPanel } from "./components/plugin-panel";
 import * as achievementProgress from "./patches/achievement-progress";
 import * as achievementsPatch from "./patches/achievements";
 import * as activity from "./patches/activity";
@@ -25,70 +24,10 @@ import * as library from "./state/library";
 // IconsModule varies between Steam builds; a missing icon mustn't break the plugin.
 const PluginIcon = IconsModule?.Download ?? IconsModule?.Settings ?? (() => null);
 
-// Sign in and out happen on Epic's store in Steam's browser (see epic-session), so
-// the panel only reports the account.
-function Panel() {
-  const status = useSyncExternalStore(account.subscribe, account.get);
-  const [busy, setBusy] = useState(false);
-
-  // Forcing a status re-runs the download, for a machine that was offline.
-  const onRetry = async () => {
-    setBusy(true);
-    try {
-      await backend.get_status(true);
-    } catch (reason: unknown) {
-      console.warn("get_status failed", reason);
-    }
-    setBusy(false);
-  };
-
-  let description: string;
-  if (!status) description = "Checking for Legendary...";
-  else if (!status.available)
-    description = status.error ?? "Legendary could not be downloaded or run.";
-  else if (status.authenticated) description = `Signed in as ${status.account}`;
-  else
-    description =
-      "Not signed in. Open Store > Epic Games Store and sign in there, and this " +
-      "picks up your account.";
-
-  // One section: Steam drops the separator on a section's last field, so two
-  // would leave the rows touching.
-  return (
-    <DialogControlsSection>
-      <Field
-        label="Epic account"
-        description={description}
-        childrenContainerWidth="min"
-        bottomSeparator={status?.authenticated ? "standard" : "none"}
-      >
-        {status && !status.available && (
-          <DialogButton disabled={busy} onClick={onRetry}>
-            {busy ? "Downloading..." : "Retry"}
-          </DialogButton>
-        )}
-      </Field>
-      {status?.authenticated && <LibraryPanel />}
-    </DialogControlsSection>
-  );
-}
-
-function Unsupported() {
-  return (
-    <DialogControlsSection>
-      <Field
-        label="Windows only"
-        description="Epic Games doesn't support this platform yet, so it has left your library as it was."
-        bottomSeparator="none"
-      />
-    </DialogControlsSection>
-  );
-}
-
 export default definePlugin(async () => {
   if (!navigator.userAgent.includes("Windows")) {
     console.warn("Not on Windows, so nothing was patched");
-    return { title: "Epic Games", icon: <PluginIcon />, content: <Unsupported /> };
+    return { title: "Epic Games", icon: <PluginIcon />, content: <UnsupportedPanel /> };
   }
 
   // Before the library loads, so overviews built meanwhile are patched. Guarded so
@@ -186,6 +125,6 @@ export default definePlugin(async () => {
   return {
     title: "Epic Games",
     icon: <PluginIcon />,
-    content: <Panel />,
+    content: <PluginPanel />,
   };
 });

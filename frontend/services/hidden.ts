@@ -1,5 +1,4 @@
 import * as appIds from "../state/app-ids";
-import { NON_STEAM_APP_APPID_MASK } from "../state/app-ids";
 
 // Hides Epic shortcuts that duplicate a Steam game. The hiding calls are untyped
 // and not on every build, so they're feature tested.
@@ -27,7 +26,7 @@ function steamTitles(): Set<string> {
   const titles = new Set<string>();
 
   for (const app of appStore.allApps) {
-    if (app.appid >= NON_STEAM_APP_APPID_MASK) continue;
+    if (appIds.isShortcut(app.appid)) continue;
     if (app.display_name) titles.add(normalize(app.display_name));
   }
 

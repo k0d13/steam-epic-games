@@ -1,7 +1,7 @@
 local cache = require("cache")
 local fs = require("fs")
 local log = require("log")
-local utils = require("utils")
+local paths = require("paths")
 
 -- `egl-sync` quietly skips Epic Games Launcher manifests it can't resolve, so the
 -- leftovers are read here and handed to `legendary import` instead.
@@ -16,12 +16,7 @@ local egl = {}
 ---Every game the Epic Games Launcher currently has installed.
 ---@return EglManifest[]
 function egl.get_manifests()
-  -- One .item file per installed game, on the system drive but not always C:.
-  local program_data = utils.getenv("PROGRAMDATA")
-  if not program_data or program_data == "" then
-    program_data = "C:/ProgramData"
-  end
-  local path = program_data .. "/Epic/EpicGamesLauncher/Data/Manifests"
+  local path = paths.egl_manifests()
 
   if not fs.is_directory(path) then
     log.info("No Epic Games Launcher manifests at " .. path)
@@ -31,7 +26,7 @@ function egl.get_manifests()
   local manifests = {}
   for _, entry in ipairs(fs.list(path) or {}) do
     -- The folder also holds a `Pending` directory for in-progress installs.
-    if entry.is_file and utils.endswith(entry.name:lower(), ".item") then
+    if entry.is_file and fs.extension(entry.path):lower() == ".item" then
       local decoded = cache.read(entry.path, "Epic Games Launcher manifest") or {}
 
       if decoded.bIsIncompleteInstall == true then

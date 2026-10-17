@@ -1,5 +1,6 @@
 import { afterPatch, ConfirmModal, MenuItem, showModal } from "millennium";
 import { createElement, cloneElement, Children, type ReactElement, type ReactNode } from "react";
+import { getFiber } from "../services/fiber";
 import { findExport } from "../services/modules";
 import { memo } from "../services/once";
 import { mainPopup, onPopupCreate } from "../services/popups";
@@ -12,22 +13,6 @@ import * as library from "../state/library";
 interface ManageMenuInstance {
   BuildManageSubmenu(...args: unknown[]): ReactElement;
   forceUpdate(): void;
-}
-
-interface Fiber {
-  stateNode: unknown;
-  child: Fiber | null;
-  sibling: Fiber | null;
-  return: Fiber | null;
-}
-
-/** The React fiber for a DOM node, under a build-specific key. */
-function getFiber(node: Element): Fiber | undefined {
-  for (const key of Object.keys(node)) {
-    if (!key.startsWith("__reactFiber$") && !key.startsWith("__reactContainer$")) continue;
-    return Reflect.get(node, key) as Fiber;
-  }
-  return undefined;
 }
 
 /** The menu class instance under `root`: an ancestor, so climb to the React root first. */
@@ -43,10 +28,10 @@ function findManageMenu(root: Element): ManageMenuInstance | undefined {
 
   while (fiber.return) fiber = fiber.return;
 
-  const queue: Fiber[] = [fiber];
-  while (queue.length > 0) {
-    const current = queue.shift();
-    if (!current) continue;
+  // An index rather than shift(), which is linear: a menu's tree is thousands deep.
+  const queue = [fiber];
+  for (let index = 0; index < queue.length; index++) {
+    const current = queue[index]!;
     const node = current.stateNode as ManageMenuInstance | null;
     if (typeof node?.BuildManageSubmenu === "function") return node;
     if (current.child) queue.push(current.child);
@@ -221,10 +206,8 @@ export function register() {
     };
   }
 
-  observe(mainPopup()?.root_element);
-
-  // Popups are empty at creation, so the observer finds the menu; the immediate
-  // try catches one already rendered.
+  // The main window included. Popups are empty at creation, so the observer finds
+  // the menu; the immediate try catches one already rendered.
   const unwatch = onPopupCreate((popup) => {
     if (unpatch) return;
 

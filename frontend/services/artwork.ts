@@ -17,15 +17,21 @@ export const forget = done.remove;
 /** Forget every game, so the next sync downloads all of it again. */
 export const forgetAll = done.clear;
 
+async function fetchBlob(url: string): Promise<Blob> {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+  return response.blob();
+}
+
+/** The base64 out of a `data:` URL, which is all SetCustomArtworkForApp wants. */
+const stripDataUrl = (dataUrl: string) => dataUrl.slice(dataUrl.indexOf(",") + 1);
+
 /**
  * Fetch an image as bare base64. Given a whole `data:` URL, SetCustomArtworkForApp
  * silently writes a broken asset.
  */
 async function fetchAsBase64(url: string): Promise<{ base64: string; type: "jpg" | "png" }> {
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
-
-  const blob = await response.blob();
+  const blob = await fetchBlob(url);
   const dataUrl = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result as string);
@@ -34,7 +40,7 @@ async function fetchAsBase64(url: string): Promise<{ base64: string; type: "jpg"
   });
 
   return {
-    base64: dataUrl.slice(dataUrl.indexOf(",") + 1),
+    base64: stripDataUrl(dataUrl),
     type: blob.type === "image/png" ? "png" : "jpg",
   };
 }
@@ -61,10 +67,7 @@ function accountId(): number | undefined {
 
 /** Crop a square icon from artwork. Via a blob, since a cross-origin canvas is tainted. */
 async function cropToIcon(url: string): Promise<string> {
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
-
-  const bitmap = await createImageBitmap(await response.blob());
+  const bitmap = await createImageBitmap(await fetchBlob(url));
 
   try {
     const canvas = document.createElement("canvas");
@@ -88,8 +91,7 @@ async function cropToIcon(url: string): Promise<string> {
       ICON_SIZE,
     );
 
-    const dataUrl = canvas.toDataURL("image/png");
-    return dataUrl.slice(dataUrl.indexOf(",") + 1);
+    return stripDataUrl(canvas.toDataURL("image/png"));
   } finally {
     bitmap.close();
   }
@@ -104,7 +106,7 @@ async function applyIcon(appId: number, game: EpicGame): Promise<boolean> {
     const base64 = await cropToIcon(source);
     await SteamClient.Apps.SetCustomArtworkForApp(appId, base64, "png", ELibraryAssetType.Icon);
 
-    const path = await backend.place_icon(appId, accountId());
+    const path = await backend.PlaceIcon(appId, accountId());
     if (!path) return false;
 
     SteamClient.Apps.SetShortcutIcon(appId, path.replaceAll("/", "\\"));

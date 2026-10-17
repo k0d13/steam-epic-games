@@ -53,9 +53,7 @@ export function sync() {
   const overview = getOverview();
   if (!overview) return;
 
-  const job = jobs
-    .active()
-    .find((candidate) => candidate.kind === "install" || candidate.kind === "update");
+  const job = jobs.running().find(jobs.isDownload);
   const appId = job && appIds.getAppId(job.app_name);
 
   if (job && appId !== undefined) {
