@@ -68,8 +68,6 @@ const completed = new Map<string, number>();
 /** What was downloading on the last pass, to tell a finish from a cancel. */
 let downloading = new Set<string>();
 
-const isDownload = (job: Job) => job.kind === "install" || job.kind === "update";
-
 function stages(bytesInProgress: number, bytesTotal: number, eta: number): UpdateProgress[] {
   return Array.from({ length: PROGRESS_STAGES }, (_, stage) =>
     stage === PROGRESS_DOWNLOAD
@@ -137,7 +135,7 @@ function ours(theirs: DownloadItem[]): DownloadItem[] {
   const items: DownloadItem[] = [];
   let next = Math.max(-1, ...theirs.map((transfer) => transfer.queue_index)) + 1;
 
-  for (const job of [...jobs.active(), ...jobs.queued()].filter(isDownload)) {
+  for (const job of [...jobs.running(), ...jobs.queued()].filter(jobs.isDownload)) {
     const appId = appIds.getAppId(job.app_name);
     if (appId === undefined) continue;
 
@@ -152,7 +150,7 @@ function ours(theirs: DownloadItem[]): DownloadItem[] {
   }
 
   // Steam files paused downloads as unqueued, with a button to resume.
-  for (const job of jobs.paused().filter(isDownload)) {
+  for (const job of jobs.paused().filter(jobs.isDownload)) {
     const appId = appIds.getAppId(job.app_name);
     if (appId === undefined) continue;
 
@@ -188,8 +186,8 @@ function track() {
   }
 
   downloading = new Set(
-    [...jobs.active(), ...jobs.queued(), ...jobs.paused()]
-      .filter(isDownload)
+    [...jobs.running(), ...jobs.queued(), ...jobs.paused()]
+      .filter(jobs.isDownload)
       .map((job) => job.app_name),
   );
 }

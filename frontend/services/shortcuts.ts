@@ -1,5 +1,5 @@
+import { sleep } from "millennium";
 import * as appIds from "../state/app-ids";
-import { NON_STEAM_APP_APPID_MASK } from "../state/app-ids";
 import { createEmitter } from "../state/emitter";
 import * as library from "../state/library";
 import * as artwork from "./artwork";
@@ -45,7 +45,7 @@ export function getSyncState(): SyncState {
 const BATCH_SIZE = 10;
 
 async function createShortcut(game: EpicGame): Promise<number | undefined> {
-  const launch = await backend.get_launch_command(game.app_name);
+  const launch = await backend.GetLaunchCommand(game.app_name);
   if (!launch) {
     console.debug("No launch command available", { appName: game.app_name });
     return undefined;
@@ -96,13 +96,7 @@ export async function sync(games: EpicGame[]): Promise<SyncResult> {
 
   try {
     // Shortcuts the user deleted by hand would otherwise look synced forever.
-    appIds.prune(
-      new Set(
-        appStore.allApps
-          .filter((app) => app.appid >= NON_STEAM_APP_APPID_MASK)
-          .map((app) => app.appid),
-      ),
-    );
+    appIds.prune(new Set(appStore.allApps.map((app) => app.appid).filter(appIds.isShortcut)));
 
     const known = appIds.getAll();
     const owned = new Set(games.map((game) => game.app_name));
@@ -147,7 +141,7 @@ export async function sync(games: EpicGame[]): Promise<SyncResult> {
           library.reindexAppIds();
         }
 
-        await new Promise((resolve) => setTimeout(resolve, 0));
+        await sleep(0);
       }
     }
 
@@ -179,7 +173,7 @@ let launcherDir: Promise<string | undefined> | undefined;
 export async function alignStartDirs() {
   // The folder is the same for every game, so any name will do.
   launcherDir ??= backend
-    .get_launch_command("")
+    .GetLaunchCommand("")
     .then((launch) => launch?.start_dir || undefined)
     .catch(() => undefined);
 

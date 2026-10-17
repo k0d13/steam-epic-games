@@ -126,7 +126,7 @@ export async function open(appId: number, appName: string, folderName?: string) 
     return;
   }
 
-  const size = await backend.get_game_size(appName);
+  const size = await backend.GetGameSize(appName);
 
   pending = {
     appName,

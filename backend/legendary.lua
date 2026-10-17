@@ -1,10 +1,11 @@
 --# selene: allow(unused_variable)
 local cache = require("cache")
+local datetime = require("datetime")
 local fs = require("fs")
 local jobs = require("jobs")
 local json = require("json")
 local log = require("log")
-local DATA = log.DATA
+local paths = require("paths")
 local shell = require("shell")
 local utils = require("utils")
 local vendor = require("vendor")
@@ -18,19 +19,19 @@ local legendary = {}
 local LOGIN_URL = "https://legendary.gl/epiclogin"
 
 ---@type string|nil
-local BINARY = nil
+local binary_path = nil
 
 ---The legendary binary, downloaded on first use. Public because shortcuts launch
 ---legendary rather than the game's exe.
 ---@return string|nil path
 ---@return string? error
 function legendary.get_binary()
-  if BINARY and fs.is_file(BINARY) then
-    return BINARY
+  if binary_path and fs.is_file(binary_path) then
+    return binary_path
   end
 
   local path, err = vendor.ensure()
-  BINARY = path
+  binary_path = path
   return path, err
 end
 
@@ -183,7 +184,7 @@ end
 ---after anything that could change the answer.
 ---@param refresh? boolean
 ---@return EpicStatus
-function get_status(refresh)
+function GetStatus(refresh)
   return legendary.get_status(refresh)
 end
 
@@ -192,7 +193,7 @@ end
 ---works, survives Epic moving the exe, and works before the game is installed.
 ---@param app_name string
 ---@return LaunchCommand|nil
-function get_launch_command(app_name)
+function GetLaunchCommand(app_name)
   local binary = legendary.get_binary()
   if not binary then
     return nil
@@ -201,7 +202,7 @@ function get_launch_command(app_name)
   return {
     exe = binary,
     arguments = 'launch "' .. app_name .. '"',
-    start_dir = binary:match("^(.*)[\\/]") or "",
+    start_dir = fs.parent_path(binary),
   }
 end
 
@@ -212,7 +213,7 @@ end
 ---@field disk integer Bytes the installed game occupies - what Steam calls "Space Required"
 ---@field download integer Bytes actually transferred, which is smaller: Epic ships compressed
 
-local SIZES_PATH = DATA .. "/cache/sizes.json"
+local SIZES_PATH = paths.DATA .. "/cache/sizes.json"
 
 ---@type table<string, GameSize>|nil
 local sizes = nil
@@ -222,7 +223,7 @@ local sizes = nil
 ---@param app_name string
 ---@param refresh? boolean Re-read even if it's cached
 ---@return GameSize|nil
-function get_game_size(app_name, refresh)
+function GetGameSize(app_name, refresh)
   sizes = sizes or cache.read(SIZES_PATH, "sizes") or {}
   if sizes[app_name] and not refresh then
     return sizes[app_name]
@@ -249,7 +250,7 @@ end
 -- Cached per game like sizes, but these go stale as the user plays, so `fetched_at`
 -- lets the frontend decide when to ask again.
 
-local ACHIEVEMENTS_PATH = DATA .. "/cache/achievements.json"
+local ACHIEVEMENTS_PATH = paths.DATA .. "/cache/achievements.json"
 
 ---@class Achievement
 ---@field id string Epic's internal name, unique within the game
@@ -276,6 +277,13 @@ local ACHIEVEMENTS_PATH = DATA .. "/cache/achievements.json"
 
 ---@type table<string, GameAchievements>|nil
 local achievements = nil
+
+---Every cached game's achievements, read off disk the first time.
+---@return table<string, GameAchievements>
+local function load_achievements()
+  achievements = achievements or cache.read(ACHIEVEMENTS_PATH, "achievements") or {}
+  return achievements
+end
 
 ---Flatten one of legendary's four buckets into our own shape.
 ---@param entries table[]|nil
@@ -314,7 +322,7 @@ local function build_achievements(decoded)
   return {
     total = decoded.total_achievements or #list,
     unlocked = decoded.user_unlocked or 0,
-    fetched_at = math.floor(utils.time()),
+    fetched_at = datetime.unix(),
     achievements = list,
   }
 end
@@ -324,10 +332,10 @@ end
 ---@param app_name string
 ---@param refresh? boolean Ask Epic again even if it's cached
 ---@return GameAchievements|nil
-function get_achievements(app_name, refresh)
-  achievements = achievements or cache.read(ACHIEVEMENTS_PATH, "achievements") or {}
-  if achievements[app_name] and not refresh then
-    return achievements[app_name]
+function GetAchievements(app_name, refresh)
+  local cached = load_achievements()
+  if cached[app_name] and not refresh then
+    return cached[app_name]
   end
 
   -- --hidden, since Steam blurs undiscovered ones itself and its counts need them.
@@ -343,8 +351,8 @@ function get_achievements(app_name, refresh)
   end
 
   local result = build_achievements(decoded)
-  achievements[app_name] = result
-  cache.write(ACHIEVEMENTS_PATH, achievements, "achievements")
+  cached[app_name] = result
+  cache.write(ACHIEVEMENTS_PATH, cached, "achievements")
 
   log.info("Read achievements for " .. app_name .. ": " .. result.unlocked .. "/" .. result.total)
   return result
@@ -354,11 +362,9 @@ end
 ---Cached achievement counts for every game, without asking Epic, for the library's
 ---"% of Achievements Completed" sort.
 ---@return AchievementSummary[]
-function get_cached_achievements()
-  achievements = achievements or cache.read(ACHIEVEMENTS_PATH, "achievements") or {}
-
+function GetCachedAchievements()
   local summaries = {}
-  for app_name, entry in pairs(achievements) do
+  for app_name, entry in pairs(load_achievements()) do
     table.insert(summaries, {
       app_name = app_name,
       total = entry.total,
@@ -389,18 +395,18 @@ local function start_job(app_name, kind, args)
 end
 
 ---@ffi
----Install, update or resume a game; progress comes back through `get_jobs`.
+---Install, update or resume a game; progress comes back through `GetJobs`.
 ---legendary's `install` resumes a partial download in place.
 ---@param app_name string
 ---@param base_path? string Parent directory to install into, legendary's default if nil
 ---@param game_folder? string Directory name inside it
 ---@return Job|nil
-function start_install(app_name, base_path, game_folder)
+function StartInstall(app_name, base_path, game_folder)
   local args = { "-y", "install", app_name }
 
   if type(base_path) == "string" and base_path ~= "" then
     table.insert(args, "--base-path")
-    table.insert(args, (base_path:gsub("/", "\\")))
+    table.insert(args, shell.windows_path(base_path))
   end
   if type(game_folder) == "string" and game_folder ~= "" then
     table.insert(args, "--game-folder")
@@ -415,7 +421,7 @@ end
 ---rather than quietly installing it.
 ---@param app_name string
 ---@return Job|nil
-function start_update(app_name)
+function StartUpdate(app_name)
   return start_job(app_name, "update", { "-y", "install", app_name, "--update-only" })
 end
 
@@ -424,7 +430,7 @@ end
 ---uninstalled games in the library is the point of the plugin.
 ---@param app_name string
 ---@return Job|nil
-function start_uninstall(app_name)
+function StartUninstall(app_name)
   return start_job(app_name, "uninstall", { "-y", "uninstall", app_name })
 end
 
@@ -436,7 +442,7 @@ end
 ---failure. legendary exits 0 either way, so success is read from its status.
 ---@param code string The authorizationCode from Epic's redirect page
 ---@return EpicStatus
-function sign_in(code)
+function SignIn(code)
   log.info("Signing in with a code from the store's session")
   local output = legendary.run({ "auth", "--code", utils.trim(code) })
   local current = legendary.get_status(true)
@@ -455,7 +461,7 @@ end
 ---@ffi
 ---Sign out, so the next sign in starts clean.
 ---@return EpicStatus
-function sign_out()
+function SignOut()
   log.info("Signing out, the store is signed out")
   legendary.run({ "auth", "--delete" })
   return legendary.get_status(true)

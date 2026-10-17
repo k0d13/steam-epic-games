@@ -1,5 +1,6 @@
 import { type SteamAppOverview } from "millennium";
-import { mainPopup, onPopupCreate } from "../services/popups";
+import { findUp } from "../services/fiber";
+import { onPopupCreate } from "../services/popups";
 import * as library from "../state/library";
 
 // An Epic mark on library artwork. The components can't be patched, so the appid is
@@ -67,34 +68,20 @@ const TARGETS = {
   '[class~="FeaturedCapsule"] > [class~="Container"]': "capsule",
 } as const;
 
-interface Fiber {
-  memoizedProps: Record<string, unknown> | null;
-  return: Fiber | null;
-}
-
-function getFiber(node: Element): Fiber | undefined {
-  for (const key of Object.keys(node)) {
-    if (key.startsWith("__reactFiber$")) return Reflect.get(node, key) as Fiber;
-  }
-  return undefined;
-}
-
 /** The artwork's appid, held above it as `appid`, `app` (an overview) or `item`. */
 function findAppId(element: Element): number | undefined {
-  for (let fiber: Fiber | null | undefined = getFiber(element); fiber; fiber = fiber.return) {
-    const props = fiber.memoizedProps;
-    if (!props) continue;
+  return findUp(element, ({ memoizedProps: props }) => {
+    if (!props) return undefined;
 
     for (const value of [
       props.appid,
-      (props.app as SteamAppOverview)?.appid,
-      (props.item as SteamAppOverview)?.appid,
+      (props.app as SteamAppOverview | undefined)?.appid,
+      (props.item as SteamAppOverview | undefined)?.appid,
     ]) {
       if (typeof value === "number") return value;
     }
-  }
-
-  return undefined;
+    return undefined;
+  });
 }
 
 /** Mark, or unmark, every piece of artwork under `root`. */
@@ -156,18 +143,11 @@ function watch(root: Element | undefined) {
 export function register() {
   const watchers = new Set<{ disconnect(): void; restamp(): void }>();
 
-  const add = (root: Element | undefined) => {
-    const watcher = watch(root);
-    if (watcher) watchers.add(watcher);
-    return watcher;
-  };
-
-  add(mainPopup()?.root_element);
-
-  // A detached library window is a popup of its own.
+  // The main window, and a detached library window, which is a popup of its own.
   const unwatch = onPopupCreate((popup) => {
-    const watcher = add(popup.root_element);
+    const watcher = watch(popup.root_element);
     if (!watcher) return;
+    watchers.add(watcher);
 
     return () => {
       watcher.disconnect();

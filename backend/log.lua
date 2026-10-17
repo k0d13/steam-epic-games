@@ -1,5 +1,6 @@
+local datetime = require("datetime")
 local fs = require("fs")
-local millennium = require("millennium")
+local paths = require("paths")
 local utils = require("utils")
 
 -- Millennium 3.5 drops the reply to any call that writes through its `logger`,
@@ -7,25 +8,34 @@ local utils = require("utils")
 
 local log = {}
 
--- Millennium's data folder for the plugin. Not `utils.get_backend_path()`, which
--- comes back empty under `starlight watch`.
-local DATA = millennium.steam_path() .. "/millennium/data/epic-games"
-log.DATA = DATA
+local PATH = paths.DATA .. "/plugin.log"
 
-local PATH = DATA .. "/plugin.log"
+--- Only the latest lines are kept, so the log stays small however long Steam runs.
+local MAX_LINES = 500
 
---- Started over past this, so a Steam that runs for weeks doesn't grow it forever.
-local MAX_BYTES = 1024 * 1024
+fs.create_directories(paths.DATA)
 
-fs.create_directories(DATA)
-if (fs.file_size(PATH) or 0) > MAX_BYTES then
-  fs.remove(PATH)
+-- Held in memory so dropping the oldest line doesn't mean reading the file back.
+local lines = {}
+for line in (utils.read_file(PATH) or ""):gmatch("[^\n]+") do
+  table.insert(lines, line)
+end
+while #lines > MAX_LINES do
+  table.remove(lines, 1)
 end
 
 ---@param level string
 ---@param message string
 local function write(level, message)
-  utils.append_file(PATH, os.date("%Y-%m-%d %H:%M:%S") .. " " .. level .. " " .. message .. "\n")
+  local line = datetime.format(datetime.now()) .. " " .. level .. " " .. message
+  table.insert(lines, line)
+
+  if #lines > MAX_LINES then
+    table.remove(lines, 1)
+    utils.write_file(PATH, table.concat(lines, "\n") .. "\n")
+  else
+    utils.append_file(PATH, line .. "\n")
+  end
 end
 
 ---@param message string

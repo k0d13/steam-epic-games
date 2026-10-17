@@ -18,20 +18,18 @@ export function get(appName: string): Job | undefined {
   return byAppName.get(appName);
 }
 
-export function active(): Job[] {
-  return [...byAppName.values()].filter((job) => job.state === "running");
-}
+const inState = (state: string) => [...byAppName.values()].filter((job) => job.state === state);
+
+/** The one job legendary is running, as a list since the backend can't promise one. */
+export const running = () => inState("running");
 
 /** Waiting on the one legendary run the backend allows, oldest request first. */
-export function queued(): Job[] {
-  return [...byAppName.values()]
-    .filter((job) => job.state === "queued")
-    .sort((a, b) => a.started_at - b.started_at);
-}
+export const queued = () => inState("queued").sort((a, b) => a.started_at - b.started_at);
 
-export function paused(): Job[] {
-  return [...byAppName.values()].filter((job) => job.state === "paused");
-}
+export const paused = () => inState("paused");
+
+/** Downloads, which the downloads page shows, rather than uninstalls, which it doesn't. */
+export const isDownload = (job: Job) => job.kind === "install" || job.kind === "update";
 
 /** What the UI can tell apart: Steam draws the bar in whole percent. */
 const shownPercent = (job: Job | undefined) =>
@@ -75,10 +73,10 @@ async function poll() {
 
   let jobs: Job[];
   try {
-    jobs = Object.values(await backend.get_jobs());
+    jobs = Object.values(await backend.GetJobs());
   } catch (reason: unknown) {
     // One failed call shouldn't leave a dead poller behind mid-download.
-    console.warn("get_jobs failed", reason);
+    console.warn("GetJobs failed", reason);
     schedule();
     return;
   }
@@ -103,14 +101,14 @@ async function poll() {
  */
 function schedule() {
   if (timer !== undefined) return;
-  if (active().length === 0 && queued().length === 0) return;
+  if (running().length === 0 && queued().length === 0) return;
 
   timer = setTimeout(() => void poll(), POLL_MS);
 }
 
 /** Read the jobs once and start polling if needed. Always emits, unlike the poll. */
 export async function refresh() {
-  apply(Object.values(await backend.get_jobs()));
+  apply(Object.values(await backend.GetJobs()));
   emitter.emit();
   schedule();
 }
@@ -138,12 +136,12 @@ async function track(appName: string, job: Job | null) {
 
 /** Start or resume an install; comes back queued if another job is running. */
 export async function install(appName: string, basePath?: string, gameFolder?: string) {
-  return track(appName, await backend.start_install(appName, basePath, gameFolder));
+  return track(appName, await backend.StartInstall(appName, basePath, gameFolder));
 }
 
 /** Update an installed game to Epic's latest build. */
 export async function update(appName: string) {
-  return track(appName, await backend.start_update(appName));
+  return track(appName, await backend.StartUpdate(appName));
 }
 
 /**
@@ -155,18 +153,18 @@ export async function resume(appName: string) {
 }
 
 export async function uninstall(appName: string) {
-  return track(appName, await backend.start_uninstall(appName));
+  return track(appName, await backend.StartUninstall(appName));
 }
 
 /** Pause everything of ours. What Steam's global "pause all downloads" maps to. */
 export async function pauseAll() {
   // The queue too, or the backend starts the next job straight away.
-  for (const job of [...active(), ...queued()]) await backend.pause_job(job.app_name);
+  for (const job of [...running(), ...queued()]) await backend.PauseJob(job.app_name);
   await refresh();
 }
 
 export async function cancel(appName: string) {
-  const cancelled = await backend.cancel_job(appName);
+  const cancelled = await backend.CancelJob(appName);
   await refresh();
   return cancelled;
 }

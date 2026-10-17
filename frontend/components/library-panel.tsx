@@ -71,7 +71,7 @@ export function LibraryPanel() {
       // `force` too: Refresh is for changes legendary's catalog cache would miss.
       result = await library.load(refresh, refresh);
     } catch (reason: unknown) {
-      console.warn("get_library failed", reason);
+      console.warn("GetLibrary failed", reason);
       setError("The plugin's backend didn't respond.");
       setLoading(false);
       return;

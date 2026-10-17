@@ -5,6 +5,13 @@ local utils = require("utils")
 
 local shell = {}
 
+---Backslashes for the Windows programs that won't take a forward slash.
+---@param path string
+---@return string
+function shell.windows_path(path)
+  return (path:gsub("/", "\\"))
+end
+
 ---Is a process holding `path` open? Windows refuses a write to a file opened
 ---unshared, and this costs no subprocess.
 ---@param path string
@@ -31,7 +38,7 @@ end
 ---@return string
 function shell.vbs_launcher(script_path)
   local command = 'powershell -NoProfile -ExecutionPolicy Bypass -File "'
-    .. (script_path:gsub("/", "\\"))
+    .. shell.windows_path(script_path)
     .. '"'
   return 'CreateObject("WScript.Shell").Run "' .. command:gsub('"', '""') .. '", 0, False'
 end
