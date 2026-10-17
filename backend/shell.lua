@@ -5,11 +5,12 @@ local utils = require("utils")
 
 local shell = {}
 
----Backslashes for the Windows programs that won't take a forward slash.
+---Backslashes for the Windows programs that won't take a forward slash, and an
+---uppercase drive letter since Millennium hands Steam's path back lowercased.
 ---@param path string
 ---@return string
 function shell.windows_path(path)
-  return (path:gsub("/", "\\"))
+  return (path:gsub("/", "\\"):gsub("^%a:", string.upper))
 end
 
 ---Is a process holding `path` open? Windows refuses a write to a file opened

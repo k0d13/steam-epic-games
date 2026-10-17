@@ -199,10 +199,11 @@ function GetLaunchCommand(app_name)
     return nil
   end
 
+  -- Steam shows these paths as given, so they get one style of separator.
   return {
-    exe = binary,
+    exe = shell.windows_path(binary),
     arguments = 'launch "' .. app_name .. '"',
-    start_dir = fs.parent_path(binary),
+    start_dir = shell.windows_path(fs.parent_path(binary)),
   }
 end
 
