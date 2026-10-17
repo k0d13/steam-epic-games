@@ -16,6 +16,7 @@ import * as storeMenu from "./patches/store-menu";
 import * as epicSession from "./services/epic-session";
 import { onGameStopped } from "./services/playtime";
 import * as shortcuts from "./services/shortcuts";
+import * as steamLibrary from "./services/steam-library";
 import * as account from "./state/account";
 import * as achievements from "./state/achievements";
 import * as jobs from "./state/jobs";
@@ -74,7 +75,7 @@ export default definePlugin(async () => {
   const unsubscribes = [
     // The store decides who's signed in. Signed out, the backend's library is
     // empty; signed in as someone, it's theirs to fetch.
-    account.watch((status) => void library.load(status.authenticated)),
+    account.watch((status) => void library.load(status.authenticated).then(steamLibrary.autoSync)),
     // Signs legendary in and out with the store in Steam's browser.
     epicSession.start(),
 
@@ -117,7 +118,7 @@ export default definePlugin(async () => {
 
     // A cached library never shows updates: legendary compares against the catalog
     // it fetched. Costs a round trip, so nothing waits on it.
-    void library.load(true, true);
+    void library.load(true, true).then(steamLibrary.autoSync);
   })();
 
   console.info("Plugin loaded");
