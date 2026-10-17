@@ -1,4 +1,4 @@
-import { MenuGroup, MenuItem } from "millennium";
+import { MenuItem, type MenuGroupProps } from "millennium";
 import {
   createElement,
   cloneElement,
@@ -107,6 +107,20 @@ const getMenuItems = memo(() => {
   return component;
 });
 
+/** Steam's submenu row. Millennium's own `MenuGroup` is undefined on current builds. */
+type MenuGroup = ComponentType<MenuGroupProps>;
+
+/** The small wrapper that hands the row's class `bInGamepadUI`. */
+const getMenuGroup = memo(() => {
+  const component = findExport("RenderSubMenu", (value): value is MenuGroup => {
+    if (typeof value !== "function") return false;
+    const source = value.toString();
+    return source.includes("bInGamepadUI:") && source.length < 200;
+  });
+  if (!component) console.warn("Steam's submenu component wasn't found");
+  return component;
+});
+
 /** Marks a submenu's row with the store it opens, for the click handler in `register`. */
 const STORE_ATTRIBUTE = "data-epic-store-row";
 
@@ -121,7 +135,8 @@ function groupLabel(text: string, store: keyof typeof ROW_URLS): string {
 
 function buildMenu(original: ReactElement<MenuProps>): ReactElement<MenuProps> | undefined {
   const MenuItems = getMenuItems();
-  if (!MenuItems) return undefined;
+  const MenuGroup = getMenuGroup();
+  if (!MenuItems || !MenuGroup) return undefined;
 
   // A submenu is its own popup, so entering it leaves the menu, which then hides
   // itself and the submenu with it. Steam's handlers count it as part of the menu.
