@@ -80,11 +80,6 @@ export async function loadInstalled() {
   return result;
 }
 
-/** Whether anything is signed in, for the paths that cost nothing to skip. */
-export function isEmpty(): boolean {
-  return byAppName.size === 0;
-}
-
 /** The Steam appids we have shortcuts for, for the paths that correct them. */
 export function appIdsWithGames(): number[] {
   return [...byAppId.keys()];

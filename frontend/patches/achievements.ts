@@ -1,3 +1,4 @@
+import { type AppAchievement, type AppAchievements } from "millennium";
 import * as achievements from "../state/achievements";
 import * as library from "../state/library";
 
@@ -7,29 +8,6 @@ import * as library from "../state/library";
 //
 // The section itself copes, so backend/patches.lua has that line ask
 // `ShortcutSections`, which puts "achievements" back; app-details.ts supplies the data.
-
-/** Steam's own achievement shape, as the details store carries it. */
-interface SteamAchievement {
-  bAchieved: boolean;
-  bHidden: boolean;
-  flMinProgress: number;
-  flCurrentProgress: number;
-  flMaxProgress: number;
-  flAchieved: number;
-  rtUnlocked: number;
-  strDescription: string;
-  strID: string;
-  strImage: string;
-  strName: string;
-}
-
-export interface SteamAchievements {
-  nAchieved: number;
-  nTotal: number;
-  vecHighlight: SteamAchievement[];
-  vecUnachieved: SteamAchievement[];
-  vecAchievedHidden: SteamAchievement[];
-}
 
 interface AppOverview {
   appid: number;
@@ -45,13 +23,13 @@ function unlockedAt(achievement: Achievement): number {
 }
 
 /** Keyed by the state object, which is replaced whenever a fetch lands. */
-const converted = new WeakMap<GameAchievements, SteamAchievement[]>();
+const converted = new WeakMap<GameAchievements, AppAchievement[]>();
 
 /**
  * A game's achievements converted for Steam, latest unlock first. Undefined while
  * waiting on Epic; this is what starts the fetch.
  */
-function listFor(appName: string): SteamAchievement[] | undefined {
+function listFor(appName: string): AppAchievement[] | undefined {
   achievements.ensure(appName);
 
   const result = achievements.get(appName);
@@ -62,7 +40,7 @@ function listFor(appName: string): SteamAchievement[] | undefined {
     // An empty list arrives as `{}` (Lua has one table type); Object.values reads both.
     list = Object.values(result.achievements)
       .sort((a, b) => unlockedAt(b) - unlockedAt(a))
-      .map((achievement): SteamAchievement => {
+      .map((achievement): AppAchievement => {
         // Steam draws a bar whenever there's a maximum, so only partly-done ones get one.
         const partial =
           !achievement.unlocked && achievement.progress > 0 && achievement.progress < 1;
@@ -88,10 +66,10 @@ function listFor(appName: string): SteamAchievement[] | undefined {
 }
 
 /** Kept against the converted list, for the same reason `converted` is. */
-const bucketed = new WeakMap<SteamAchievement[], SteamAchievements>();
+const bucketed = new WeakMap<AppAchievement[], AppAchievements>();
 
 /** The details store's shape, memoised since a fresh object re-renders every repaint. */
-export function getAchievements(appName: string): SteamAchievements | undefined {
+export function getAchievements(appName: string): AppAchievements | undefined {
   const list = listFor(appName);
   const result = achievements.get(appName);
   if (!list || !result) return undefined;
@@ -99,9 +77,9 @@ export function getAchievements(appName: string): SteamAchievements | undefined 
   const cached = bucketed.get(list);
   if (cached) return cached;
 
-  const highlight: SteamAchievement[] = [];
-  const unachieved: SteamAchievement[] = [];
-  const achievedHidden: SteamAchievement[] = [];
+  const highlight: AppAchievement[] = [];
+  const unachieved: AppAchievement[] = [];
+  const achievedHidden: AppAchievement[] = [];
 
   for (const achievement of list) {
     if (!achievement.bAchieved) unachieved.push(achievement);
@@ -134,9 +112,9 @@ interface StoreResult<T> {
 
 /** The store's own grouping, keyed by achievement id. */
 interface MyAchievements {
-  achieved: Record<string, SteamAchievement>;
-  unachieved: Record<string, SteamAchievement>;
-  hidden: Record<string, SteamAchievement>;
+  achieved: Record<string, AppAchievement>;
+  unachieved: Record<string, AppAchievement>;
+  hidden: Record<string, AppAchievement>;
 }
 
 /** Just the rarities, which the page shows as "x% of players". */
@@ -144,11 +122,11 @@ type GlobalAchievements = Record<string, number>;
 
 /** Memoised groupings. `withHidden` is off for the player page, which has no hidden bucket. */
 const grouping = {
-  true: new WeakMap<SteamAchievement[], MyAchievements>(),
-  false: new WeakMap<SteamAchievement[], MyAchievements>(),
+  true: new WeakMap<AppAchievement[], MyAchievements>(),
+  false: new WeakMap<AppAchievement[], MyAchievements>(),
 };
 
-function group(list: SteamAchievement[], withHidden: boolean): MyAchievements {
+function group(list: AppAchievement[], withHidden: boolean): MyAchievements {
   // The page reads its getters every render, and a big game is hundreds of writes.
   const memo = grouping[withHidden ? "true" : "false"];
   const cached = memo.get(list);
@@ -167,7 +145,7 @@ function group(list: SteamAchievement[], withHidden: boolean): MyAchievements {
 }
 
 /** What each getter answers with, built from our converted list. */
-const GETTERS: Record<string, (ours: SteamAchievement[]) => unknown> = {
+const GETTERS: Record<string, (ours: AppAchievement[]) => unknown> = {
   GetMyAchievements: (ours) => group(ours, true),
 
   // Epic publishes rarity too, so the page's rarity column is real.

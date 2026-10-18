@@ -19,32 +19,15 @@ function partition(appIds: number[] | undefined) {
   return { ours, theirs };
 }
 
-/** The functions we patch. None of them are in @steambrew/client's typings. */
-interface Installs {
-  OpenInstallWizard(appIds: number[]): void;
-  OpenUninstallWizard(appIds: number[], bConfirm: boolean): void;
-}
-
-interface Downloads {
-  ResumeAppUpdate(appId: number, clientId?: string): void;
-  RemoveFromDownloadList(appId: number, clientId?: string): void;
-  EnableAllDownloads(enabled: boolean, clientId?: string): void;
-}
-
-interface Bridge {
-  Installs: Installs;
-  Downloads: Downloads;
-}
-
 export function register() {
-  const bridge = SteamClient as unknown as Bridge;
+  const { Installs, Downloads } = SteamClient;
   const patches = [
     // The native wizard ignores non-Steam appids, so install-wizard.ts opens it from JS.
-    replacePatch(bridge.Installs, "OpenInstallWizard", ([appIds]: [number[]]) => {
+    replacePatch(Installs, "OpenInstallWizard", ([appIds]) => {
       const { ours, theirs } = partition(appIds);
       if (ours.length === 0) return callOriginal;
 
-      if (theirs.length > 0) bridge.Installs.OpenInstallWizard(theirs);
+      if (theirs.length > 0) Installs.OpenInstallWizard(theirs);
 
       // One dialog, so a multi-select only opens it for the first Epic game.
       const [first] = ours as [number, ...number[]];
@@ -55,26 +38,22 @@ export function register() {
     }),
 
     // Called by Steam's uninstall dialog on confirm, so the dialog stays Steam's.
-    replacePatch(
-      bridge.Installs,
-      "OpenUninstallWizard",
-      ([appIds, confirmed]: [number[], boolean]) => {
-        const { ours, theirs } = partition(appIds);
-        if (ours.length === 0) return callOriginal;
+    replacePatch(Installs, "OpenUninstallWizard", ([appIds, dontPrompt]) => {
+      const { ours, theirs } = partition(appIds);
+      if (ours.length === 0) return callOriginal;
 
-        if (theirs.length > 0) bridge.Installs.OpenUninstallWizard(theirs, confirmed);
+      if (theirs.length > 0) Installs.OpenUninstallWizard(theirs, dontPrompt);
 
-        for (const appId of ours) {
-          const game = library.getByAppId(appId);
-          if (game) void jobs.uninstall(game.app_name);
-        }
+      for (const appId of ours) {
+        const game = library.getByAppId(appId);
+        if (game) void jobs.uninstall(game.app_name);
+      }
 
-        return undefined;
-      },
-    ),
+      return undefined;
+    }),
 
     // Resume, and Update on a game with a newer build. Re-running the command resumes.
-    replacePatch(bridge.Downloads, "ResumeAppUpdate", ([appId]: [number, string?]) => {
+    replacePatch(Downloads, "ResumeAppUpdate", ([appId]) => {
       const game = library.getByAppId(appId);
       if (!game) return callOriginal;
 
@@ -86,7 +65,7 @@ export function register() {
     }),
 
     // Cancel keeps the partial download, since Install resumes from it.
-    replacePatch(bridge.Downloads, "RemoveFromDownloadList", ([appId]: [number, string?]) => {
+    replacePatch(Downloads, "RemoveFromDownloadList", ([appId]) => {
       // A finished row's ✕ only takes it off the downloads page.
       if (downloads.dismiss(appId)) return undefined;
 
@@ -98,7 +77,7 @@ export function register() {
     }),
 
     // Carries no appid even from one tile's Pause, so all of ours pause together.
-    replacePatch(bridge.Downloads, "EnableAllDownloads", ([enabled]: [boolean, string?]) => {
+    replacePatch(Downloads, "EnableAllDownloads", ([enabled]) => {
       if (enabled) {
         for (const job of jobs.paused()) void jobs.resume(job.app_name);
       } else {

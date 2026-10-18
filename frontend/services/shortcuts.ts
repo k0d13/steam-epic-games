@@ -377,16 +377,12 @@ export async function cleanUp(): Promise<CleanUpResult> {
 
     // Bounded: the backend answers one call at a time, and the collection API is
     // untyped, so either can keep the progress bar up indefinitely.
-    const [artworkRemoved, collectionRemoved] = await Promise.all([
+    const [artworkRemoved] = await Promise.all([
       withTimeout(removeArtwork([...ids]), TIDY_TIMEOUT_MS),
       withTimeout(collection.removeIfEmpty(ids), TIDY_TIMEOUT_MS),
     ]);
 
-    console.info("Cleaned up the Steam library", {
-      removed,
-      artworkRemoved,
-      collectionRemoved,
-    });
+    console.info("Cleaned up the Steam library", { removed, artworkRemoved });
     return { removed };
   } catch (reason: unknown) {
     console.error("Clean up failed", reason);

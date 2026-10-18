@@ -1,35 +1,11 @@
-import { callOriginal, replacePatch } from "millennium";
+import { type AppDetails, callOriginal, replacePatch } from "millennium";
 import * as jobs from "../state/jobs";
 import * as library from "../state/library";
 import * as sizes from "../state/sizes";
-import { getAchievements, type SteamAchievements } from "./achievements";
+import { getAchievements } from "./achievements";
 
 // "Space Required" reads `bHasAnyLocalContent` and `lDiskSpaceRequiredBytes`, which
 // shortcuts get wrong. AppDetailsChanged is a non-writable mobx action, so we patch its callback.
-
-/** Only the fields we touch; details carry several dozen. */
-interface AppDetails {
-  unAppID: number;
-  bHasAnyLocalContent?: boolean;
-  lDiskSpaceRequiredBytes?: number;
-  achievements?: SteamAchievements;
-}
-
-interface AppData {
-  details?: AppDetails;
-}
-
-interface AppDetailsStore {
-  /** Callable, but not patchable - see above. */
-  AppDetailsChanged(details: AppDetails): void;
-  m_mapAppData: Map<number, AppData>;
-}
-
-type DetailsCallback = (details: AppDetails) => void;
-
-interface AppsApi extends Record<PropertyKey, unknown> {
-  RegisterForAppDetails(appId: number, callback: DetailsCallback): { unregister(): void };
-}
 
 /**
  * Rewrite one app's details to match Epic. An install in progress counts as
@@ -47,13 +23,8 @@ function apply(details: AppDetails) {
   if (game.installed) return;
 
   // Any state: a finished install is on disk a poll before the library knows.
-  const job = jobs.get(game.app_name);
-  if (job?.kind === "install") {
-    details.bHasAnyLocalContent = true;
-    return;
-  }
-
-  details.bHasAnyLocalContent = false;
+  details.bHasAnyLocalContent = jobs.get(game.app_name)?.kind === "install";
+  if (details.bHasAnyLocalContent) return;
 
   const size = sizes.get(game.app_name);
   if (size) details.lDiskSpaceRequiredBytes = size.disk;
@@ -82,22 +53,21 @@ export function registerUnpatched(
 
 export function register() {
   // replacePatch, so our wrapper can replace the callback argument.
-  const apps = SteamClient.Apps as unknown as AppsApi;
-  const patch = replacePatch(apps, "RegisterForAppDetails", (args) => {
-    const [, callback] = args as [number, DetailsCallback];
-    if (unpatched) return callOriginal as unknown as ReturnType<AppsApi["RegisterForAppDetails"]>;
+  const patch = replacePatch(SteamClient.Apps, "RegisterForAppDetails", (args) => {
+    const [, callback] = args;
+    if (!unpatched) {
+      args[1] = (details) => {
+        apply(details);
+        callback(details);
+      };
+    }
 
-    args[1] = (details: AppDetails) => {
-      apply(details);
-      callback(details);
-    };
-
-    // Forwards with the edited arguments; the cast works around replacePatch's typing.
-    return callOriginal as unknown as ReturnType<AppsApi["RegisterForAppDetails"]>;
+    // Forwards with the edited arguments.
+    return callOriginal as never;
   });
 
   // A size arriving is asynchronous and has no other way back into the UI.
-  const unsubscribe = sizes.subscribe(() => refreshAll());
+  const unsubscribe = sizes.subscribe(refreshAll);
 
   return () => {
     patch.unpatch();
@@ -113,11 +83,16 @@ const applied = new Map<number, string>();
  * observers see the same reference and don't re-render.
  */
 export function refreshAll() {
-  const store = Reflect.get(globalThis, "appDetailsStore") as AppDetailsStore | undefined;
-  if (!store || library.isEmpty()) return;
+  const store = Reflect.get(globalThis, "appDetailsStore") as
+    | {
+        m_mapAppData: Map<number, { details?: AppDetails }>;
+        /** Callable, but not patchable - see above. */
+        AppDetailsChanged(details: AppDetails): void;
+      }
+    | undefined;
+  if (!store) return;
 
-  for (const data of store.m_mapAppData.values()) {
-    const details = data.details;
+  for (const { details } of store.m_mapAppData.values()) {
     if (!details || library.getByAppId(details.unAppID) === undefined) continue;
 
     const updated = { ...details };
