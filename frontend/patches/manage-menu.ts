@@ -46,7 +46,14 @@ type UninstallDialog = (
   appIds: number[],
   ownerWindow: Window | undefined,
   confirmPassword: boolean,
+  remoteClientId: string,
 ) => void;
+
+/**
+ * Steam's id for this machine. The dialog reads any other, `undefined` included,
+ * as a remote client and looks up its name, which throws.
+ */
+const LOCAL_CLIENT_ID = "0";
 
 const getUninstallDialog = memo(() => {
   // `small_mode` tells the dialog opener apart from the error dialog in the same module.
@@ -90,7 +97,7 @@ function uninstallItem(appId: number): ReactNode {
       tone: "destructive",
       onSelected: () => {
         const dialog = getUninstallDialog();
-        if (dialog) dialog([appId], mainPopup()?.window, false);
+        if (dialog) dialog([appId], mainPopup()?.window, false, LOCAL_CLIENT_ID);
         else fallbackConfirm(game.app_name, game.title);
       },
     },

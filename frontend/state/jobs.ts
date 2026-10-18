@@ -11,6 +11,16 @@ const byAppName = new Map<string, Job>();
 const emitter = createEmitter();
 export const subscribe = emitter.subscribe;
 
+const endListeners = new Set<(job: Job) => void>();
+
+/** Hear a job that ran to the end, done or failed; not a pause or a cancel. */
+export function onEnded(listener: (job: Job) => void) {
+  endListeners.add(listener);
+  return () => {
+    endListeners.delete(listener);
+  };
+}
+
 let timer: ReturnType<typeof setTimeout> | undefined;
 
 /** The current job for one game, running or finished, if it has ever had one. */
@@ -41,11 +51,15 @@ const shownPercent = (job: Job | undefined) =>
  */
 function apply(jobs: Job[]) {
   const finished: string[] = [];
+  const ended: Job[] = [];
   let changed = false;
 
   for (const job of jobs) {
     const previous = byAppName.get(job.app_name);
     if (previous?.state === "running" && job.state !== "running") finished.push(job.app_name);
+    if (previous?.state === "running" && (job.state === "done" || job.state === "failed")) {
+      ended.push(job);
+    }
 
     if (!previous || previous.state !== job.state || shownPercent(previous) !== shownPercent(job)) {
       changed = true;
@@ -63,7 +77,11 @@ function apply(jobs: Job[]) {
     changed = true;
   }
 
-  return { finished, changed };
+  return { finished, ended, changed };
+}
+
+function announce(ended: Job[]) {
+  for (const job of ended) for (const listener of endListeners) listener(job);
 }
 
 // An empty list arrives as `{}` (Lua has one table type); Object.values reads both.
@@ -81,7 +99,7 @@ async function poll() {
     return;
   }
 
-  const { finished, changed } = apply(jobs);
+  const { finished, ended, changed } = apply(jobs);
 
   if (finished.length > 0) {
     // The cached "Space Required" predates whatever this job just did.
@@ -92,6 +110,7 @@ async function poll() {
   }
 
   if (changed) emitter.emit();
+  announce(ended);
   schedule();
 }
 
@@ -108,8 +127,9 @@ function schedule() {
 
 /** Read the jobs once and start polling if needed. Always emits, unlike the poll. */
 export async function refresh() {
-  apply(Object.values(await backend.GetJobs()));
+  const { ended } = apply(Object.values(await backend.GetJobs()));
   emitter.emit();
+  announce(ended);
   schedule();
 }
 
