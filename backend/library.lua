@@ -6,7 +6,6 @@ local entitlements = require("entitlements")
 local legendary = require("legendary")
 local log = require("log")
 local paths = require("paths")
-local utils = require("utils")
 
 -- `legendary list` (owned) merged with `list-installed` (on disk): owned but
 -- uninstalled games are the point of the plugin.
@@ -126,45 +125,6 @@ local function apply_installed(game, local_game, latest_version)
   return game
 end
 
----Register any Epic Games Launcher install `egl-sync` skipped (see egl.lua) and
----return the installed-game index with those folded in. Usually a no-op.
----@param owned table[] Decoded `legendary list` output
----@param installed_by_name table<string, table> app_name -> installed game
----@return table<string, table> installed_by_name
-local function import_leftover_egl_installs(owned, installed_by_name)
-  -- Another account's manifests can't be imported.
-  local owned_names = {}
-  for _, game in ipairs(owned) do
-    owned_names[game.app_name] = true
-  end
-
-  local commands = {}
-  local titles = {}
-  for _, manifest in ipairs(egl.get_manifests()) do
-    if owned_names[manifest.app_name] and not installed_by_name[manifest.app_name] then
-      -- `--skip-dlcs` avoids a prompt with no stdin to answer it; DLC follows
-      -- the base game.
-      table.insert(
-        commands,
-        { "-y", "import", "--skip-dlcs", manifest.app_name, manifest.install_path }
-      )
-      table.insert(titles, manifest.title)
-    end
-  end
-
-  if #commands == 0 then
-    return installed_by_name
-  end
-  log.info("Importing Epic Games Launcher installs egl-sync skipped: " .. utils.join(titles, ", "))
-
-  for _, args in ipairs(commands) do
-    legendary.run(args)
-  end
-
-  -- Re-read: the list only picks the imports up once they have happened.
-  return index_installed(legendary.run(LIST_INSTALLED)) or installed_by_name
-end
-
 ---Is this catalog entry a game, not an engine component, plugin or asset pack?
 ---@param entry table
 ---@return boolean
@@ -250,18 +210,19 @@ function library.refresh(force)
     table.insert(list_args, "--force-refresh")
   end
 
-  -- First, so launcher installs show up in list-installed. `--import-only` so we
-  -- never export into another launcher's library.
-  local synced = legendary.run({ "-y", "egl-sync", "--import-only", "--one-shot" })
-  log.info("Epic Games Launcher sync: " .. utils.trim(synced))
+  -- First, so launcher installs show up in list-installed.
+  egl.sync()
 
   local owned, err = legendary.decode_json(legendary.run(list_args))
   if type(owned) ~= "table" then
     return nil, err or "legendary returned no library"
   end
 
-  local installed_by_name =
-    import_leftover_egl_installs(owned, index_installed(legendary.run(LIST_INSTALLED)) or {})
+  local installed_by_name = index_installed(legendary.run(LIST_INSTALLED)) or {}
+  if egl.import_skipped(owned, installed_by_name) then
+    -- The list only picks the imports up once they have happened.
+    installed_by_name = index_installed(legendary.run(LIST_INSTALLED)) or installed_by_name
+  end
 
   local granted = entitlements.get_granted()
 
@@ -289,11 +250,6 @@ end
 ---@return EpicGame[]|nil games
 ---@return string? error
 function library.refresh_installed()
-  local binary, binary_error = legendary.get_binary()
-  if not binary then
-    return nil, binary_error
-  end
-
   local installed_by_name = index_installed(legendary.run(LIST_INSTALLED))
   if not installed_by_name then
     return nil, "legendary returned no installed games"
