@@ -14,11 +14,13 @@ import * as manageMenu from "./patches/manage-menu";
 import * as storage from "./patches/storage";
 import * as storeMenu from "./patches/store-menu";
 import * as epicSession from "./services/epic-session";
+import { notify } from "./services/notifications";
 import { onGameStopped } from "./services/playtime";
 import * as shortcuts from "./services/shortcuts";
 import * as steamLibrary from "./services/steam-library";
 import * as account from "./state/account";
 import * as achievements from "./state/achievements";
+import * as appIds from "./state/app-ids";
 import * as jobs from "./state/jobs";
 import * as library from "./state/library";
 
@@ -80,6 +82,12 @@ export default definePlugin(async () => {
     epicSession.start(),
     // A game bought or claimed there lands in Steam without a manual refresh.
     steamLibrary.watchOrders(),
+    // Steam notifies a download finishing; ours do too.
+    jobs.onEnded((job) => {
+      if (job.state !== "done" || !jobs.isDownload(job)) return;
+      const appId = appIds.getAppId(job.app_name);
+      if (appId !== undefined) notify("downloadCompleted", appId);
+    }),
 
     // Running installs repaint every second: the progress bar reads off the overview.
     library.subscribe(repaint),

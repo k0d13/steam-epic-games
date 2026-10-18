@@ -36,6 +36,18 @@ declare global {
    */
   // oxlint-disable-next-line no-var -- `var` is what puts it on `window`'s type.
   var MainWindowBrowserManager: { m_lastLocation?: { hash: string } } | undefined;
+
+  /** Steam's client notifications: toasts and the tray. */
+  // oxlint-disable-next-line no-var -- as above.
+  var NotificationStore:
+    | {
+        /**
+         * Where the client delivers each notification: an id, its
+         * EClientUINotificationType and the serialized protobuf for that type.
+         */
+        OnNotification(id: number, type: number, data: Uint8Array): void;
+      }
+    | undefined;
 }
 
 export {};
