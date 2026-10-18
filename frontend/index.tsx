@@ -10,6 +10,7 @@ import * as overviews from "./patches/overviews";
 import * as storage from "./patches/storage";
 import * as epicSession from "./services/epic-session";
 import { notifyDownloadCompleted } from "./services/notifications";
+import * as orders from "./services/orders";
 import { onGameStopped } from "./services/playtime";
 import * as shortcuts from "./services/shortcuts";
 import * as steamLibrary from "./services/steam-library";
@@ -81,7 +82,7 @@ export default definePlugin(async () => {
     // Signs legendary in and out with the store in Steam's browser.
     epicSession.start(),
     // A game bought or claimed there lands in Steam without a manual refresh.
-    steamLibrary.watchOrders(),
+    orders.watch(),
     // Steam notifies a download finishing; ours do too.
     jobs.onEnded((job) => {
       if (job.state !== "done" || !jobs.isDownload(job)) return;
