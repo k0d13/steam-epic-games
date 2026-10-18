@@ -1,5 +1,17 @@
 # epic-games
 
+## 0.3.0
+
+### Minor Changes
+
+- c43a2d6: Adds a library clean up, makes sync adopt existing shortcuts, and
+  rebuilds the plugin panel.
+- c806d0a: Refreshes the library after an Epic order in Steam's browser and shows a
+  toast with what it found.
+- d72f3a7: Raises Steam's own download notification for Epic installs and refreshes
+  the bottom bar.
+- 00001a0: Adds Uninstall and Cancel to the Manage menu on Epic games.
+
 ## 0.2.0
 
 ### Minor Changes
