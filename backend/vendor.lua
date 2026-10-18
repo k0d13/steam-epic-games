@@ -67,15 +67,22 @@ end
 local function fetch(destination)
   local target = shell.native_path(destination)
 
-  shell.run(
+  local output, code = shell.run(
     paths.IS_WINDOWS and "curl.exe" or "curl",
     { "-fsSL", "--retry", "2", "-o", target, URL }
   )
   if fs.is_file(destination) then
     return true
   end
+  log.warn("curl exited " .. code .. ": " .. output)
 
+  -- Not every distro ships curl; Ubuntu's desktop image has wget instead.
   if not paths.IS_WINDOWS then
+    output, code = shell.run("wget", { "-q", "-O", target, URL })
+    if code == 0 and fs.is_file(destination) then
+      return true
+    end
+    log.warn("wget exited " .. code .. ": " .. output)
     return false
   end
 
