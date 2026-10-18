@@ -4,7 +4,7 @@ import * as preferences from "../state/preferences";
 import * as collection from "./collection";
 import { onPossibleOrder } from "./epic-session";
 import * as hidden from "./hidden";
-import { notify } from "./notifications";
+import { toast } from "./notifications";
 import * as shortcuts from "./shortcuts";
 
 // A sync followed by the preferences, so the collection and hiding cover games
@@ -102,7 +102,7 @@ export function watchOrders(): () => void {
   const look = async (last: boolean): Promise<boolean> => {
     const result = await library.load(true, true);
     if (result.error) {
-      notify("message", "Couldn't check your Epic library", result.error);
+      toast("Couldn't check your Epic library", result.error);
       return true;
     }
 
@@ -114,8 +114,7 @@ export function watchOrders(): () => void {
       return true;
     }
 
-    if (last)
-      notify("message", "No new Epic games", "Nothing new showed up in your library after that.");
+    if (last) toast("No new Epic games", "Nothing new showed up in your library after that.");
     return false;
   };
 
@@ -123,11 +122,7 @@ export function watchOrders(): () => void {
     // A burst of signals is one order: announced once, refreshed after the last.
     if (timers.size === 0) {
       before = new Set(library.getLatest()?.games.map((game) => game.app_name));
-      notify(
-        "message",
-        "Checking your Epic library",
-        "Looks like you got a game on the Epic store.",
-      );
+      toast("Checking your Epic library", "Looks like you got a game on the Epic store.");
     }
     for (const timer of timers) clearTimeout(timer);
     timers.clear();
@@ -159,5 +154,5 @@ function announce(games: EpicGame[]) {
     ? `${list} ${games.length === 1 ? "is" : "are"} in your Steam library.`
     : `Found ${list}. Add ${games.length === 1 ? "it" : "them"} to Steam from the plugin's page.`;
 
-  notify("message", title, body);
+  toast(title, body);
 }
