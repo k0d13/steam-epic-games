@@ -6,6 +6,8 @@ local millennium = require("millennium")
 local paths = require("paths")
 local utils = require("utils")
 
+-- These only define ffi functions, so nothing else requires them.
+require("details")
 require("grid")
 
 local function on_load()
