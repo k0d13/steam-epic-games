@@ -50,6 +50,14 @@ if [ -f CHANGELOG.md ]; then
   ' CHANGELOG.md > "$notes_file"
 fi
 
+# Both the GitHub release and Millennium's update note carry these notes, so
+# end them with the one place to support the plugin.
+printf '
+---
+
+Enjoying the plugin? [Support it on Ko-fi](https://ko-fi.com/X8X554X28) ☕
+' >> "$notes_file"
+
 # Millennium shows, as a plugin's update note, the commit message of whatever
 # commit PluginDatabase's submodule pointer resolves to — left alone that's the
 # changesets merge commit ("Update changelog and release"), which tells users
