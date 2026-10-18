@@ -1,10 +1,8 @@
-import { type SteamAppOverview } from "millennium";
-import { findUp } from "../services/fiber";
-import { onPopupCreate } from "../services/popups";
+import { createElement, useCallback, useRef, useSyncExternalStore, type ReactElement } from "react";
 import * as library from "../state/library";
 
-// An Epic mark on library artwork. The components can't be patched, so the appid is
-// read off the React fiber and set as an attribute, leaving the badge pure CSS.
+// An Epic mark on library artwork. backend/patches.lua has Steam's artwork component,
+// which draws every icon and capsule, ask `LibraryBadge` for one.
 
 const BADGE = {
   /** Share of the icon's width. Steam draws those at around 24px. */
@@ -25,146 +23,64 @@ const BADGE = {
   logoScale: "78%",
 } as const;
 
-const ATTRIBUTE = "data-epic-game";
-const STYLE_ID = "epic-games-badge";
+type Kind = "icon" | "capsule";
 
-const CSS = `
-[${ATTRIBUTE}] {
-  position: relative;
-  overflow: visible;
-}
+/** Steam's ELibraryAssetType: Capsule, Header (a featured capsule's art) and Icon. */
+const KINDS: Partial<Record<number, Kind>> = { 0: "capsule", 3: "capsule", 4: "icon" };
 
-[${ATTRIBUTE}]::after {
-  content: "";
-  position: absolute;
-  border-radius: ${BADGE.radius};
-  background: ${BADGE.background} url("${BADGE.logo}") center / ${BADGE.logoScale} no-repeat;
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
-  pointer-events: none;
-}
-
-[${ATTRIBUTE}="icon"]::after {
-  right: -${BADGE.overhang};
-  bottom: -${BADGE.overhang};
-  width: ${BADGE.iconSize};
-  height: ${BADGE.iconSize};
-}
-
-[${ATTRIBUTE}="capsule"]::after {
-  right: ${BADGE.capsuleInset};
-  bottom: ${BADGE.capsuleInset};
-  width: ${BADGE.capsuleSize};
-  height: ${BADGE.capsuleSize};
-}
-`;
-
-/**
- * Artwork containers and their badge shape. A `FeaturedCapsule` is the whole card,
- * so the badge goes on its art child rather than in the footer.
- */
-const TARGETS = {
-  '[class~="GameIcon"]': "icon",
-  '[class~="Capsule"]': "capsule",
-  '[class~="FeaturedCapsule"] > [class~="Container"]': "capsule",
+const STYLES = {
+  icon: {
+    right: `-${BADGE.overhang}`,
+    bottom: `-${BADGE.overhang}`,
+    width: BADGE.iconSize,
+    height: BADGE.iconSize,
+  },
+  capsule: {
+    right: BADGE.capsuleInset,
+    bottom: BADGE.capsuleInset,
+    width: BADGE.capsuleSize,
+    height: BADGE.capsuleSize,
+  },
 } as const;
 
-/** The artwork's appid, held above it as `appid`, `app` (an overview) or `item`. */
-function findAppId(element: Element): number | undefined {
-  return findUp(element, ({ memoizedProps: props }) => {
-    if (!props) return undefined;
+/** Its own component, so a sync redraws the badge without Steam redrawing the art. */
+function Badge({ appId, kind }: { appId: number; kind: Kind }) {
+  const epic = useSyncExternalStore(
+    library.subscribe,
+    () => library.getByAppId(appId) !== undefined,
+  );
 
-    for (const value of [
-      props.appid,
-      (props.app as SteamAppOverview | undefined)?.appid,
-      (props.item as SteamAppOverview | undefined)?.appid,
-    ]) {
-      if (typeof value === "number") return value;
+  // Icons clip to round their corners, which would cut off our overhang.
+  const container = useRef<HTMLElement | null>(null);
+  const unclip = useCallback((badge: HTMLElement | null) => {
+    if (badge?.parentElement) {
+      container.current = badge.parentElement;
+      container.current.style.overflow = "visible";
+    } else {
+      container.current?.style.removeProperty("overflow");
+      container.current = null;
     }
-    return undefined;
+  }, []);
+
+  if (!epic) return null;
+
+  return createElement("div", {
+    ref: kind === "icon" ? unclip : undefined,
+    style: {
+      ...STYLES[kind],
+      position: "absolute",
+      zIndex: 1,
+      borderRadius: BADGE.radius,
+      background: `${BADGE.background} url("${BADGE.logo}") center / ${BADGE.logoScale} no-repeat`,
+      boxShadow: "0 0 0 1px rgba(0, 0, 0, 0.6)",
+      pointerEvents: "none",
+    },
   });
 }
 
-/** Mark, or unmark, every piece of artwork under `root`. */
-function stamp(root: Element) {
-  // Nothing can match, and a theme loading is thousands of mutations.
-  if (library.isEmpty()) {
-    for (const element of root.querySelectorAll(`[${ATTRIBUTE}]`)) {
-      element.removeAttribute(ATTRIBUTE);
-    }
-    return;
-  }
-
-  for (const [selector, kind] of Object.entries(TARGETS)) {
-    for (const element of root.querySelectorAll(selector)) {
-      const appId = findAppId(element);
-      // Removed too: the library recycles tiles, so ours may now show a Steam game.
-      if (appId !== undefined && library.getByAppId(appId)) element.setAttribute(ATTRIBUTE, kind);
-      else element.removeAttribute(ATTRIBUTE);
-    }
-  }
-}
-
-/** Watch one window's artwork; scrolling adds tiles and recycling only swaps `src`. */
-function watch(root: Element | undefined) {
-  if (!root?.ownerDocument) return undefined;
-
-  const document = root.ownerDocument;
-  if (!document.getElementById(STYLE_ID)) {
-    const style = document.createElement("style");
-    style.id = STYLE_ID;
-    style.textContent = CSS;
-    document.head.appendChild(style);
-  }
-
-  // Coalesced, since one scroll is a burst of records.
-  let queued = false;
-  const restamp = () => {
-    if (queued) return;
-    queued = true;
-    root.ownerDocument.defaultView?.requestAnimationFrame(() => {
-      queued = false;
-      stamp(root);
-    });
-  };
-
-  const observer = new MutationObserver(restamp);
-  observer.observe(root, {
-    childList: true,
-    subtree: true,
-    attributes: true,
-    attributeFilter: ["src"],
-  });
-
-  stamp(root);
-
-  return { disconnect: () => observer.disconnect(), restamp };
-}
-
-export function register() {
-  const watchers = new Set<{ disconnect(): void; restamp(): void }>();
-
-  // The main window, and a detached library window, which is a popup of its own.
-  const unwatch = onPopupCreate((popup) => {
-    const watcher = watch(popup.root_element);
-    if (!watcher) return;
-    watchers.add(watcher);
-
-    return () => {
-      watcher.disconnect();
-      watchers.delete(watcher);
-    };
-  });
-
-  // Newly synced games already have artwork on screen.
-  const unsubscribe = library.subscribe(() => {
-    for (const watcher of watchers) watcher.restamp();
-  });
-
-  console.debug("Registered the library badge patch");
-
-  return () => {
-    unwatch();
-    unsubscribe();
-    for (const watcher of watchers) watcher.disconnect();
-  };
+/** Called from Steam's artwork component with what it's drawing. */
+export function LibraryBadge(appId: number | undefined, assetType: number): ReactElement | null {
+  const kind = KINDS[assetType];
+  if (appId === undefined || !kind) return null;
+  return createElement(Badge, { appId, kind });
 }

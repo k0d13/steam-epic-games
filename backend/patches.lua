@@ -47,4 +47,18 @@ return {
       },
     },
   },
+
+  -- Steam's artwork component, which draws every icon and capsule, so library-badge.ts
+  -- can put the Epic mark in the container first. Its app, appid and asset type are
+  -- read at the top of render, so the match carries everything up to the container.
+  {
+    file = [[sp\.js]],
+    find = [[render\(\)\{let\{app:[\w$]+,appid:[\w$]+,appinfo:[\w$]+,className:[\w$]+,rgSources:.*?return\(0,[\w$]+\.jsxs\)\("div",\{className:[\w$]+,children:\[]],
+    transforms = {
+      {
+        match = [[(render\(\)\{let\{app:([\w$]+),appid:([\w$]+),.*?eAssetType:([\w$]+),.*?children:\[)$]],
+        replace = [[\1(#{{self}}?.LibraryBadge?.(\2?.appid??\3,\4)),]],
+      },
+    },
+  },
 }
