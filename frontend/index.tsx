@@ -10,7 +10,6 @@ import * as installState from "./patches/install-state";
 import * as installWizard from "./patches/install-wizard";
 import * as installs from "./patches/installs";
 import * as libraryBadge from "./patches/library-badge";
-import * as manageMenu from "./patches/manage-menu";
 import * as storage from "./patches/storage";
 import * as storeMenu from "./patches/store-menu";
 import * as epicSession from "./services/epic-session";
@@ -23,6 +22,11 @@ import * as achievements from "./state/achievements";
 import * as appIds from "./state/app-ids";
 import * as jobs from "./state/jobs";
 import * as library from "./state/library";
+
+// Millennium puts these on our PLUGIN_LIST slot, where backend/patches.lua has
+// Steam's own code call them.
+/** @ffi */
+export { ManageSubmenu } from "./patches/manage-menu";
 
 // IconsModule varies between Steam builds; a missing icon mustn't break the plugin.
 const PluginIcon = IconsModule?.Download ?? IconsModule?.Settings ?? (() => null);
@@ -41,7 +45,6 @@ export default definePlugin(async () => {
     ["app details", appDetails.register],
     ["installs", installs.register],
     ["install wizard", installWizard.register],
-    ["manage menu", manageMenu.register],
     ["library badge", libraryBadge.register],
     ["activity", activity.register],
     ["achievements", achievementsPatch.register],

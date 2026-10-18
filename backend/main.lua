@@ -45,4 +45,5 @@ return {
   on_load = on_load,
   on_frontend_loaded = on_frontend_loaded,
   on_unload = on_unload,
+  patches = require("patches"),
 }
