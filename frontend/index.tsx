@@ -9,7 +9,6 @@ import * as downloads from "./patches/downloads";
 import * as installState from "./patches/install-state";
 import * as installWizard from "./patches/install-wizard";
 import * as installs from "./patches/installs";
-import * as libraryBadge from "./patches/library-badge";
 import * as storage from "./patches/storage";
 import * as epicSession from "./services/epic-session";
 import { notify } from "./services/notifications";
@@ -28,6 +27,8 @@ import * as library from "./state/library";
 export { ManageSubmenu } from "./patches/manage-menu";
 /** @ffi */
 export { IsEpicURL, SupernavMenu } from "./patches/store-menu";
+/** @ffi */
+export { LibraryBadge } from "./patches/library-badge";
 
 // IconsModule varies between Steam builds; a missing icon mustn't break the plugin.
 const PluginIcon = IconsModule?.Download ?? IconsModule?.Settings ?? (() => null);
@@ -46,7 +47,6 @@ export default definePlugin(async () => {
     ["app details", appDetails.register],
     ["installs", installs.register],
     ["install wizard", installWizard.register],
-    ["library badge", libraryBadge.register],
     ["activity", activity.register],
     ["achievements", achievementsPatch.register],
     ["achievement progress", achievementProgress.register],
