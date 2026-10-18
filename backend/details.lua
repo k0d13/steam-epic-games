@@ -5,8 +5,7 @@ local legendary = require("legendary")
 local log = require("log")
 local paths = require("paths")
 
--- What one game needs on disk and its achievements: a legendary run each, so both
--- are cached on disk per game.
+-- One game's size and achievements, each a legendary run, so both are cached per game.
 
 -- Steam's "Space Required", one manifest fetch per game and cached with no way to
 -- tell it's stale, so the frontend drops a game's size when a job touches it.
