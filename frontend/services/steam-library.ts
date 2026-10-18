@@ -1,8 +1,8 @@
 import { sleep } from "millennium";
 import * as appIds from "../state/app-ids";
-import { createEmitter } from "../state/emitter";
 import * as library from "../state/library";
 import * as preferences from "../state/preferences";
+import { createValue } from "../state/signal";
 import * as artwork from "./artwork";
 import * as collection from "./collection";
 import * as hidden from "./hidden";
@@ -36,17 +36,10 @@ interface SyncState {
   lastResult?: SyncResult;
 }
 
-let state: SyncState = { active: false, done: 0, total: 0 };
+/** Read with `useValue(steamLibrary.progress)`. */
+export const progress = createValue<SyncState>({ active: false, done: 0, total: 0 });
 
-const emitter = createEmitter();
-export const subscribe = emitter.subscribe;
-
-export const getSyncState = () => state;
-
-function setState(next: Partial<SyncState>) {
-  state = { ...state, ...next };
-  emitter.emit();
-}
+const setState = progress.update;
 
 /** Shortcuts per batch before yielding, so a first sync doesn't freeze the UI. */
 const BATCH_SIZE = 10;
@@ -103,7 +96,7 @@ async function adoptExisting(): Promise<number> {
  */
 export async function sync(games: EpicGame[]): Promise<SyncResult> {
   const result: SyncResult = { added: 0, removed: 0, failed: 0 };
-  if (state.active) return result;
+  if (progress.get().active) return result;
 
   setState({
     active: true,
@@ -182,7 +175,7 @@ export async function sync(games: EpicGame[]): Promise<SyncResult> {
  * of every shortcut on each startup.
  */
 export async function autoSync(epic: Library) {
-  if (!preferences.get().autoSync || state.active) return;
+  if (!preferences.get().autoSync || progress.get().active) return;
 
   // An errored or empty load would read as every game leaving the account.
   const games = epic.games;
@@ -227,7 +220,7 @@ export async function setCollection(games: EpicGame[], value: boolean) {
  * Installed games and the Epic sign-in are left alone.
  */
 export async function cleanUp(): Promise<CleanUpResult> {
-  if (state.active) return { removed: 0, error: "A sync is still running." };
+  if (progress.get().active) return { removed: 0, error: "A sync is still running." };
 
   setState({ active: true, operation: "cleanUp", done: 0, total: 0, lastResult: undefined });
 

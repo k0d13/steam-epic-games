@@ -1,5 +1,5 @@
-import { createEmitter } from "./emitter";
 import * as library from "./library";
+import { createSignal } from "./signal";
 import * as sizes from "./sizes";
 
 // The backend can't push, so this polls, but only while a job is running or queued.
@@ -8,8 +8,8 @@ const POLL_MS = 1000;
 
 const byAppName = new Map<string, Job>();
 
-const emitter = createEmitter();
-export const subscribe = emitter.subscribe;
+const signal = createSignal();
+export const subscribe = signal.subscribe;
 
 const endListeners = new Set<(job: Job) => void>();
 
@@ -109,7 +109,7 @@ async function poll() {
     await library.loadInstalled();
   }
 
-  if (changed) emitter.emit();
+  if (changed) signal.emit();
   announce(ended);
   schedule();
 }
@@ -128,7 +128,7 @@ function schedule() {
 /** Read the jobs once and start polling if needed. Always emits, unlike the poll. */
 export async function refresh() {
   const { ended } = apply(Object.values(await backend.GetJobs()));
-  emitter.emit();
+  signal.emit();
   announce(ended);
   schedule();
 }
@@ -147,7 +147,7 @@ async function track(appName: string, job: Job | null) {
   }
 
   byAppName.set(appName, job);
-  emitter.emit();
+  signal.emit();
   schedule();
 
   console.info(job.state === "queued" ? `Queued ${job.kind}` : `Started ${job.kind}`, { appName });

@@ -11,11 +11,15 @@ playtime without leaving the client.
 ## What it does
 
 - Every game you own on Epic appears in your Steam library, with an Epic badge on the tile
-- Install, update, pause and uninstall from Steam, with progress on the library tile
+- Install, update, pause and uninstall from Steam, with progress on the library tile and
+  the Downloads page, and Steam's own notification when an install finishes
 - Launch from Steam, with playtime tracking, "Currently playing" and the overlay
 - Full artwork: box art, heroes, headers and icons
 - Epic achievements in the app details page and Steam's achievements page
 - Uninstalled games behave like uninstalled Steam games - greyed out, with an Install button
+- Games already installed by the Epic Games Launcher show as installed, not as a second download
+- The Store menu gains an Epic Games Store submenu, and anything you buy or claim there
+  lands in your library on its own
 
 ## Prerequisites
 

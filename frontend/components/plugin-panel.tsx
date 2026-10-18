@@ -1,8 +1,9 @@
 import { DialogButton, Focusable } from "millennium";
-import { useState, useSyncExternalStore } from "react";
+import { useState } from "react";
 import { open, SIGN_IN_URL } from "../patches/store-menu";
 import * as steamLibrary from "../services/steam-library";
 import * as account from "../state/account";
+import { useValue } from "../state/signal";
 import { Identity, type Message, MessageLine, Meter, PANEL_CSS, plural } from "./panel-ui";
 import { Maintenance, Options } from "./settings";
 import { type LibraryView, useLibrary } from "./use-library";
@@ -103,7 +104,7 @@ function LibraryCard({
   setMessage(message: Message | undefined): void;
 }) {
   const { games, refreshedAt, loading, error, synced, refresh } = view;
-  const sync = useSyncExternalStore(steamLibrary.subscribe, steamLibrary.getSyncState);
+  const sync = useValue(steamLibrary.progress);
   // A clean up only disables the buttons; its progress is in the Maintenance card.
   const syncing = sync.active && sync.operation === "sync";
 
@@ -165,7 +166,7 @@ function LibraryCard({
 }
 
 export function PluginPanel() {
-  const status = useSyncExternalStore(account.subscribe, account.get);
+  const status = useValue(account);
   const name = status?.authenticated ? (status.account ?? "Epic Games") : undefined;
   // Keyed by the account, so switching accounts reloads the library.
   const view = useLibrary(name);

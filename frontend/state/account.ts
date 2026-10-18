@@ -1,18 +1,20 @@
-import { createEmitter } from "./emitter";
+import { createValue } from "./signal";
 
 // Sign in and out happen on Epic's store in Steam's browser (see epic-session), out
 // of the frontend's sight, so the backend's status is polled for them.
 
 const POLL_MS = 2000;
 
-let status: EpicStatus | undefined;
+const status = createValue<EpicStatus | undefined>(undefined);
 
-const emitter = createEmitter();
-export const subscribe = emitter.subscribe;
+export const subscribe = status.subscribe;
+export const get = status.get;
 
-export function get(): EpicStatus | undefined {
-  return status;
-}
+const sameStatus = (a: EpicStatus | undefined, b: EpicStatus) =>
+  a?.available === b.available &&
+  a.authenticated === b.authenticated &&
+  a.account === b.account &&
+  a.error === b.error;
 
 /**
  * Polls until the returned function is called. `onChange` hears the account
@@ -31,18 +33,10 @@ export function watch(onChange: (status: EpicStatus) => void): () => void {
     }
     if (stopped) return;
 
-    const previous = status;
-    if (
-      previous?.available === next.available &&
-      previous.authenticated === next.authenticated &&
-      previous.account === next.account &&
-      previous.error === next.error
-    ) {
-      return;
-    }
+    const previous = status.get();
+    if (sameStatus(previous, next)) return;
 
-    status = next;
-    emitter.emit();
+    status.set(next);
     if (previous && previous.account !== next.account) onChange(next);
   };
 

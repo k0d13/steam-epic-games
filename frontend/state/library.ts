@@ -1,5 +1,5 @@
 import * as appIds from "./app-ids";
-import { createEmitter } from "./emitter";
+import { createSignal } from "./signal";
 
 // The backend's library in memory, so Steam's render path can ask synchronously.
 
@@ -7,8 +7,8 @@ const byAppName = new Map<string, EpicGame>();
 const byAppId = new Map<number, EpicGame>();
 
 /** Fires whenever the library changes, so anything showing it can repaint. */
-const emitter = createEmitter();
-export const subscribe = emitter.subscribe;
+const changed = createSignal();
+export const subscribe = changed.subscribe;
 
 /** The last library read, for anything showing it outside the read's caller. */
 let latest: Library | undefined;
@@ -27,7 +27,7 @@ function reindex(games: EpicGame[]) {
     if (appId !== undefined) byAppId.set(appId, game);
   }
 
-  emitter.emit();
+  changed.emit();
 }
 
 /** Re-read the appid mapping without refetching the library from the backend. */
