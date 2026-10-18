@@ -1,13 +1,12 @@
 import { definePlugin, IconsModule } from "millennium";
 import { PluginPanel, UnsupportedPanel } from "./components/plugin-panel";
 import * as achievementProgress from "./patches/achievement-progress";
-import * as activity from "./patches/activity";
 import * as appDetails from "./patches/app-details";
 import * as downloadOverview from "./patches/download-overview";
 import * as downloads from "./patches/downloads";
-import * as installState from "./patches/install-state";
 import * as installWizard from "./patches/install-wizard";
 import * as installs from "./patches/installs";
+import * as overviews from "./patches/overviews";
 import * as storage from "./patches/storage";
 import * as epicSession from "./services/epic-session";
 import { notify } from "./services/notifications";
@@ -44,11 +43,10 @@ export default definePlugin(async () => {
   // a patch that no longer applies only costs its own feature.
   const unpatches: (() => void)[] = [];
   for (const [name, patch] of [
-    ["install state", installState.register],
+    ["overviews", overviews.register],
     ["app details", appDetails.register],
     ["installs", installs.register],
     ["install wizard", installWizard.register],
-    ["activity", activity.register],
     ["achievement progress", achievementProgress.register],
     ["storage", storage.register],
     ["downloads", downloads.register],
@@ -71,8 +69,7 @@ export default definePlugin(async () => {
       repaintQueued = false;
       downloadOverview.sync();
       downloads.sync();
-      installState.refreshAll();
-      activity.refreshAll();
+      overviews.refreshAll();
       appDetails.refreshAll();
     }, 16);
   };
