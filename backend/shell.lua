@@ -59,7 +59,7 @@ end
 ---Quote a single argument for /bin/sh: close the quote, escape one, reopen.
 ---@param arg string
 ---@return string
-local function sh_quote(arg)
+function shell.sh_quote(arg)
   return "'" .. arg:gsub("'", [['\'']]) .. "'"
 end
 
@@ -69,7 +69,7 @@ end
 ---@return string output stdout and stderr
 ---@return integer code -1 if the command could not be run at all
 function shell.run(exe, args)
-  local quote = paths.IS_WINDOWS and cmd_quote or sh_quote
+  local quote = paths.IS_WINDOWS and cmd_quote or shell.sh_quote
   local parts = { quote(exe) }
   for _, arg in ipairs(args) do
     table.insert(parts, quote(arg))

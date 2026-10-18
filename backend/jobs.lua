@@ -6,7 +6,6 @@ local json = require("json")
 local log = require("log")
 local paths = require("paths")
 local runner = require("runner")
-local shell = require("shell")
 local utils = require("utils")
 
 -- Installs, updates and uninstalls, one at a time since legendary allows one.
@@ -207,8 +206,7 @@ function jobs.start(app_name, kind, exe, args)
   return jobs.get(app_name)
 end
 
----Kill a job's runner. `/T` takes legendary down with it, and `/F` because it
----ignores anything gentler mid-download.
+---Kill a job's runner, and legendary with it.
 ---@param job Job
 ---@return boolean stopped
 local function stop(job)
@@ -221,7 +219,7 @@ local function stop(job)
   utils.write_file(runner.file(job_dir(job.app_name), "paused"), "1")
 
   if job.state == "running" and job.pid then
-    shell.run("taskkill", { "/F", "/T", "/PID", tostring(job.pid) })
+    runner.kill(job.pid)
   end
   return true
 end

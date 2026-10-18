@@ -1,17 +1,19 @@
 local datetime = require("datetime")
 local fs = require("fs")
+local paths = require("paths")
 local shell = require("shell")
 local utils = require("utils")
 
 -- `shell.run` would block the Lua state for a whole download, so a job's command
--- runs in a detached PowerShell that reports through small files in its directory.
+-- runs in a detached PowerShell (a /bin/sh script on Linux) that reports through
+-- small files in its directory.
 
 local runner = {}
 
 --- The files in a job directory. The runner script refers to them as `{lock}` etc.
 local FILES = {
   lock = "runner.lock",
-  script = "runner.ps1",
+  script = paths.IS_WINDOWS and "runner.ps1" or "runner.sh",
   launcher = "runner.vbs",
   pid = "runner.pid",
   meta = "job.json",
@@ -93,6 +95,82 @@ $code | Out-File -Encoding ascii -FilePath "$Dir\{exit}"
 
 SCRIPT = SCRIPT:gsub("{(%w+)}", FILES)
 
+--- The same runner for Linux. Started under setsid, so killing the negative PID
+--- takes legendary down too. awk keeps POSIX: no capture groups, so a progress
+--- line is split on its punctuation instead, and the directory comes in through
+--- ENVIRON because `-v` would read its backslashes as escapes.
+local POSIX_SCRIPT = [=[
+echo $$ > "$DIR/{pid}"
+
+# A subshell, so legendary's exit code survives the pipe. It lands under a
+# temporary name and is moved in once awk has written everything else.
+(
+  # The blank line answers a prompt -y doesn't cover; see the PowerShell runner.
+  printf '\n' | "$EXE" "$@" 2>&1
+  echo $? > "$DIR/{exit}.part"
+) | DIR="$DIR" awk '
+  BEGIN { dir = ENVIRON["DIR"]; percent = 0; done = 0; total = 0; eta = ""; elapsed = ""; speed = 0 }
+  {
+    print >> (dir "/{log}"); fflush(dir "/{log}")
+
+    if ($0 ~ /Progress: [0-9.]+% \([0-9]+\/[0-9]+\), Running for [0-9:]+, ETA: [0-9:]+/) {
+      line = $0; sub(/.*Progress: /, "", line); gsub(/[%(),\/]/, " ", line)
+      split(line, f, " ")
+      percent = f[1]; done = f[2]; total = f[3]; elapsed = f[6]; eta = f[8]
+    } else if ($0 ~ /Download[ \t]+- [0-9.]+ MiB\/s \(raw\)/) {
+      line = $0; sub(/.*Download[ \t]+- /, "", line)
+      split(line, f, " "); speed = f[1]
+    } else {
+      if ($0 ~ /(ERROR|CRITICAL):/) { print > (dir "/{error}"); close(dir "/{error}") }
+      next
+    }
+
+    status = dir "/{status}"
+    printf "percent=%s\ndownloaded=%s\ntotal=%s\neta=%s\nelapsed=%s\nspeed=%s\n",
+      percent, done, total, eta, elapsed, speed > status
+    close(status)
+  }
+'
+
+mv "$DIR/{exit}.part" "$DIR/{exit}"
+]=]
+
+POSIX_SCRIPT = POSIX_SCRIPT:gsub("{(%w+)}", FILES)
+
+---Start a detached runner on Linux. `&` inside the command, since `utils.exec`
+---waits for it.
+---@param dir string
+---@param exe string
+---@param args string[]
+---@return boolean started
+---@return string? error
+local function spawn_posix(dir, exe, args)
+  local quoted = {}
+  for index, arg in ipairs(args) do
+    quoted[index] = shell.sh_quote(arg)
+  end
+
+  local script = "DIR="
+    .. shell.sh_quote(dir)
+    .. "\nEXE="
+    .. shell.sh_quote(exe)
+    .. "\nset -- "
+    .. table.concat(quoted, " ")
+    .. "\n"
+    .. POSIX_SCRIPT
+
+  local script_path = runner.file(dir, "script")
+  local ok, err = utils.write_file(script_path, script)
+  if not ok then
+    return false, "Could not write the job script: " .. tostring(err)
+  end
+
+  utils.write_file(runner.file(dir, "spawned"), tostring(datetime.unix()))
+
+  utils.exec("setsid sh " .. shell.sh_quote(script_path) .. " </dev/null >/dev/null 2>&1 &")
+  return true
+end
+
 ---Start a hidden, detached runner. Through wscript because `utils.exec` waits
 ---for the command to finish.
 ---@param dir string
@@ -101,6 +179,10 @@ SCRIPT = SCRIPT:gsub("{(%w+)}", FILES)
 ---@return boolean started
 ---@return string? error
 function runner.spawn(dir, exe, args)
+  if not paths.IS_WINDOWS then
+    return spawn_posix(dir, exe, args)
+  end
+
   local quoted = {}
   for index, arg in ipairs(args) do
     quoted[index] = shell.ps_quote(arg)
@@ -142,6 +224,14 @@ end
 ---@param spawned_at integer|nil
 ---@return boolean
 function runner.is_running(dir, pid, spawned_at)
+  -- No unshared locks on Linux, but /proc has a directory per live process.
+  if not paths.IS_WINDOWS then
+    if pid == nil then
+      return (datetime.unix() - (spawned_at or 0)) < SPAWN_GRACE
+    end
+    return fs.is_directory("/proc/" .. pid)
+  end
+
   local lock = runner.file(dir, "lock")
   if not fs.is_file(lock) then
     -- A PID without the lock means the runner died starting up. Neither means
@@ -150,6 +240,18 @@ function runner.is_running(dir, pid, spawned_at)
   end
 
   return shell.is_locked(lock)
+end
+
+---Kill a runner and legendary under it. `/T` takes the tree down on Windows,
+---and `/F` because legendary ignores anything gentler mid-download; on Linux the
+---runner leads its own process group, so the negative PID does the same.
+---@param pid integer
+function runner.kill(pid)
+  if paths.IS_WINDOWS then
+    shell.run("taskkill", { "/F", "/T", "/PID", tostring(pid) })
+  else
+    shell.run("kill", { "-KILL", "--", "-" .. pid })
+  end
 end
 
 ---The download progress the runner last wrote, if any.
