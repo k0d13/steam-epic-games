@@ -38,8 +38,6 @@ export function register() {
     }),
   ];
 
-  console.debug("Registered the achievement progress patch");
-
   return () => {
     for (const patch of patches) patch.unpatch();
   };

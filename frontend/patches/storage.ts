@@ -111,7 +111,6 @@ export function register() {
   // The store read the folders before we were here to add to them.
   refresh();
 
-  console.debug("Registered the storage patch");
   return () => {
     patch.unpatch();
     refresh();

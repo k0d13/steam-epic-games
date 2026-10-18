@@ -35,7 +35,6 @@ export function register() {
     },
   );
 
-  console.debug("Registered the activity patch");
   return patch.unpatch;
 }
 
@@ -47,5 +46,4 @@ export function refreshAll() {
   for (const app of apps) applyActivity(app);
 
   forceFakeLocationChange();
-  console.debug("Refreshed the Epic activity dates", { count: apps.length });
 }

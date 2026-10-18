@@ -1,5 +1,4 @@
 import { beforePatch, EDisplayStatus, type SteamAppOverview } from "millennium";
-import { once } from "../services/once";
 import { forceFakeLocationChange } from "../services/popups";
 import * as jobs from "../state/jobs";
 import * as library from "../state/library";
@@ -27,17 +26,6 @@ interface MutableOverview {
   per_client_data?: PerClientData[];
   size_on_disk?: string;
 }
-
-const logApplied = once((app: MutableOverview, appName: string, wanted: boolean) => {
-  console.debug("Install state patch applied", {
-    appId: app.appid,
-    appName,
-    wanted,
-    // A mismatch with `wanted` means these are read-only on this build.
-    gotLocal: app.local_per_client_data?.installed,
-    gotSize: app.size_on_disk,
-  });
-});
 
 /**
  * Rewrite one overview to match Epic. `local_per_client_data` drives the app page,
@@ -109,8 +97,6 @@ function applyInstallState(overview: SteamAppOverview) {
 
   // The Installed collection tests this, not the per-client flags.
   app.size_on_disk = game.installed ? `${game.install_size ?? 0}` : undefined;
-
-  logApplied(app, game.app_name, game.installed);
 }
 
 export function register() {
@@ -122,7 +108,6 @@ export function register() {
     },
   );
 
-  console.debug("Registered the install state patch");
   return patch.unpatch;
 }
 
@@ -137,5 +122,4 @@ export function refreshAll() {
   for (const app of apps) applyInstallState(app);
 
   forceFakeLocationChange();
-  console.debug("Refreshed the Epic overviews", { count: apps.length });
 }

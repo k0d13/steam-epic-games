@@ -1,4 +1,3 @@
-import { once } from "../services/once";
 import * as appIds from "../state/app-ids";
 import * as jobs from "../state/jobs";
 import { bytesFor, etaSeconds, PROGRESS_DOWNLOAD } from "./downloads";
@@ -64,15 +63,6 @@ function publish(overview: DownloadOverview, change: (copy: DownloadOverview) =>
 /** The appid we last wrote, so we know whether an occupied overview is ours. */
 let claimed: number | undefined;
 
-const logClaimed = once((overview: DownloadOverview, appId: number, appName: string) => {
-  console.debug("Claimed the download overview", {
-    appId,
-    appName,
-    // A mismatch means it's read-only on this build.
-    got: overview.update_appid,
-  });
-});
-
 /** Point the download overview at our running install, or release it. Runs every jobs tick. */
 export function sync() {
   const overview = getOverview();
@@ -104,8 +94,6 @@ export function sync() {
         stage.estimated_time_remaining_sec = copy.overall_estimated_time_remaining_sec;
       }
     });
-
-    logClaimed(getOverview() ?? overview, appId, job.app_name);
     return;
   }
 
