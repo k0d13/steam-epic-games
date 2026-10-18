@@ -291,8 +291,8 @@ function Options({
           value={prefs.collection}
           disabled={sync.active}
           onChange={(value) =>
-            void steamLibrary.setCollection(games, value).then((result) => {
-              if (result && !result.ok) setMessage({ text: result.error, error: true });
+            void steamLibrary.setCollection(games, value).then((error) => {
+              if (error) setMessage({ text: error, error: true });
             })
           }
         />

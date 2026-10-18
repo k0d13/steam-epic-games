@@ -19,7 +19,7 @@ interface InstallFolderApp {
   nShaderSize: number;
 }
 
-/** Only the fields we touch; the native object carries more. */
+/** Only the fields we touch. Millennium types these with string sizes, which Steam no longer sends. */
 interface InstallFolder {
   strFolderPath: string;
   nUsedSize: number;
@@ -27,17 +27,9 @@ interface InstallFolder {
   vecApps: InstallFolderApp[];
 }
 
-interface InstallFolders {
-  GetInstallFolders(): Promise<InstallFolder[]>;
-}
-
 /** The store the storage page reads, published on `window` by Steam itself. */
 interface InstallFolderStore {
   OnInstallFolderChanges(): Promise<void>;
-}
-
-interface Bridge {
-  InstallFolder: InstallFolders;
 }
 
 /** legendary uses forward slashes, Steam backslashes, and Windows ignores case. */
@@ -70,11 +62,10 @@ export function refresh() {
 }
 
 export function register() {
-  const bridge = SteamClient as unknown as Bridge;
-
-  const patch = afterPatch(bridge.InstallFolder, "GetInstallFolders", (_args, result) =>
+  const patch = afterPatch(SteamClient.InstallFolder, "GetInstallFolders", (_args, result) =>
     // Every installed game of ours, added to the folder holding it.
-    result.then((folders: InstallFolder[]) => {
+    result.then((answer) => {
+      const folders = answer as unknown as InstallFolder[];
       for (const appId of library.appIdsWithGames()) {
         const game = library.getByAppId(appId);
         if (!game?.installed || !game.install_path) continue;
@@ -104,13 +95,12 @@ export function register() {
         folder.nAppSize += size;
       }
 
-      return folders;
+      return answer;
     }),
   );
 
   // The store read the folders before we were here to add to them.
   refresh();
-
   return () => {
     patch.unpatch();
     refresh();

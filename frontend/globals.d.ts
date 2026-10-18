@@ -9,10 +9,28 @@ declare global {
     GetAppOverviewByAppID(appId: number): SteamAppOverview | undefined;
   };
 
-  /** Every overview passes through this before the grid, filters and sort. */
   const collectionStore: {
+    /** Every overview passes through this before the grid, filters and sort. */
     OnAppOverviewChange(apps: SteamAppOverview[]): void;
+    BIsHidden(appId: number): boolean;
+    SetAppsAsHidden(appIds: number[], hidden: boolean): void;
+    userCollections: SteamCollection[];
+    NewUnsavedCollection(
+      name: string,
+      filter: undefined,
+      apps: SteamAppOverview[],
+    ): SteamCollection;
   };
+
+  interface SteamCollection {
+    id: string;
+    displayName: string;
+    allApps: SteamAppOverview[];
+    /** Undefined for a filter-based collection, which has no app list. */
+    AsDragDropCollection(): { AddApps(apps: SteamAppOverview[]): void } | undefined;
+    Save(): Promise<void>;
+    Delete(): Promise<void>;
+  }
 
   /** Steam draws each of its windows into a popup, announced through here. */
   const g_PopupManager: {

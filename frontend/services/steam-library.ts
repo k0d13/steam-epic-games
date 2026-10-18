@@ -21,11 +21,11 @@ export async function syncAll(games: EpicGame[]): Promise<shortcuts.SyncResult> 
 export async function applyPreferences(games: EpicGame[]) {
   const { collection: collect, hideDuplicates } = preferences.get();
 
-  if (hideDuplicates) hidden.hideDuplicates(games);
+  if (hideDuplicates) hidden.setDuplicatesHidden(games, true);
 
   if (collect) {
-    const result = await collection.addAll(games);
-    if (!result.ok) console.warn("Couldn't fill the collection", result.error);
+    const error = await collection.addAll(games);
+    if (error) console.warn("Couldn't fill the collection", error);
   }
 }
 
@@ -60,11 +60,13 @@ export async function autoSync(library: Library) {
 /** Turning hiding off shows the duplicates again, and only them. */
 export function setHideDuplicates(games: EpicGame[], value: boolean) {
   preferences.set("hideDuplicates", value);
-  if (value) hidden.hideDuplicates(games);
-  else hidden.showDuplicates(games);
+  hidden.setDuplicatesHidden(games, value);
 }
 
-/** Turning the collection off deletes it, unless the user added games of their own. */
+/**
+ * Turning the collection off deletes it, unless the user added games of their own.
+ * Returns why it couldn't be filled, if it couldn't.
+ */
 export async function setCollection(games: EpicGame[], value: boolean) {
   preferences.set("collection", value);
   if (value) return collection.addAll(games);

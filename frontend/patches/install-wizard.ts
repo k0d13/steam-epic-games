@@ -14,34 +14,7 @@ const SHOW_CONFIG = 7;
  */
 const INSTALL_SUBDIRECTORY = "epicapps\\common";
 
-/** One app in the wizard's list, which for us is always exactly one. */
-interface InstallRequestApp {
-  nAppID: number;
-  lDiskSpaceRequiredBytes: number;
-}
-
-/** What the native client sends the wizard; a missing field draws a warning or empty row. */
-interface InstallRequest {
-  rgApps: InstallRequestApp[];
-  eInstallState: number;
-  nDiskSpaceRequired: number;
-  nDiskSpaceAvailable: number;
-  nCurrentDisk: number;
-  nTotalDisks: number;
-  bCanChangeInstallFolder: boolean;
-  iInstallFolder: number;
-  iUnmountedFolder: number;
-  currentAppID: number;
-  eAppError: number;
-  errorDetail: string;
-  bSystemMenuShortcut: boolean;
-  bDesktopShortcut: boolean;
-  bIsBackupInstall: boolean;
-  strPeerContentServer: string;
-  bPeerContentServerOnline: boolean;
-  bPeerContentServerAvailable: boolean;
-}
-
+/** Millennium types these with string sizes, which Steam no longer sends. */
 interface InstallFolder {
   nFolderIndex: number;
   strFolderPath: string;
@@ -50,36 +23,35 @@ interface InstallFolder {
   bIsMounted: boolean;
 }
 
-/** The store the dialog reads. */
-interface GameActionsStore {
-  m_InstallManager: InstallRequest | null;
-  GetInstallManager(): InstallRequest | null;
+/** What the native client sends the wizard; a missing field draws a warning or empty row. */
+function createRequest(appId: number, size: number, folder: InstallFolder) {
+  return {
+    rgApps: [{ nAppID: appId, lDiskSpaceRequiredBytes: size }],
+    eInstallState: SHOW_CONFIG,
+    nDiskSpaceRequired: size,
+    nDiskSpaceAvailable: folder.nFreeSpace,
+    nCurrentDisk: 0,
+    nTotalDisks: 0,
+    bCanChangeInstallFolder: true,
+    iInstallFolder: folder.nFolderIndex,
+    // -1 is "none"; anything else draws the "a folder is unmounted" notice.
+    iUnmountedFolder: -1,
+    currentAppID: appId,
+    eAppError: 0,
+    errorDetail: "",
+    bSystemMenuShortcut: false,
+    bDesktopShortcut: false,
+    bIsBackupInstall: false,
+    strPeerContentServer: "",
+    bPeerContentServerOnline: false,
+    bPeerContentServerAvailable: false,
+  };
 }
 
-// `unknown`, so a patch can also return callOriginal, a symbol.
-interface Installs {
-  SetInstallFolder(folderIndex: number): unknown;
-  SetCreateShortcuts(desktop: boolean, systemMenu: boolean): unknown;
-  ContinueInstall(): unknown;
-  CancelInstall(): unknown;
-}
-
-interface InstallFolders {
-  GetInstallFolders(): Promise<InstallFolder[]>;
-}
-
-interface Apps {
-  CreateDesktopShortcutForApp(appId: number): void;
-}
-
-interface Bridge {
-  Installs: Installs;
-  InstallFolder: InstallFolders;
-  Apps: Apps;
-}
+type InstallRequest = ReturnType<typeof createRequest>;
 
 const store = findModuleExport((value) => typeof value?.GetInstallManager === "function") as
-  | GameActionsStore
+  | { m_InstallManager: InstallRequest | null }
   | undefined;
 if (!store) console.warn("Steam's install wizard store wasn't found, so Epic games can't install");
 
@@ -98,16 +70,21 @@ function close() {
   if (store) store.m_InstallManager = null;
 }
 
-function folderByIndex(index: number) {
-  return folders.find((folder) => folder.nFolderIndex === index);
+/** Edit and redraw ours. The store assigns what this resolves to back over the request. */
+function update(change: (request: InstallRequest) => void) {
+  if (!pending) return callOriginal;
+
+  change(pending.request);
+  publish();
+  return Promise.resolve({ ...pending.request });
 }
 
 /** Open Steam's install wizard for our game, awaiting the size its space warning needs. */
 export async function open(appId: number, appName: string, folderName?: string) {
   if (!store) return;
 
-  const bridge = SteamClient as unknown as Bridge;
-  folders = (await bridge.InstallFolder.GetInstallFolders()).filter((folder) => folder.bIsMounted);
+  const all = (await SteamClient.InstallFolder.GetInstallFolders()) as unknown as InstallFolder[];
+  folders = all.filter((folder) => folder.bIsMounted);
 
   const chosen = folders.find((folder) => folder.bIsDefaultFolder) ?? folders[0];
   if (!chosen) {
@@ -116,91 +93,56 @@ export async function open(appId: number, appName: string, folderName?: string) 
   }
 
   const size = await backend.GetGameSize(appName);
-
-  pending = {
-    appName,
-    folderName,
-    request: {
-      rgApps: [{ nAppID: appId, lDiskSpaceRequiredBytes: size?.disk ?? 0 }],
-      eInstallState: SHOW_CONFIG,
-      nDiskSpaceRequired: size?.disk ?? 0,
-      nDiskSpaceAvailable: chosen.nFreeSpace,
-      nCurrentDisk: 0,
-      nTotalDisks: 0,
-      bCanChangeInstallFolder: true,
-      iInstallFolder: chosen.nFolderIndex,
-      // -1 is "none"; anything else draws the "a folder is unmounted" notice.
-      iUnmountedFolder: -1,
-      currentAppID: appId,
-      eAppError: 0,
-      errorDetail: "",
-      bSystemMenuShortcut: false,
-      bDesktopShortcut: false,
-      bIsBackupInstall: false,
-      strPeerContentServer: "",
-      bPeerContentServerOnline: false,
-      bPeerContentServerAvailable: false,
-    },
-  };
-
+  pending = { appName, folderName, request: createRequest(appId, size?.disk ?? 0, chosen) };
   publish();
 }
 
 export function register() {
-  const bridge = SteamClient as unknown as Bridge;
+  const { Installs } = SteamClient;
 
   // Global, so real Steam installs fall through whenever ours isn't pending.
   const patches = [
-    replacePatch(bridge.Installs, "SetInstallFolder", ([folderIndex]: [number]) => {
-      if (!pending) return callOriginal;
+    replacePatch(Installs, "SetInstallFolder", ([folderIndex]) =>
+      update((request) => {
+        const folder = folders.find((candidate) => candidate.nFolderIndex === folderIndex);
+        if (!folder) return;
+        request.iInstallFolder = folder.nFolderIndex;
+        request.nDiskSpaceAvailable = folder.nFreeSpace;
+      }),
+    ),
 
-      const folder = folderByIndex(folderIndex);
-      if (folder) {
-        pending.request.iInstallFolder = folder.nFolderIndex;
-        pending.request.nDiskSpaceAvailable = folder.nFreeSpace;
-        publish();
-      }
-
-      // The store assigns whatever this resolves to back over the request.
-      return Promise.resolve({ ...pending.request });
-    }),
-
-    replacePatch(
-      bridge.Installs,
-      "SetCreateShortcuts",
-      ([desktop, systemMenu]: [boolean, boolean]) => {
-        if (!pending) return callOriginal;
-
-        pending.request.bDesktopShortcut = desktop;
-        pending.request.bSystemMenuShortcut = systemMenu;
-        publish();
-
-        return Promise.resolve({ ...pending.request });
-      },
+    replacePatch(Installs, "SetCreateShortcuts", ([desktop, systemMenu]) =>
+      update((request) => {
+        request.bDesktopShortcut = desktop;
+        request.bSystemMenuShortcut = systemMenu;
+      }),
     ),
 
     // The Install button.
-    replacePatch(bridge.Installs, "ContinueInstall", () => {
+    replacePatch(Installs, "ContinueInstall", () => {
       if (!pending) return callOriginal;
 
       const { appName, folderName, request } = pending;
-      const folder = folderByIndex(request.iInstallFolder);
-      const basePath = folder && `${folder.strFolderPath}\\${INSTALL_SUBDIRECTORY}`;
+      const folder = folders.find((candidate) => candidate.nFolderIndex === request.iInstallFolder);
 
       if (request.bDesktopShortcut) {
         try {
-          bridge.Apps.CreateDesktopShortcutForApp(request.currentAppID);
+          SteamClient.Apps.CreateDesktopShortcutForApp(request.currentAppID);
         } catch (reason: unknown) {
           console.warn("Could not create the desktop shortcut", reason);
         }
       }
 
       close();
-      void jobs.install(appName, basePath, folderName);
+      void jobs.install(
+        appName,
+        folder && `${folder.strFolderPath}\\${INSTALL_SUBDIRECTORY}`,
+        folderName,
+      );
       return Promise.resolve();
     }),
 
-    replacePatch(bridge.Installs, "CancelInstall", () => {
+    replacePatch(Installs, "CancelInstall", () => {
       if (!pending) return callOriginal;
 
       close();
