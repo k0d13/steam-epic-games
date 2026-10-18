@@ -1,4 +1,4 @@
-import { MenuItem, type MenuGroupProps } from "millennium";
+import { findModuleExport, MenuItem, type MenuGroupProps } from "millennium";
 import {
   createElement,
   cloneElement,
@@ -7,8 +7,6 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
-import { findExport } from "../services/modules";
-import { memo } from "../services/once";
 
 // Splits the Store menu into a Steam Store submenu, holding Steam's own entries, and
 // an Epic Games Store one, whose entries open Epic's store in the main window browser
@@ -79,19 +77,15 @@ interface MenuProps {
 /** Steam's renderer for supernav entries, to draw its own in the submenu unchanged. */
 type MenuItems = ComponentType<{ menuItems: unknown[]; disabledItemClass?: string }>;
 
-/** Steam's submenu row. Millennium's own `MenuGroup` is undefined on current builds. */
-type MenuGroup = ComponentType<MenuGroupProps & { onClick?: () => void }>;
-
-/** The small wrapper that hands the row's class `bInGamepadUI`. */
-const getMenuGroup = memo(() => {
-  const component = findExport("RenderSubMenu", (value): value is MenuGroup => {
-    if (typeof value !== "function") return false;
-    const source = value.toString();
-    return source.includes("bInGamepadUI:") && source.length < 200;
-  });
-  if (!component) console.warn("Steam's submenu component wasn't found");
-  return component;
-});
+/**
+ * Steam's submenu row: the small wrapper handing its class `bInGamepadUI`.
+ * Millennium's own `MenuGroup` is undefined on current builds.
+ */
+const MenuGroup = findModuleExport((value) => {
+  const source = typeof value === "function" ? String(value) : "";
+  return source.length < 200 && /\{\.\.\.[\w$]+,bInGamepadUI:/.test(source);
+}) as ComponentType<MenuGroupProps & { onClick?: () => void }> | undefined;
+if (!MenuGroup) console.warn("Steam's submenu component wasn't found, so Store isn't split");
 
 interface MenuInstance {
   ForceHide(): void;
@@ -106,10 +100,7 @@ export function SupernavMenu(
   instance: RefObject<MenuInstance | undefined>,
   getMenuItems: () => MenuItems,
 ): ReactElement<MenuProps> {
-  if (title !== MENU_TITLE) return menu;
-
-  const MenuGroup = getMenuGroup();
-  if (!MenuGroup) return menu;
+  if (title !== MENU_TITLE || !MenuGroup) return menu;
 
   // A submenu is its own popup, so entering it leaves the menu, which then hides
   // itself and the submenu with it. Steam's handlers count it as part of the menu.
