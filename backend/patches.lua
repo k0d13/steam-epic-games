@@ -48,6 +48,33 @@ return {
     },
   },
 
+  -- A shortcut's details page keeps only a few sections, so achievements.ts gets to
+  -- put Achievements back for an Epic game that has them. Anchored on the shortcut
+  -- list, since BIsModOrShortcut is asked in other places too.
+  {
+    file = [[sp\.js]],
+    find = [[\["nonsteam","notes","screenshots"\];.*?\.BIsModOrShortcut\(\)&&\([\w$]+=[\w$]+\)]],
+    transforms = {
+      {
+        match = [[([\w$]+)\.BIsModOrShortcut\(\)&&\(([\w$]+)=([\w$]+)\)]],
+        replace = [[\1.BIsModOrShortcut()&&(\2=(#{{self}}?.ShortcutSections?.(\1,\3)??\3))]],
+      },
+    },
+  },
+
+  -- The full achievements page's store, whose three getters ask achievements.ts
+  -- first, so an Epic game's page isn't Steam's cached "Failed to retrieve user stats".
+  {
+    file = [[sp\.js]],
+    find = [[GetPlayerAchievements\([\w$]+,[\w$]+\)\{if\(.*?GetGlobalAchievements\([\w$]+\)\{]],
+    transforms = {
+      {
+        match = [[(GetMyAchievements|GetGlobalAchievements|GetPlayerAchievements)\(([\w$]+)(,[\w$]+)?\)\{]],
+        replace = [[\1(\2\3){const epicGames=#{{self}}?.AchievementStore?.("\1",\2);if(epicGames)return epicGames;]],
+      },
+    },
+  },
+
   -- Steam's artwork component, which draws every icon and capsule, so library-badge.ts
   -- can put the Epic mark in the container first. Its app, appid and asset type are
   -- read at the top of render, so the match carries everything up to the container.

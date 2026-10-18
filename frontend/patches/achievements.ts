@@ -1,5 +1,3 @@
-import { afterPatch } from "millennium";
-import { findExport } from "../services/modules";
 import * as achievements from "../state/achievements";
 import * as library from "../state/library";
 
@@ -7,8 +5,8 @@ import * as library from "../state/library";
 //
 //   e.BIsModOrShortcut() && (s = ["nonsteam", "notes", "screenshots"])
 //
-// The section itself copes, so putting "achievements" back is the whole patch;
-// app-details.ts supplies the data.
+// The section itself copes, so backend/patches.lua has that line ask
+// `ShortcutSections`, which puts "achievements" back; app-details.ts supplies the data.
 
 /** Steam's own achievement shape, as the details store carries it. */
 interface SteamAchievement {
@@ -35,14 +33,6 @@ export interface SteamAchievements {
 
 interface AppOverview {
   appid: number;
-}
-
-interface SectionsComponent {
-  prototype: {
-    GetSections(overview: AppOverview, details: unknown): Set<string>;
-    /** The Set the last call returned, kept so an unchanged one re-renders as itself. */
-    m_setSectionsMemo?: Set<string>;
-  };
 }
 
 /**
@@ -132,7 +122,8 @@ export function getAchievements(appName: string): SteamAchievements | undefined 
 }
 
 // The full achievements page has its own store, which caches "Failed to retrieve
-// user stats" for a shortcut for good, so its three getters are patched instead.
+// user stats" for a shortcut for good, so backend/patches.lua has its three getters
+// ask `AchievementStore` first.
 
 /** What the store hands the page: one of these three, never more than one. */
 interface StoreResult<T> {
@@ -150,12 +141,6 @@ interface MyAchievements {
 
 /** Just the rarities, which the page shows as "x% of players". */
 type GlobalAchievements = Record<string, number>;
-
-interface AchievementStore {
-  GetMyAchievements(appId: number): StoreResult<MyAchievements>;
-  GetGlobalAchievements(appId: number): StoreResult<GlobalAchievements>;
-  GetPlayerAchievements(appId: number, accountId: number): StoreResult<unknown>;
-}
 
 /** Memoised groupings. `withHidden` is off for the player page, which has no hidden bucket. */
 const grouping = {
@@ -181,92 +166,38 @@ function group(list: SteamAchievement[], withHidden: boolean): MyAchievements {
   return grouped;
 }
 
+/** What each getter answers with, built from our converted list. */
+const GETTERS: Record<string, (ours: SteamAchievement[]) => unknown> = {
+  GetMyAchievements: (ours) => group(ours, true),
+
+  // Epic publishes rarity too, so the page's rarity column is real.
+  GetGlobalAchievements: (ours) => {
+    const rarities: GlobalAchievements = {};
+    for (const achievement of ours) rarities[achievement.strID] = achievement.flAchieved;
+    return rarities;
+  },
+
+  // Only we can hold an Epic game's achievements, whichever account is asked about.
+  GetPlayerAchievements: (ours) => group(ours, false),
+};
+
 /**
- * Answer a store getter for our games. Not yet arrived reads as loading, so the page
- * shows a spinner rather than "no stats" until the repaint brings the answer.
+ * Called from the store's getters, for which undefined means Steam answers. Not yet
+ * arrived reads as loading, so the page shows a spinner rather than "no stats" until
+ * the repaint brings the answer.
  */
-function patchGetter<T>(
-  store: AchievementStore,
-  method: keyof AchievementStore,
-  build: (ours: SteamAchievement[]) => T,
-) {
-  // All three share one envelope, so the loosest type stands in for each.
-  return afterPatch(store, method as "GetPlayerAchievements", (args, result) => {
-    const game = library.getByAppId(args[0]);
-    if (!game) return result;
+export function AchievementStore(method: string, appId: number): StoreResult<unknown> | undefined {
+  const build = GETTERS[method];
+  const game = library.getByAppId(appId);
+  if (!build || !game) return undefined;
 
-    const ours = listFor(game.app_name);
-    return ours ? { data: build(ours) } : { loading: true };
-  });
+  const ours = listFor(game.app_name);
+  return ours ? { data: build(ours) } : { loading: true };
 }
 
-function patchStore(store: AchievementStore) {
-  const patches = [
-    patchGetter(store, "GetMyAchievements", (ours) => group(ours, true)),
-
-    // Epic publishes rarity too, so the page's rarity column is real.
-    patchGetter(store, "GetGlobalAchievements", (ours) => {
-      const rarities: GlobalAchievements = {};
-      for (const achievement of ours) rarities[achievement.strID] = achievement.flAchieved;
-      return rarities;
-    }),
-
-    // Only we can hold an Epic game's achievements, whichever account is asked about.
-    patchGetter(store, "GetPlayerAchievements", (ours) => group(ours, false)),
-  ];
-
-  return () => {
-    for (const patch of patches) patch.unpatch();
-  };
-}
-
-export function register() {
-  // Found by the "playtestinvites" literal in the same function that drops our section.
-  const component = findExport<SectionsComponent>(
-    '"playtestinvites"',
-    (value): value is SectionsComponent =>
-      typeof value === "function" &&
-      typeof (value as SectionsComponent).prototype?.GetSections === "function",
-  );
-  if (!component) {
-    console.warn("Could not find the app details sections component, achievements stay hidden");
-    return () => {};
-  }
-
-  const patch = afterPatch(
-    component.prototype,
-    "GetSections",
-    function (this: SectionsComponent["prototype"], args, sections: Set<string>) {
-      const [overview] = args as [AppOverview, unknown];
-
-      const game = library.getByAppId(overview.appid);
-      if (!game || !listFor(game.app_name)) return sections;
-
-      sections.add("achievements");
-      // The component returns its memoised Set when the new one matches, which
-      // would discard our edit on the next render.
-      this.m_setSectionsMemo = sections;
-      return sections;
-    },
-  );
-
-  // Optional: without the store the section still draws, it just leads nowhere.
-  // Found by the warning it logs for every shortcut.
-  const store = findExport<AchievementStore>(
-    "Failed to GetMyAchievementsForApp",
-    (value): value is AchievementStore =>
-      typeof value === "object" &&
-      value !== null &&
-      typeof (value as AchievementStore).GetMyAchievements === "function" &&
-      typeof (value as AchievementStore).GetGlobalAchievements === "function",
-  );
-  if (!store) console.warn("Could not find the achievement store, the full page stays empty");
-  const unpatchStore = store ? patchStore(store) : () => {};
-
-  console.debug("Registered the achievements patch");
-
-  return () => {
-    patch.unpatch();
-    unpatchStore();
-  };
+/** Called with the sections Steam keeps for a shortcut, before it draws any. */
+export function ShortcutSections(overview: AppOverview, sections: string[]): string[] {
+  const game = library.getByAppId(overview.appid);
+  if (!game || !listFor(game.app_name)) return sections;
+  return [...sections, "achievements"];
 }

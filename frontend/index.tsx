@@ -1,7 +1,6 @@
 import { definePlugin, IconsModule } from "millennium";
 import { PluginPanel, UnsupportedPanel } from "./components/plugin-panel";
 import * as achievementProgress from "./patches/achievement-progress";
-import * as achievementsPatch from "./patches/achievements";
 import * as activity from "./patches/activity";
 import * as appDetails from "./patches/app-details";
 import * as downloadOverview from "./patches/download-overview";
@@ -29,6 +28,8 @@ export { ManageSubmenu } from "./patches/manage-menu";
 export { IsEpicURL, SupernavMenu } from "./patches/store-menu";
 /** @ffi */
 export { LibraryBadge } from "./patches/library-badge";
+/** @ffi */
+export { AchievementStore, ShortcutSections } from "./patches/achievements";
 
 // IconsModule varies between Steam builds; a missing icon mustn't break the plugin.
 const PluginIcon = IconsModule?.Download ?? IconsModule?.Settings ?? (() => null);
@@ -48,7 +49,6 @@ export default definePlugin(async () => {
     ["installs", installs.register],
     ["install wizard", installWizard.register],
     ["activity", activity.register],
-    ["achievements", achievementsPatch.register],
     ["achievement progress", achievementProgress.register],
     ["storage", storage.register],
     ["downloads", downloads.register],
