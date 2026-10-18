@@ -150,3 +150,46 @@ export const PANEL_CSS = `
   flex: none;
 }
 `;
+
+export const plural = (count: number, noun: string) => `${count} ${noun}${count === 1 ? "" : "s"}`;
+
+/** A transient line under the meter, an error or not. */
+export interface Message {
+  text: string;
+  error?: boolean;
+}
+
+/** `done` of `total`, or just the label while there's no total yet. */
+export function Meter({ label, done, total }: { label: string; done: number; total: number }) {
+  return (
+    <div>
+      <div className="epic-meter-label">
+        <span>{label}</span>
+        <strong>{total ? `${done} / ${total}` : ""}</strong>
+      </div>
+      <div className="epic-meter">
+        <div
+          className="epic-meter-fill"
+          style={{ width: `${total ? (done / total) * 100 : 0}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+export function Identity(props: { initial: string; title: string; subtitle: string }) {
+  return (
+    <div className="epic-identity">
+      <div className="epic-avatar">{props.initial}</div>
+      <div className="epic-identity-text">
+        <div className="epic-title">{props.title}</div>
+        <div className="epic-dim">{props.subtitle}</div>
+      </div>
+    </div>
+  );
+}
+
+export function MessageLine({ message }: { message: Message | undefined }) {
+  if (!message) return null;
+  return <div className={message.error ? "epic-error" : "epic-dim"}>{message.text}</div>;
+}
