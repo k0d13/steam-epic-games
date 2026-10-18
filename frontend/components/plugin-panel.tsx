@@ -9,9 +9,10 @@ import * as shortcuts from "../services/shortcuts";
 import * as steamLibrary from "../services/steam-library";
 import * as account from "../state/account";
 import * as preferences from "../state/preferences";
-import { plural } from "./format";
 import { PANEL_CSS } from "./panel-styles";
 import { type LibraryView, useLibrary } from "./use-library";
+
+const plural = (count: number, noun: string) => `${count} ${noun}${count === 1 ? "" : "s"}`;
 
 // One status card, then the options once there's something for them to act on,
 // then maintenance, which works signed out so it can always undo the plugin.

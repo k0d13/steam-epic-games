@@ -9,7 +9,7 @@ import * as installs from "./patches/installs";
 import * as overviews from "./patches/overviews";
 import * as storage from "./patches/storage";
 import * as epicSession from "./services/epic-session";
-import { notify } from "./services/notifications";
+import { notifyDownloadCompleted } from "./services/notifications";
 import { onGameStopped } from "./services/playtime";
 import * as shortcuts from "./services/shortcuts";
 import * as steamLibrary from "./services/steam-library";
@@ -86,7 +86,7 @@ export default definePlugin(async () => {
     jobs.onEnded((job) => {
       if (job.state !== "done" || !jobs.isDownload(job)) return;
       const appId = appIds.getAppId(job.app_name);
-      if (appId !== undefined) notify("downloadCompleted", appId);
+      if (appId !== undefined) notifyDownloadCompleted(appId);
     }),
 
     // Running installs repaint every second: the progress bar reads off the overview.
