@@ -1,7 +1,10 @@
+import { Spinner } from "millennium";
+import type { ReactNode } from "react";
+
 // Steam's Field rows each draw as their own padded card, with toggles inset
 // differently from buttons, which reads as ragged in a panel this narrow. So the
 // panel lays itself out and keeps Steam's own buttons and toggles for the controls.
-// Colours are Steam's: its body text, its dim text and the blue its toggles use.
+// Colours are Steam's own variables, so they follow its theme.
 
 export const PANEL_CSS = `
 .epic-panel {
@@ -9,7 +12,7 @@ export const PANEL_CSS = `
   flex-direction: column;
   gap: 20px;
   padding-bottom: 16px;
-  color: #dcdedf;
+  color: var(--gpSystemLighterGrey, #dcdedf);
   font-size: 13px;
   line-height: 1.4;
 }
@@ -38,8 +41,8 @@ export const PANEL_CSS = `
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  background: #3d4450;
-  color: #fff;
+  background: var(--gpSystemDarkGrey, #3d4450);
+  color: var(--gpColor-White, #fff);
   font-size: 17px;
   font-weight: 600;
 }
@@ -50,7 +53,7 @@ export const PANEL_CSS = `
 
 .epic-title {
   overflow: hidden;
-  color: #fff;
+  color: var(--gpColor-White, #fff);
   font-size: 15px;
   font-weight: 600;
   text-overflow: ellipsis;
@@ -58,7 +61,7 @@ export const PANEL_CSS = `
 }
 
 .epic-dim {
-  color: #8b929a;
+  color: var(--gpSystemLightGrey, #8b929a);
   font-size: 12px;
 }
 
@@ -72,12 +75,12 @@ export const PANEL_CSS = `
   justify-content: space-between;
   gap: 8px;
   margin-bottom: 6px;
-  color: #8b929a;
+  color: var(--gpSystemLightGrey, #8b929a);
   font-size: 12px;
 }
 
 .epic-meter-label strong {
-  color: #dcdedf;
+  color: var(--gpSystemLighterGrey, #dcdedf);
   font-weight: 500;
 }
 
@@ -91,8 +94,15 @@ export const PANEL_CSS = `
 .epic-meter-fill {
   height: 100%;
   border-radius: 2px;
-  background: #1a9fff;
+  background: var(--gpColor-Blue, #1a9fff);
   transition: width 0.3s ease-out;
+}
+
+.epic-busy > svg {
+  width: 1em;
+  height: 1em;
+  margin-right: 8px;
+  vertical-align: -0.125em;
 }
 
 .epic-actions {
@@ -131,7 +141,7 @@ export const PANEL_CSS = `
 
 .epic-heading {
   margin: 0 2px 8px;
-  color: #8b929a;
+  color: var(--gpSystemLightGrey, #8b929a);
   font-size: 12px;
   font-weight: 500;
   letter-spacing: 0.06em;
@@ -190,6 +200,16 @@ export function Meter({ label, done, total }: { label: string; done: number; tot
         />
       </div>
     </div>
+  );
+}
+
+/** Steam's spinner beside a button's label while it works, no taller than the text. */
+export function Busy({ children }: { children: ReactNode }) {
+  return (
+    <span className="epic-busy">
+      <Spinner />
+      {children}
+    </span>
   );
 }
 

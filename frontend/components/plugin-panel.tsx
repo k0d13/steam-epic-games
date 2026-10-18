@@ -4,7 +4,7 @@ import { open, SIGN_IN_URL } from "../patches/store-menu";
 import * as steamLibrary from "../services/steam-library";
 import * as account from "../state/account";
 import { useValue } from "../state/signal";
-import { Identity, type Message, MessageLine, Meter, PANEL_CSS, plural } from "./panel-ui";
+import { Busy, Identity, type Message, MessageLine, Meter, PANEL_CSS, plural } from "./panel-ui";
 import { Maintenance, Options } from "./settings";
 import { type LibraryView, useLibrary } from "./use-library";
 
@@ -70,7 +70,7 @@ function AccountCard({ status }: { status: EpicStatus | undefined }) {
         </div>
         <Focusable className="epic-actions" flow-children="horizontal">
           <DialogButton className="epic-grow" disabled={retrying} onClick={onRetry}>
-            {retrying ? "Retrying..." : "Retry"}
+            {retrying ? <Busy>Retrying</Busy> : "Retry"}
           </DialogButton>
         </Focusable>
       </div>
@@ -118,7 +118,7 @@ function LibraryCard({
   else subtitle = `${plural(total, "game")} · ${installed} installed · ${describeAge(refreshedAt)}`;
 
   let primary: string;
-  if (syncing) primary = "Syncing...";
+  if (syncing) primary = "Syncing";
   else if (synced === 0) primary = "Add to Steam";
   else if (synced < total) primary = `Add ${total - synced} more`;
   else primary = "Sync now";
@@ -155,10 +155,10 @@ function LibraryCard({
       <MessageLine message={shown} />
       <Focusable className="epic-actions" flow-children="horizontal">
         <DialogButton className="epic-grow" disabled={busy || total === 0} onClick={onSync}>
-          {primary}
+          {syncing ? <Busy>{primary}</Busy> : primary}
         </DialogButton>
         <DialogButton className="epic-fixed" disabled={busy} onClick={refresh}>
-          {loading ? "Checking..." : "Refresh"}
+          {loading ? <Busy>Checking</Busy> : "Refresh"}
         </DialogButton>
       </Focusable>
     </div>
@@ -216,8 +216,8 @@ function SupportCard() {
   return (
     <div className="epic-card">
       <div className="epic-dim">
-        Made by one person in their spare time. If it saves you keeping a second launcher open,
-        a coffee keeps it going.
+        Made by one person in their spare time. If it saves you keeping a second launcher open, a
+        coffee keeps it going.
       </div>
       <Focusable className="epic-actions" flow-children="horizontal">
         <DialogButton
