@@ -13,8 +13,10 @@ local utils = require("utils")
 local vendor = {}
 
 local VERSION = "0.21.0"
-local ASSET = "legendary_windows_x64.exe"
-local SHA256 = "4c01a14c0acb0c46069b197ae7212ea4ea6b861661126ca0593cdac31658fb01"
+local ASSET = paths.IS_WINDOWS and "legendary_windows_x64.exe" or "legendary_linux_x64"
+local SHA256 = paths.IS_WINDOWS
+    and "4c01a14c0acb0c46069b197ae7212ea4ea6b861661126ca0593cdac31658fb01"
+  or "c83d1595a9e2cbae4e66b69ecaa1f8649da99b617a72f93312d342e6a5a799c7"
 
 local URL = "https://github.com/legendary-gl/legendary/releases/download/"
   .. VERSION
@@ -23,13 +25,24 @@ local URL = "https://github.com/legendary-gl/legendary/releases/download/"
 
 --- Unversioned because every Steam shortcut points here; the hash check catches upgrades.
 local DIR = paths.DATA .. "/vendor"
-local PATH = DIR .. "/legendary.exe"
+local PATH = DIR .. (paths.IS_WINDOWS and "/legendary.exe" or "/legendary")
 
----A file's lowercase SHA-256 via certutil, which ships with Windows.
+---A file's lowercase SHA-256 via certutil, which ships with Windows, or
+---sha256sum from coreutils.
 ---@param path string
 ---@return string|nil
 local function digest(path)
-  local output, code = shell.run("certutil", { "-hashfile", shell.windows_path(path), "SHA256" })
+  if not paths.IS_WINDOWS then
+    local output, code = shell.run("sha256sum", { path })
+    if code ~= 0 then
+      log.warn("sha256sum could not hash " .. path .. ", exited " .. code)
+      return nil
+    end
+    local hash = output:match("^(%x+)")
+    return hash and #hash == 64 and hash:lower() or nil
+  end
+
+  local output, code = shell.run("certutil", { "-hashfile", shell.native_path(path), "SHA256" })
   if code ~= 0 then
     log.warn("certutil could not hash " .. path .. ", exited " .. code)
     return nil
@@ -47,15 +60,23 @@ local function digest(path)
   return nil
 end
 
----Download to a file. PowerShell is the fallback for Windows without curl.exe.
+---Download to a file. PowerShell is the fallback for Windows without curl.exe;
+---Linux has curl.
 ---@param destination string
 ---@return boolean ok
 local function fetch(destination)
-  local target = shell.windows_path(destination)
+  local target = shell.native_path(destination)
 
-  shell.run("curl.exe", { "-fsSL", "--retry", "2", "-o", target, URL })
+  shell.run(
+    paths.IS_WINDOWS and "curl.exe" or "curl",
+    { "-fsSL", "--retry", "2", "-o", target, URL }
+  )
   if fs.is_file(destination) then
     return true
+  end
+
+  if not paths.IS_WINDOWS then
+    return false
   end
 
   log.info("curl did not produce a file, falling back to PowerShell")
@@ -105,6 +126,10 @@ function vendor.ensure()
     fs.remove(partial)
     log.error("Checksum mismatch: expected " .. SHA256 .. ", got " .. tostring(actual))
     return nil, "The downloaded legendary did not match its checksum, so it was discarded."
+  end
+
+  if not paths.IS_WINDOWS then
+    shell.run("chmod", { "+x", partial })
   end
 
   if not fs.rename(partial, PATH) then

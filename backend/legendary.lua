@@ -199,9 +199,9 @@ function GetLaunchCommand(app_name)
 
   -- Steam shows these paths as given, so they get one style of separator.
   return {
-    exe = shell.windows_path(binary),
+    exe = shell.native_path(binary),
     arguments = 'launch "' .. app_name .. '"',
-    start_dir = shell.windows_path(fs.parent_path(binary)),
+    start_dir = shell.native_path(fs.parent_path(binary)),
   }
 end
 
@@ -235,7 +235,7 @@ function StartInstall(app_name, base_path, game_folder)
 
   if type(base_path) == "string" and base_path ~= "" then
     table.insert(args, "--base-path")
-    table.insert(args, shell.windows_path(base_path))
+    table.insert(args, shell.native_path(base_path))
   end
   if type(game_folder) == "string" and game_folder ~= "" then
     table.insert(args, "--game-folder")

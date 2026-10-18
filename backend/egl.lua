@@ -21,7 +21,7 @@ end
 ---@return table<string, { title: string, install_path: string }>
 local function get_manifests()
   local path = paths.egl_manifests()
-  if not fs.is_directory(path) then
+  if not path or not fs.is_directory(path) then
     return {}
   end
 

@@ -15,7 +15,7 @@ export const steamShortcuts = () =>
 // are also recognised by what they run: legendary, from wherever it was, with
 // the `launch "<app name>"` GetLaunchCommand gives them.
 
-const LEGENDARY_EXE = /(^|[\\/])legendary\.exe$/i;
+const LEGENDARY_EXE = /(^|[\\/])legendary(\.exe)?$/i;
 const LAUNCH_ARGUMENTS = /^\s*launch\s+"([^"]+)"\s*$/;
 
 /** Details Steam hasn't answered in this long are treated as someone else's shortcut. */
