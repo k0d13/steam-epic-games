@@ -5,11 +5,9 @@ import { isEpicTab } from "./epic-session";
 import { toast } from "./notifications";
 import { autoSync } from "./steam-library";
 
-// Buying or claiming a game reaches the library without the plugin asking, so the
-// Epic tabs epic-session follows are watched for an order. Two signals, since
-// neither covers every flow: Epic's checkout, a /purchase page or frame, closing;
-// and the request that places an order, which is how a Get adds a free game with no
-// checkout. A false alarm costs one library refresh.
+// Orders placed in the Epic tabs epic-session follows are spotted two ways, since
+// neither covers every flow: a checkout page or frame closing, and the request that
+// places the order. A false alarm costs one library refresh.
 
 /** Epic takes a moment to list an order, and an order is several requests; waited after the last. */
 const AFTER_CHECKOUT_MS = 5_000;
