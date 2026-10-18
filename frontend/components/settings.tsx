@@ -7,7 +7,7 @@ import { mainPopup } from "../services/popups";
 import * as steamLibrary from "../services/steam-library";
 import * as preferences from "../state/preferences";
 import { useValue } from "../state/signal";
-import { type Message, MessageLine, Meter, plural } from "./panel-ui";
+import { Busy, type Message, MessageLine, Meter, plural } from "./panel-ui";
 
 // The panel's lower half: the options once there's something for them to act on,
 // then maintenance, which works signed out so it can always undo the plugin.
@@ -152,7 +152,7 @@ export function Maintenance({
             </DialogButton>
           )}
           <DialogButton className="epic-grow" disabled={sync.active} onClick={onCleanUp}>
-            {cleaning ? "Removing..." : "Clean up"}
+            {cleaning ? <Busy>Removing</Busy> : "Clean up"}
           </DialogButton>
         </Focusable>
       </div>
