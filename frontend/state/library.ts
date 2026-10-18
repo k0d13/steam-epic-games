@@ -1,4 +1,3 @@
-import { type SteamAppOverview } from "millennium";
 import * as appIds from "./app-ids";
 import { createEmitter } from "./emitter";
 
@@ -89,14 +88,4 @@ export function isEmpty(): boolean {
 /** The Steam appids we have shortcuts for, for the paths that correct them. */
 export function appIdsWithGames(): number[] {
   return [...byAppId.keys()];
-}
-
-/**
- * Steam's overviews for our shortcuts, by appid: this runs on every change and
- * `allApps` holds thousands.
- */
-export function overviews(): SteamAppOverview[] {
-  return appIdsWithGames()
-    .map((appId) => appStore.GetAppOverviewByAppID(appId))
-    .filter((app): app is SteamAppOverview => app !== undefined);
 }
