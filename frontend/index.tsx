@@ -95,7 +95,7 @@ export default definePlugin(async () => {
     // Not on the repaint: the storage page only changes when what's installed does.
     library.subscribe(storage.refresh),
     // A shortcut's working directory follows its game being installed or removed.
-    library.subscribe(() => void shortcuts.alignShortcuts()),
+    library.subscribe(() => void shortcuts.align()),
     jobs.subscribe(repaint),
     // Achievements land a round trip to Epic after the page asking for them drew.
     achievements.subscribe(repaint),

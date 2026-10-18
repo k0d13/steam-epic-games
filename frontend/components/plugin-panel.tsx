@@ -5,7 +5,6 @@ import * as artwork from "../services/artwork";
 import { COLLECTION_NAME } from "../services/collection";
 import * as hidden from "../services/hidden";
 import { mainPopup } from "../services/popups";
-import * as shortcuts from "../services/shortcuts";
 import * as steamLibrary from "../services/steam-library";
 import * as account from "../state/account";
 import * as preferences from "../state/preferences";
@@ -35,7 +34,7 @@ function describeAge(refreshedAt: number) {
 }
 
 /** A finished sync in a line, for a panel that may not have been open for it. */
-function describeResult(result: shortcuts.SyncResult) {
+function describeResult(result: steamLibrary.SyncResult) {
   if (result.error) return `Sync stopped partway: ${result.error}`;
 
   const parts = [
@@ -161,7 +160,7 @@ function LibraryCard({
   setMessage(message: Message | undefined): void;
 }) {
   const { games, refreshedAt, loading, error, synced, refresh } = view;
-  const sync = useSyncExternalStore(shortcuts.subscribeToSync, shortcuts.getSyncState);
+  const sync = useSyncExternalStore(steamLibrary.subscribe, steamLibrary.getSyncState);
 
   const total = games?.length ?? 0;
   const installed = games?.filter((game) => game.installed).length ?? 0;
@@ -207,7 +206,7 @@ function LibraryCard({
     if (!games) return;
     setMessage(undefined);
     // The service owns progress and result so they survive the dialog closing.
-    void steamLibrary.syncAll(games);
+    void steamLibrary.sync(games);
   };
 
   let primary: string;
@@ -268,7 +267,7 @@ function Options({
   setMessage(message: Message | undefined): void;
 }) {
   const prefs = useSyncExternalStore(preferences.subscribe, preferences.get);
-  const sync = useSyncExternalStore(shortcuts.subscribeToSync, shortcuts.getSyncState);
+  const sync = useSyncExternalStore(steamLibrary.subscribe, steamLibrary.getSyncState);
 
   // Scans Steam's whole library, so only when the shortcuts can have changed.
   const duplicates = useMemo(
@@ -318,7 +317,7 @@ function Maintenance({
   games: EpicGame[] | undefined;
   canRedownload: boolean;
 }) {
-  const sync = useSyncExternalStore(shortcuts.subscribeToSync, shortcuts.getSyncState);
+  const sync = useSyncExternalStore(steamLibrary.subscribe, steamLibrary.getSyncState);
   const [message, setMessage] = useState<Message | undefined>(undefined);
   const cleaning = sync.active && sync.operation === "cleanUp";
 
@@ -326,7 +325,7 @@ function Maintenance({
     if (!games) return;
     artwork.forgetAll();
     setMessage(undefined);
-    void steamLibrary.syncAll(games);
+    void steamLibrary.sync(games);
   };
 
   const onCleanUp = () =>
@@ -342,7 +341,7 @@ function Maintenance({
         bDestructiveWarning
         onOK={() => {
           setMessage(undefined);
-          void shortcuts.cleanUp().then((result) => {
+          void steamLibrary.cleanUp().then((result) => {
             if (result.error)
               setMessage({ text: `Clean up stopped: ${result.error}`, error: true });
             else if (result.removed === 0) setMessage({ text: "There was nothing to remove." });
