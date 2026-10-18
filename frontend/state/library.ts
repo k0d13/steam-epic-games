@@ -11,6 +11,13 @@ const byAppId = new Map<number, EpicGame>();
 const emitter = createEmitter();
 export const subscribe = emitter.subscribe;
 
+/** The last library read, for anything showing it outside the read's caller. */
+let latest: Library | undefined;
+
+export function getLatest(): Library | undefined {
+  return latest;
+}
+
 function reindex(games: EpicGame[]) {
   byAppName.clear();
   byAppId.clear();
@@ -39,11 +46,27 @@ const withGames = (library: Library): Library => ({
   games: Object.values(library.games),
 });
 
+/**
+ * A refresh still running. Two at once ran `legendary list` side by side, which
+ * failed one and slowed the other to minutes, so a second caller shares it.
+ */
+let refreshing: Promise<Library> | undefined;
+
 /** Load the library, from the backend's cache unless `refresh` is set. */
-export async function load(refresh = false, force = false) {
+export function load(refresh = false, force = false): Promise<Library> {
+  if (!refresh) return read(false, false);
+
+  refreshing ??= read(true, force).finally(() => {
+    refreshing = undefined;
+  });
+  return refreshing;
+}
+
+async function read(refresh: boolean, force: boolean): Promise<Library> {
   const result = withGames(await backend.GetLibrary(refresh, force));
   if (result.error) console.error("Failed to load the Epic library", result.error);
 
+  latest = result;
   reindex(result.games);
   return result;
 }
@@ -53,6 +76,7 @@ export async function loadInstalled() {
   const result = withGames(await backend.GetInstalled());
   if (result.error) console.warn("Failed to re-read the installed games", result.error);
 
+  latest = result;
   reindex(result.games);
   return result;
 }
