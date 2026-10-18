@@ -208,7 +208,6 @@ export function register() {
     }),
   ];
 
-  console.debug("Registered the install wizard patches");
   return () => {
     // A stray wizard's buttons would ask the client about an appid it doesn't know.
     if (pending) close();

@@ -109,7 +109,6 @@ export function register() {
     }),
   ];
 
-  console.debug("Registered the install patches");
   return () => {
     for (const patch of patches) patch.unpatch();
   };

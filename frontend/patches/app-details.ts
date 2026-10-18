@@ -1,5 +1,4 @@
 import { callOriginal, replacePatch } from "millennium";
-import { once } from "../services/once";
 import * as jobs from "../state/jobs";
 import * as library from "../state/library";
 import * as sizes from "../state/sizes";
@@ -32,16 +31,6 @@ interface AppsApi extends Record<PropertyKey, unknown> {
   RegisterForAppDetails(appId: number, callback: DetailsCallback): { unregister(): void };
 }
 
-const logApplied = once((details: AppDetails, appName: string) => {
-  console.debug("App details patch applied", {
-    appId: details.unAppID,
-    appName,
-    // Anything else means these fields are read-only or renamed on this build.
-    gotLocalContent: details.bHasAnyLocalContent,
-    gotRequired: details.lDiskSpaceRequiredBytes,
-  });
-});
-
 /**
  * Rewrite one app's details to match Epic. An install in progress counts as
  * installed, so the play bar doesn't shift under the cursor as progress appears.
@@ -70,8 +59,6 @@ function apply(details: AppDetails) {
   if (size) details.lDiskSpaceRequiredBytes = size.disk;
   // Fetches the manifest from Epic, so it's drawn on a later pass.
   else sizes.ensure(game.app_name);
-
-  logApplied(details, game.app_name);
 }
 
 /** Set while registering a read that must see Steam's own details. */
@@ -111,8 +98,6 @@ export function register() {
 
   // A size arriving is asynchronous and has no other way back into the UI.
   const unsubscribe = sizes.subscribe(() => refreshAll());
-
-  console.debug("Registered the app details patch");
 
   return () => {
     patch.unpatch();

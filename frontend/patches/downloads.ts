@@ -240,7 +240,6 @@ export function register() {
 
   dispatch();
 
-  console.debug("Registered the downloads patch");
   return () => {
     Reflect.deleteProperty(store, "AllTransfers");
     dispatch();
