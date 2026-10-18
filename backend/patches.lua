@@ -16,4 +16,35 @@ return {
       },
     },
   },
+
+  -- The supernav menus, which store-menu.ts splits into Steam and Epic submenus when
+  -- it's Store's. Steam's renderer for supernav entries is a sibling of the menu
+  -- class, so the first transform names it where the second can reach it.
+  {
+    file = [[sp\.js]],
+    find = [[const [\w$]+=[\w$]+=>\{const\{disabledItemClass:[\w$]+,menuItems:[\w$]+,children:[\w$]+\}=.*?\.CreateContextMenuInstance\([^}]*\}\),[^{}]*\{[^}]*\}\)]],
+    transforms = {
+      {
+        match = [[const ([\w$]+)=([\w$]+)=>\{const\{disabledItemClass:]],
+        replace = [[const epicGamesSupernavItems=()=>\1,\1=\2=>{const{disabledItemClass:]],
+      },
+      {
+        match = [[\.CreateContextMenuInstance\((\(0,[\w$]+\.jsx\)\([\w$]+,\{refContextMenu:([\w$]+),[^}]*\}\)),([^{}]*\{[^}]*title:([\w$]+),[^}]*\})\)]],
+        replace = [[.CreateContextMenuInstance((#{{self}}?.SupernavMenu??(m=>m))(\1,\4,\2,epicGamesSupernavItems),\3)]],
+      },
+    },
+  },
+
+  -- Epic's pages in Steam's browser light the Store tab, rather than keeping
+  -- whichever was last.
+  {
+    file = [[sp\.js]],
+    find = [[GetTabForURL\([\w$]+\)\{if\(]],
+    transforms = {
+      {
+        match = [[GetTabForURL\(([\w$]+)\)\{if\(]],
+        replace = [[GetTabForURL(\1){if(#{{self}}?.IsEpicURL?.(\1)||]],
+      },
+    },
+  },
 }
