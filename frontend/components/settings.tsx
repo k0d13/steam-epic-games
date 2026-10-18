@@ -1,5 +1,5 @@
-import { ConfirmModal, DialogButton, Focusable, showModal, Toggle } from "millennium";
-import { useMemo, useState } from "react";
+import { ConfirmModal, DialogButton, Dropdown, Focusable, showModal, Toggle } from "millennium";
+import { useEffect, useMemo, useState } from "react";
 import * as artwork from "../services/artwork";
 import { COLLECTION_NAME } from "../services/collection";
 import * as hidden from "../services/hidden";
@@ -27,6 +27,50 @@ function OptionRow(props: {
       </div>
       <div className="epic-row-control">
         <Toggle value={props.value} disabled={props.disabled} onChange={props.onChange} />
+      </div>
+    </div>
+  );
+}
+
+/** Linux only: the Proton every Epic game runs through. Hidden on Windows. */
+function ProtonRow({ games }: { games: EpicGame[] }) {
+  const [choice, setChoice] = useState<ProtonChoice | undefined>(undefined);
+
+  useEffect(() => {
+    void backend.GetProton().then(setChoice);
+  }, []);
+
+  if (!choice?.supported) return null;
+
+  const options = [
+    { data: "", label: "None" },
+    ...choice.builds.map((build) => ({ data: build.path, label: build.name })),
+  ];
+
+  return (
+    <div className="epic-row">
+      <div className="epic-row-text">
+        <div>Proton</div>
+        <div className="epic-dim">
+          {choice.builds.length === 0
+            ? "Install Proton from Steam's library first"
+            : "Each game gets its own prefix"}
+        </div>
+      </div>
+      <div className="epic-row-control">
+        <Dropdown
+          rgOptions={options}
+          selectedOption={choice.selected ?? ""}
+          disabled={choice.builds.length === 0}
+          onChange={(option) => {
+            const path = option.data as string;
+            setChoice({ ...choice, selected: path || null });
+            void backend.SetProton(
+              path,
+              games.map((game) => game.app_name),
+            );
+          }}
+        />
       </div>
     </div>
   );
@@ -78,6 +122,7 @@ export function Options({
           disabled={sync.active}
           onChange={(value) => steamLibrary.setHideDuplicates(games, value)}
         />
+        <ProtonRow games={games} />
       </div>
     </div>
   );

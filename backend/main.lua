@@ -4,18 +4,13 @@ local library = require("library")
 local log = require("log")
 local millennium = require("millennium")
 local paths = require("paths")
-local utils = require("utils")
 
 -- These only define ffi functions, so nothing else requires them.
 require("details")
 require("grid")
 
 local function on_load()
-  if utils.getenv("OS") ~= "Windows_NT" then
-    log.error("Epic Games only supports Windows for now")
-    millennium.ready()
-    return
-  end
+  log.info("Backend loading on " .. (paths.IS_WINDOWS and "Windows" or "Linux"))
 
   -- Left behind by versions that ran commands through a PowerShell daemon.
   -- pcall'd because one still running from before a reload holds its lock file.
