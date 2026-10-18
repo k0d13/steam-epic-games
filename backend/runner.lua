@@ -131,7 +131,7 @@ function runner.spawn(dir, exe, args)
   -- Before the launch, or a read in between sees it queued and starts a second runner.
   utils.write_file(runner.file(dir, "spawned"), tostring(datetime.unix()))
 
-  shell.run("wscript", { shell.windows_path(launcher_path) })
+  shell.run("wscript", { shell.native_path(launcher_path) })
   return true
 end
 

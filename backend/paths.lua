@@ -5,6 +5,9 @@ local utils = require("utils")
 
 local paths = {}
 
+--- Windows always sets `OS`; Linux doesn't.
+paths.IS_WINDOWS = utils.getenv("OS") == "Windows_NT"
+
 -- Millennium's data folder for the plugin. Not `utils.get_backend_path()`, which
 -- comes back empty under `starlight watch`.
 paths.DATA = millennium.steam_path() .. "/millennium/data/epic-games"
@@ -35,9 +38,12 @@ function paths.legendary_config()
 end
 
 ---The folder the Epic Games Launcher keeps one `.item` manifest per install in,
----on the system drive but not always C:.
----@return string
+---on the system drive but not always C:. Nil on Linux, which has no launcher.
+---@return string|nil
 function paths.egl_manifests()
+  if not paths.IS_WINDOWS then
+    return nil
+  end
   return (env("PROGRAMDATA") or "C:/ProgramData") .. "/Epic/EpicGamesLauncher/Data/Manifests"
 end
 
