@@ -1,11 +1,12 @@
 import { ConfirmModal, DialogButton, Focusable, showModal, Toggle } from "millennium";
-import { useMemo, useState, useSyncExternalStore } from "react";
+import { useMemo, useState } from "react";
 import * as artwork from "../services/artwork";
 import { COLLECTION_NAME } from "../services/collection";
 import * as hidden from "../services/hidden";
 import { mainPopup } from "../services/popups";
 import * as steamLibrary from "../services/steam-library";
 import * as preferences from "../state/preferences";
+import { useValue } from "../state/signal";
 import { type Message, MessageLine, Meter, plural } from "./panel-ui";
 
 // The panel's lower half: the options once there's something for them to act on,
@@ -38,8 +39,8 @@ export function Options({
   games: EpicGame[];
   setMessage(message: Message | undefined): void;
 }) {
-  const prefs = useSyncExternalStore(preferences.subscribe, preferences.get);
-  const sync = useSyncExternalStore(steamLibrary.subscribe, steamLibrary.getSyncState);
+  const prefs = useValue(preferences);
+  const sync = useValue(steamLibrary.progress);
 
   // Scans Steam's whole library, so only when the shortcuts can have changed.
   const duplicates = useMemo(
@@ -95,7 +96,7 @@ export function Maintenance({
   games: EpicGame[] | undefined;
   canRedownload: boolean;
 }) {
-  const sync = useSyncExternalStore(steamLibrary.subscribe, steamLibrary.getSyncState);
+  const sync = useValue(steamLibrary.progress);
   const [message, setMessage] = useState<Message | undefined>(undefined);
   const cleaning = sync.active && sync.operation === "cleanUp";
 

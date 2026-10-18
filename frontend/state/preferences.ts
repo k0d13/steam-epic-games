@@ -1,4 +1,4 @@
-import { createEmitter } from "./emitter";
+import { createValue } from "./signal";
 import { createStore } from "./storage";
 
 // What the panel's toggles remember. Each is applied after every sync, so it
@@ -17,18 +17,13 @@ const DEFAULTS: Preferences = { autoSync: true, collection: false, hideDuplicate
 
 const store = createStore<boolean>("epic-games:preferences:v1");
 
-const emitter = createEmitter();
-export const subscribe = emitter.subscribe;
-
 /** Rebuilt on change only, so useSyncExternalStore sees a stable snapshot. */
-let snapshot: Preferences = { ...DEFAULTS, ...store.getAll() };
+const preferences = createValue<Preferences>({ ...DEFAULTS, ...store.getAll() });
 
-export function get(): Preferences {
-  return snapshot;
-}
+export const subscribe = preferences.subscribe;
+export const get = preferences.get;
 
 export function set<K extends keyof Preferences>(key: K, value: Preferences[K]) {
   store.set(key, value);
-  snapshot = { ...snapshot, [key]: value };
-  emitter.emit();
+  preferences.update({ [key]: value } as Pick<Preferences, K>);
 }
