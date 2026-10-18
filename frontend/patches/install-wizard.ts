@@ -1,6 +1,4 @@
-import { callOriginal, replacePatch } from "millennium";
-import { findExport } from "../services/modules";
-import { memo } from "../services/once";
+import { callOriginal, findModuleExport, replacePatch } from "millennium";
 import * as jobs from "../state/jobs";
 
 // The client only opens its install wizard for real appids, but it's drawn in JS
@@ -80,16 +78,10 @@ interface Bridge {
   Apps: Apps;
 }
 
-/** The store singleton, found by the source of its getter. */
-const getStore = memo(() => {
-  const store = findExport(
-    "GetInstallManager(){return this.m_InstallManager}",
-    (value): value is GameActionsStore =>
-      typeof (value as GameActionsStore | null)?.GetInstallManager === "function",
-  );
-  if (!store) console.warn("Steam's install wizard store wasn't found");
-  return store;
-});
+const store = findModuleExport((value) => typeof value?.GetInstallManager === "function") as
+  | GameActionsStore
+  | undefined;
+if (!store) console.warn("Steam's install wizard store wasn't found, so Epic games can't install");
 
 /** The game the wizard is currently open for, if it's one of ours. */
 let pending: { appName: string; folderName?: string; request: InstallRequest } | undefined;
@@ -98,15 +90,12 @@ let folders: InstallFolder[] = [];
 
 /** A fresh object each time: the store wraps what it's given in a mobx proxy. */
 function publish() {
-  const current = getStore();
-  if (current && pending) current.m_InstallManager = { ...pending.request };
+  if (store && pending) store.m_InstallManager = { ...pending.request };
 }
 
 function close() {
   pending = undefined;
-
-  const current = getStore();
-  if (current) current.m_InstallManager = null;
+  if (store) store.m_InstallManager = null;
 }
 
 function folderByIndex(index: number) {
@@ -115,7 +104,7 @@ function folderByIndex(index: number) {
 
 /** Open Steam's install wizard for our game, awaiting the size its space warning needs. */
 export async function open(appId: number, appName: string, folderName?: string) {
-  if (!getStore()) return;
+  if (!store) return;
 
   const bridge = SteamClient as unknown as Bridge;
   folders = (await bridge.InstallFolder.GetInstallFolders()).filter((folder) => folder.bIsMounted);
