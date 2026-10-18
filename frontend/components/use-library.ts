@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
-import * as shortcuts from "../services/shortcuts";
-import { autoSync } from "../services/steam-library";
+import * as steamLibrary from "../services/steam-library";
 import * as library from "../state/library";
 
 export interface LibraryView {
@@ -26,7 +25,7 @@ export function useLibrary(account: string | undefined): LibraryView {
   const [error, setError] = useState<string | undefined>(undefined);
 
   // Subscribed only to re-render, so a sync that outlives the dialog still recounts.
-  useSyncExternalStore(shortcuts.subscribeToSync, shortcuts.getSyncState);
+  useSyncExternalStore(steamLibrary.subscribe, steamLibrary.getSyncState);
 
   const load = useCallback(async (refresh: boolean) => {
     setLoading(true);
@@ -49,7 +48,7 @@ export function useLibrary(account: string | undefined): LibraryView {
     setRefreshedAt(result.refreshed_at);
     setLoading(false);
 
-    if (refresh) void autoSync(result);
+    if (refresh) void steamLibrary.autoSync(result);
     return result;
   }, []);
 
@@ -76,7 +75,7 @@ export function useLibrary(account: string | undefined): LibraryView {
   const refresh = useCallback(() => void load(true), [load]);
 
   // Recounted every render: the map is in memory, and each sync step re-renders.
-  const synced = games ? shortcuts.syncedCount(games) : 0;
+  const synced = games ? steamLibrary.syncedCount(games) : 0;
 
   return { games, refreshedAt, loading, error, synced, refresh };
 }
