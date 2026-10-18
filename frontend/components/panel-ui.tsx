@@ -113,6 +113,22 @@ export const PANEL_CSS = `
   padding-right: 16px;
 }
 
+/* Ko-fi's own red, so the one button that isn't about the library reads as such. */
+.epic-actions > .epic-kofi {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: #ff5e5b;
+  color: #fff;
+}
+
+.epic-actions > .epic-kofi:hover,
+.epic-actions > .epic-kofi.gpfocus {
+  background: #ff7673;
+  color: #fff;
+}
+
 .epic-heading {
   margin: 0 2px 8px;
   color: #8b929a;

@@ -1,4 +1,6 @@
-# Epic Games <a href='https://ko-fi.com/X8X554X28' target='_blank'>☕</a>
+# Epic Games
+
+[![Support me on Ko-fi](https://img.shields.io/badge/Ko--fi-support%20this%20plugin-ff5e5b?logo=ko-fi&logoColor=white)](https://ko-fi.com/X8X554X28)
 
 A Millennium plugin that brings your Epic Games library into Steam - install, launch and track
 playtime without leaving the client.
