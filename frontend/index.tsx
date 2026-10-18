@@ -78,6 +78,8 @@ export default definePlugin(async () => {
     account.watch((status) => void library.load(status.authenticated).then(steamLibrary.autoSync)),
     // Signs legendary in and out with the store in Steam's browser.
     epicSession.start(),
+    // A game bought or claimed there lands in Steam without a manual refresh.
+    steamLibrary.watchOrders(),
 
     // Running installs repaint every second: the progress bar reads off the overview.
     library.subscribe(repaint),

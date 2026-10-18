@@ -53,6 +53,18 @@ export function useLibrary(account: string | undefined): LibraryView {
     return result;
   }, []);
 
+  // A refresh started elsewhere, like after a checkout, lands here too.
+  useEffect(() => {
+    if (account === undefined) return;
+    return library.subscribe(() => {
+      const latest = library.getLatest();
+      // A failed background read would empty the panel; its own reads show errors.
+      if (!latest || latest.error) return;
+      setGames(latest.games);
+      setRefreshedAt(latest.refreshed_at);
+    });
+  }, [account]);
+
   useEffect(() => {
     if (account === undefined) return;
     // Nothing asks Epic on its own, so a first run fetches here.
