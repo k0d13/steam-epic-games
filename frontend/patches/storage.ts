@@ -32,9 +32,13 @@ interface InstallFolderStore {
   OnInstallFolderChanges(): Promise<void>;
 }
 
-/** legendary uses forward slashes, Steam backslashes, and Windows ignores case. */
+/**
+ * legendary uses forward slashes and Steam backslashes on Windows, which also
+ * ignores case. Linux paths are compared as they are.
+ */
 function normalise(path: string) {
-  return path.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+  const trimmed = path.replace(/\\/g, "/").replace(/\/+$/, "");
+  return /^[a-z]:\//i.test(trimmed) ? trimmed.toLowerCase() : trimmed;
 }
 
 /** The folder a game sits under; the longest match, since libraries can nest. */
