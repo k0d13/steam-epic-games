@@ -167,7 +167,7 @@ export async function removeArtwork(ids: number[]): Promise<number> {
   if (ids.length === 0) return 0;
 
   try {
-    return await backend.RemoveArtwork(ids.join(","), artwork.accountId());
+    return await backend.RemoveArtwork(ids.join(","), String(artwork.accountId() ?? ""));
   } catch (reason: unknown) {
     console.warn("Could not remove shortcut artwork", reason);
     return 0;
