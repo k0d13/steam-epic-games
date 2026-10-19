@@ -1,33 +1,28 @@
-/**
- * Marks store pages for games in the Epic library with Steam's own "already owned"
- * bar. Its own bundle, since the store isn't part of the client's React tree.
- */
+// Marks store pages for games in the Epic library with Steam's own "already owned"
+// bar; its own bundle, since the store isn't part of the client's React tree
 
 const BANNER_ID = "epic-games-owned";
 
-/**
- * Letters and digits only, since store titles mostly differ in punctuation. Roman
- * numerals and "the" are left alone to avoid matching different games.
- */
-function normalize(title: string): string {
+// Letters and digits only, since store titles mostly differ in punctuation; roman
+// numerals and "the" are left alone to avoid matching different games
+function normalize(title: string) {
   return title
     .toLowerCase()
     .replace(/&/g, "and")
     .replace(/[^a-z0-9]/g, "");
 }
 
-/** Editions Epic and Steam disagree about for what is otherwise one game. */
+// Editions Epic and Steam disagree about for what is otherwise one game
 const EDITION =
   /(definitive|deluxe|enhanced|complete|goty|gameoftheyear|remastered|ultimate|standard)?edition$/;
 
-function keys(title: string): string[] {
+function keys(title: string) {
   const base = normalize(title);
   const stripped = base.replace(EDITION, "");
   return stripped && stripped !== base ? [base, stripped] : [base];
 }
 
-/** The title of the game whose store page this is, or nothing if it isn't one. */
-function storeTitle(): string | undefined {
+function storeTitle() {
   if (!/^\/app\/\d+/.test(location.pathname)) return undefined;
 
   const heading = document.querySelector("#appHubAppName, .apphub_AppName");
@@ -38,7 +33,7 @@ function storeTitle(): string | undefined {
   return meta?.content?.trim() || undefined;
 }
 
-// Restates enough of Steam's styling to survive moved classes, and recolours the flag.
+// Restates enough of Steam's styling to survive moved classes, and recolours the flag
 const STYLE = `
   #${BANNER_ID} {
     position: relative;
@@ -87,7 +82,7 @@ function render(game: EpicGame) {
   text.className = `already_in_library ${BANNER_ID}-text`;
 
   const name = document.createElement("b");
-  // Epic's title, so a match on a stripped edition name is visible as one.
+  // Epic's title, so a match on a stripped edition name is visible as one
   name.textContent = game.title;
 
   text.append(
@@ -101,7 +96,7 @@ function render(game: EpicGame) {
 
   banner.append(text, flag);
 
-  // Above the purchase area; the rest are fallbacks for other layouts.
+  // Above the purchase area, with the rest as fallbacks for other layouts
   const target =
     document.querySelector("#game_area_purchase") ??
     document.querySelector(".game_page_autocollapse") ??
@@ -117,11 +112,11 @@ export default async function markOwned() {
   const title = storeTitle();
   if (!title) return;
 
-  // The backend's cache: this runs on every store page, and asking Epic takes seconds.
+  // The backend's cache, as this runs on every store page and asking Epic takes seconds
   const library = await backend.GetLibrary();
 
   const wanted = new Set(keys(title));
-  // An empty list arrives as `{}` (Lua has one table type); Object.values reads both.
+  // Lua sends {} for an empty list; Object.values reads both
   const owned = Object.values(library.games).find((game) =>
     keys(game.title).some((key) => wanted.has(key)),
   );
