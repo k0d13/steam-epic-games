@@ -1,4 +1,5 @@
 local fs = require("fs")
+local paths = require("paths")
 local utils = require("utils")
 
 -- `shell.run` blocks the Lua state with no timeout; long work belongs in `jobs.lua`.
@@ -7,9 +8,13 @@ local shell = {}
 
 ---Backslashes for the Windows programs that won't take a forward slash, and an
 ---uppercase drive letter since Millennium hands Steam's path back lowercased.
+---Unchanged on Linux, where a backslash is a legal filename character.
 ---@param path string
 ---@return string
-function shell.windows_path(path)
+function shell.native_path(path)
+  if not paths.IS_WINDOWS then
+    return path
+  end
   return (path:gsub("/", "\\"):gsub("^%a:", string.upper))
 end
 
@@ -39,7 +44,7 @@ end
 ---@return string
 function shell.vbs_launcher(script_path)
   local command = 'powershell -NoProfile -ExecutionPolicy Bypass -File "'
-    .. shell.windows_path(script_path)
+    .. shell.native_path(script_path)
     .. '"'
   return 'CreateObject("WScript.Shell").Run "' .. command:gsub('"', '""') .. '", 0, False'
 end
@@ -51,19 +56,34 @@ local function cmd_quote(arg)
   return '"' .. arg:gsub('"', '\\"') .. '"'
 end
 
+---Quote a single argument for /bin/sh: close the quote, escape one, reopen.
+---@param arg string
+---@return string
+function shell.sh_quote(arg)
+  return "'" .. arg:gsub("'", [['\'']]) .. "'"
+end
+
 ---Run a program and block until it exits.
 ---@param exe string
 ---@param args string[]
 ---@return string output stdout and stderr
 ---@return integer code -1 if the command could not be run at all
 function shell.run(exe, args)
-  local parts = { cmd_quote(exe) }
+  local quote = paths.IS_WINDOWS and cmd_quote or shell.sh_quote
+  local parts = { quote(exe) }
   for _, arg in ipairs(args) do
-    table.insert(parts, cmd_quote(arg))
+    table.insert(parts, quote(arg))
   end
 
-  -- `cmd /c` strips the outer quotes, which would split the exe path at a space.
-  local output, status = utils.exec('"' .. table.concat(parts, " ") .. ' 2>&1"')
+  local command = table.concat(parts, " ") .. " 2>&1"
+  if paths.IS_WINDOWS then
+    -- `cmd /c` strips the outer quotes, which would split the exe path at a space.
+    command = '"' .. command .. '"'
+  else
+    -- Steam's stdin never closes, so a prompt would block the Lua state for good.
+    command = command .. " </dev/null"
+  end
+  local output, status = utils.exec(command)
   return output or "", tonumber(status) or -1
 end
 

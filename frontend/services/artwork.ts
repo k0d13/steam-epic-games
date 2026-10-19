@@ -106,10 +106,11 @@ async function applyIcon(appId: number, game: EpicGame): Promise<boolean> {
     const base64 = await cropToIcon(source);
     await SteamClient.Apps.SetCustomArtworkForApp(appId, base64, "png", ELibraryAssetType.Icon);
 
-    const path = await backend.PlaceIcon(appId, accountId());
+    // As strings: Millennium can wrap numbers past 2^31, and shortcut ids are.
+    const path = await backend.PlaceIcon(String(appId), String(accountId() ?? ""));
     if (!path) return false;
 
-    SteamClient.Apps.SetShortcutIcon(appId, path.replaceAll("/", "\\"));
+    SteamClient.Apps.SetShortcutIcon(appId, path);
     return true;
   } catch (e) {
     console.debug("Failed to apply an icon", { appName: game.app_name, error: e });

@@ -1,17 +1,20 @@
 local datetime = require("datetime")
 local fs = require("fs")
+local millennium = require("millennium")
+local paths = require("paths")
 local shell = require("shell")
 local utils = require("utils")
 
 -- `shell.run` would block the Lua state for a whole download, so a job's command
--- runs in a detached PowerShell that reports through small files in its directory.
+-- runs in a detached PowerShell (a /bin/sh script on Linux) that reports through
+-- small files in its directory.
 
 local runner = {}
 
---- The files in a job directory. The runner script refers to them as `{lock}` etc.
+--- The files in a job directory. The runner scripts refer to them as `{lock}` etc.
 local FILES = {
   lock = "runner.lock",
-  script = "runner.ps1",
+  script = paths.IS_WINDOWS and "runner.ps1" or "runner.sh",
   launcher = "runner.vbs",
   pid = "runner.pid",
   meta = "job.json",
@@ -43,95 +46,68 @@ function runner.read(dir, key)
   return fs.is_file(path) and utils.read_file(path) or nil
 end
 
---- legendary runs in a pipeline so `taskkill /T` on this PID takes it down too.
---- Progress and errors get files of their own so reads never scan the log.
-local SCRIPT = [[
-$ErrorActionPreference = 'Continue'
+--- The runner for this platform, from `backend/scripts`. Braced names are a job
+--- directory's files, or the job's own values filled in by `runner.spawn`.
+local TEMPLATE = millennium.assets.read("backend/scripts/" .. FILES.script) or ""
 
-# Held unshared and never closed, so the plugin can tell the runner is alive by
-# failing to open it. It's released only after the exit code below is written.
-$Lock = [System.IO.File]::Open("$Dir\{lock}", 'Create', 'Write', 'None')
+---The runner script for one job, its values quoted for the shell that runs it.
+---@param dir string
+---@param exe string
+---@param args string[]
+---@return string
+local function render(dir, exe, args)
+  local quote = paths.IS_WINDOWS and shell.ps_quote or shell.sh_quote
+  local quoted = {}
+  for index, arg in ipairs(args) do
+    quoted[index] = quote(arg)
+  end
 
-$PID | Out-File -Encoding ascii -FilePath "$Dir\{pid}"
-
-# One handle for the whole download: legendary prints thousands of lines.
-$Log = New-Object System.IO.StreamWriter "$Dir\{log}", $true, (New-Object System.Text.UTF8Encoding $false)
-$Log.AutoFlush = $true
-
-$percent = 0; $done = 0; $total = 0; $eta = ''; $elapsed = ''; $speed = 0
-
-# A blank line takes the default at a prompt -y doesn't cover, like the selective
-# download one Fortnite gets. Stdin closes after it, so another prompt fails the
-# job instead of hanging it.
-@('') | & $Exe @Arguments 2>&1 | ForEach-Object {
-  $line = [string]$_
-  $Log.WriteLine($line)
-
-  if ($line -match 'Progress: ([\d.]+)% \((\d+)/(\d+)\), Running for ([\d:]+), ETA: ([\d:]+)') {
-    $percent = $matches[1]; $done = $matches[2]; $total = $matches[3]
-    $elapsed = $matches[4]; $eta = $matches[5]
-  } elseif ($line -match 'Download\s+- ([\d.]+) MiB/s \(raw\)') {
-    $speed = $matches[1]
-  } else {
-    if ($line -match '(ERROR|CRITICAL):') {
-      $line | Out-File -Encoding utf8 -FilePath "$Dir\{error}"
-    }
-    return
+  local values = {
+    dir = quote(dir),
+    exe = quote(exe),
+    args = table.concat(quoted, paths.IS_WINDOWS and ", " or " "),
   }
+  -- A function, so a value's `%` isn't read as a capture and a brace pair that
+  -- names nothing stays as written.
+  return (TEMPLATE:gsub("{(%w+)}", function(name)
+    return values[name] or FILES[name]
+  end))
+end
 
-  @(
-    "percent=$percent", "downloaded=$done", "total=$total",
-    "eta=$eta", "elapsed=$elapsed", "speed=$speed"
-  ) -join "`n" | Out-File -Encoding ascii -FilePath "$Dir\{status}"
-}
-
-$code = $LASTEXITCODE
-$Log.Dispose()
-if ($null -eq $code) { $code = 0 }
-$code | Out-File -Encoding ascii -FilePath "$Dir\{exit}"
-]]
-
-SCRIPT = SCRIPT:gsub("{(%w+)}", FILES)
-
----Start a hidden, detached runner. Through wscript because `utils.exec` waits
----for the command to finish.
+---Start a hidden, detached runner. `utils.exec` waits for the command to finish,
+---so on Windows it goes through wscript and on Linux it's backgrounded with `&`.
 ---@param dir string
 ---@param exe string The program the runner owns
 ---@param args string[] Arguments to it
 ---@return boolean started
 ---@return string? error
 function runner.spawn(dir, exe, args)
-  local quoted = {}
-  for index, arg in ipairs(args) do
-    quoted[index] = shell.ps_quote(arg)
+  if TEMPLATE == "" then
+    return false, "The job script is missing from the plugin."
   end
 
-  local script = "$Dir = "
-    .. shell.ps_quote(dir)
-    .. "\n$Exe = "
-    .. shell.ps_quote(exe)
-    -- Not $Args: that's a PowerShell automatic variable and can't be assigned.
-    .. "\n$Arguments = @("
-    .. table.concat(quoted, ", ")
-    .. ")\n"
-    .. SCRIPT
-
   local script_path = runner.file(dir, "script")
-  local ok, err = utils.write_file(script_path, script)
+  local ok, err = utils.write_file(script_path, render(dir, exe, args))
   if not ok then
     return false, "Could not write the job script: " .. tostring(err)
   end
 
   local launcher_path = runner.file(dir, "launcher")
-  ok, err = utils.write_file(launcher_path, shell.vbs_launcher(script_path))
-  if not ok then
-    return false, "Could not write the job launcher: " .. tostring(err)
+  if paths.IS_WINDOWS then
+    ok, err = utils.write_file(launcher_path, shell.vbs_launcher(script_path))
+    if not ok then
+      return false, "Could not write the job launcher: " .. tostring(err)
+    end
   end
 
   -- Before the launch, or a read in between sees it queued and starts a second runner.
   utils.write_file(runner.file(dir, "spawned"), tostring(datetime.unix()))
 
-  shell.run("wscript", { shell.windows_path(launcher_path) })
+  if paths.IS_WINDOWS then
+    shell.run("wscript", { shell.native_path(launcher_path) })
+  else
+    utils.exec("setsid sh " .. shell.sh_quote(script_path) .. " </dev/null >/dev/null 2>&1 &")
+  end
   return true
 end
 
@@ -142,6 +118,14 @@ end
 ---@param spawned_at integer|nil
 ---@return boolean
 function runner.is_running(dir, pid, spawned_at)
+  -- No unshared locks on Linux, but /proc has a directory per live process.
+  if not paths.IS_WINDOWS then
+    if pid == nil then
+      return (datetime.unix() - (spawned_at or 0)) < SPAWN_GRACE
+    end
+    return fs.is_directory("/proc/" .. pid)
+  end
+
   local lock = runner.file(dir, "lock")
   if not fs.is_file(lock) then
     -- A PID without the lock means the runner died starting up. Neither means
@@ -150,6 +134,27 @@ function runner.is_running(dir, pid, spawned_at)
   end
 
   return shell.is_locked(lock)
+end
+
+---Kill a runner and legendary under it. `/T` takes the tree down on Windows,
+---and `/F` because legendary ignores anything gentler mid-download; on Linux the
+---runner leads its own process group, so the negative PID does the same.
+---@param pid integer
+function runner.kill(pid)
+  if paths.IS_WINDOWS then
+    shell.run("taskkill", { "/F", "/T", "/PID", tostring(pid) })
+  else
+    shell.run("kill", { "-KILL", "--", "-" .. pid })
+  end
+end
+
+---Kill whatever a dead runner left running. Only where the PID names the runner's
+---process group: on Windows a dead runner's PID may have been reused for anything.
+---@param pid integer
+function runner.reap(pid)
+  if not paths.IS_WINDOWS then
+    runner.kill(pid)
+  end
 end
 
 ---The download progress the runner last wrote, if any.

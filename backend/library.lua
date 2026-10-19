@@ -5,6 +5,7 @@ local egl = require("egl")
 local entitlements = require("entitlements")
 local legendary = require("legendary")
 local log = require("log")
+local proton = require("proton")
 local paths = require("paths")
 
 -- `legendary list` (owned) merged with `list-installed` (on disk): owned but
@@ -240,6 +241,12 @@ function library.refresh(force)
   games = merged
   refreshed_at = datetime.unix()
   save()
+
+  local app_names = {}
+  for index, game in ipairs(games) do
+    app_names[index] = game.app_name
+  end
+  proton.apply(app_names)
 
   log.info("Refreshed library: " .. #games .. " games")
   return games

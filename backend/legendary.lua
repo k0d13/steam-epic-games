@@ -4,6 +4,7 @@ local fs = require("fs")
 local jobs = require("jobs")
 local json = require("json")
 local log = require("log")
+local paths = require("paths")
 local shell = require("shell")
 local utils = require("utils")
 local vendor = require("vendor")
@@ -199,10 +200,33 @@ function GetLaunchCommand(app_name)
 
   -- Steam shows these paths as given, so they get one style of separator.
   return {
-    exe = shell.windows_path(binary),
+    exe = shell.native_path(binary),
     arguments = 'launch "' .. app_name .. '"',
-    start_dir = shell.windows_path(fs.parent_path(binary)),
+    start_dir = shell.native_path(fs.parent_path(binary)),
   }
+end
+
+--- Runs the zipapp named by the first argument after the start method is set.
+local FORK_BOOT = "import multiprocessing, runpy, sys; multiprocessing.set_start_method('fork'); "
+  .. "sys.argv = sys.argv[1:]; runpy.run_path(sys.argv[0], run_name='__main__')"
+
+---The program and arguments that run legendary for a job. The Linux build is a
+---zipapp on the system Python, and 3.14 made forkserver the default, under which
+---legendary's download workers hang, so fork comes back.
+---@param binary string
+---@param args string[]
+---@return string exe
+---@return string[] args
+local function job_command(binary, args)
+  if paths.IS_WINDOWS then
+    return binary, args
+  end
+
+  local boot = { "-c", FORK_BOOT, binary }
+  for _, arg in ipairs(args) do
+    table.insert(boot, arg)
+  end
+  return "python3", boot
 end
 
 ---Queue a legendary command as a job.
@@ -214,7 +238,8 @@ local function start_job(app_name, kind, args)
   local binary, err = legendary.get_binary()
   local job
   if binary then
-    job, err = jobs.start(app_name, kind, binary, args)
+    local exe, command_args = job_command(binary, args)
+    job, err = jobs.start(app_name, kind, exe, command_args)
   end
 
   if not job then
@@ -235,7 +260,7 @@ function StartInstall(app_name, base_path, game_folder)
 
   if type(base_path) == "string" and base_path ~= "" then
     table.insert(args, "--base-path")
-    table.insert(args, shell.windows_path(base_path))
+    table.insert(args, shell.native_path(base_path))
   end
   if type(game_folder) == "string" and game_folder ~= "" then
     table.insert(args, "--game-folder")
