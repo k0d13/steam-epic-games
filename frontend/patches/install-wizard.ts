@@ -9,10 +9,14 @@ const SHOW_CONFIG = 7;
 
 /**
  * Where Epic games go inside a chosen Steam library folder. Laid out like Steam's
- * own `steamapps\common` but kept out of it, since everything in there is
+ * own `steamapps/common` but kept out of it, since everything in there is
  * Steam's to manage, and a game sold on both stores can share a folder name.
+ * Joined with the folder's own separator, so the path reads native either way.
  */
-const INSTALL_SUBDIRECTORY = "epicapps\\common";
+function installDirectory(folderPath: string) {
+  const separator = folderPath.includes("\\") ? "\\" : "/";
+  return [folderPath, "epicapps", "common"].join(separator);
+}
 
 /** Millennium types these with string sizes, which Steam no longer sends. */
 interface InstallFolder {
@@ -136,7 +140,7 @@ export function register() {
       close();
       void jobs.install(
         appName,
-        folder && `${folder.strFolderPath}\\${INSTALL_SUBDIRECTORY}`,
+        folder && installDirectory(folder.strFolderPath),
         folderName,
       );
       return Promise.resolve();
