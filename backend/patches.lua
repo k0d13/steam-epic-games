@@ -48,9 +48,9 @@ return {
     },
   },
 
-  -- A shortcut's details page keeps only a few sections, so achievements.ts gets to
-  -- put Achievements back for an Epic game that has them. Anchored on the shortcut
-  -- list, since BIsModOrShortcut is asked in other places too.
+  -- A shortcut's details page keeps only a few sections, so game-info.ts gets to
+  -- put the info panel and Achievements back for an Epic game that has them. Anchored
+  -- on the shortcut list, since BIsModOrShortcut is asked in other places too.
   {
     file = [[sp\.js]],
     find = [[\["nonsteam","notes","screenshots"\];.*?\.BIsModOrShortcut\(\)&&\([\w$]+=[\w$]+\)]],
@@ -58,6 +58,32 @@ return {
       {
         match = [[([\w$]+)\.BIsModOrShortcut\(\)&&\(([\w$]+)=([\w$]+)\)]],
         replace = [[\1.BIsModOrShortcut()&&(\2=(#{{self}}?.ShortcutSections?.(\1,\3)??\3))]],
+      },
+    },
+  },
+
+  -- The info panel (cover, description, developer, release date and features) draws
+  -- a shortcut as a bare explanation, so for an Epic game with info, game-info.ts
+  -- says it isn't one. The panel reads its shortcut state at the top of render.
+  {
+    file = [[sp\.js]],
+    find = [[let [\w$]+=this\.props\.overview\.BIsModOrShortcut\(\),[\w$]+=![\w$]+&&[\w$]+\.H\.GetAssociations\(]],
+    transforms = {
+      {
+        match = [[=this\.props\.overview\.BIsModOrShortcut\(\),]],
+        replace = [[=this.props.overview.BIsModOrShortcut()&&!#{{self}}?.HasGameInfo?.(this.props.overview),]],
+      },
+    },
+  },
+
+  -- The play bar's button that opens the info panel, which a shortcut doesn't get.
+  {
+    file = [[sp\.js]],
+    find = [[![\w$]+\.BIsModOrShortcut\(\)&&\(0,[\w$]+\.jsx\)\([\w$]+\.[\w$]+,\{direction:"bottom",className:\(0,[\w$]+\.A\)\([\w$]+\(\)\.MenuButton,this\.props\.bShowInfoExpanded]],
+    transforms = {
+      {
+        match = [[!([\w$]+)\.BIsModOrShortcut\(\)&&]],
+        replace = [[(!\1.BIsModOrShortcut()||#{{self}}?.HasGameInfo?.(\1))&&]],
       },
     },
   },

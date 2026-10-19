@@ -8,6 +8,7 @@ local paths = require("paths")
 -- These only define ffi functions, so nothing else requires them.
 require("details")
 require("grid")
+require("info")
 
 local function on_load()
   log.info("Backend loading on " .. (paths.IS_WINDOWS and "Windows" or "Linux"))

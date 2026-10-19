@@ -4,6 +4,7 @@ import * as achievementProgress from "./patches/achievement-progress";
 import * as appDetails from "./patches/app-details";
 import * as downloadOverview from "./patches/download-overview";
 import * as downloads from "./patches/downloads";
+import * as gameInfo from "./patches/game-info";
 import * as installWizard from "./patches/install-wizard";
 import * as installs from "./patches/installs";
 import * as overviews from "./patches/overviews";
@@ -18,6 +19,7 @@ import * as steamLibrary from "./services/steam-library";
 import * as account from "./state/account";
 import * as achievements from "./state/achievements";
 import * as appIds from "./state/app-ids";
+import * as info from "./state/info";
 import * as jobs from "./state/jobs";
 import * as library from "./state/library";
 import * as sizes from "./state/sizes";
@@ -31,7 +33,9 @@ export { IsEpicURL, SupernavMenu } from "./patches/store-menu";
 /** @ffi */
 export { LibraryBadge } from "./patches/library-badge";
 /** @ffi */
-export { AchievementStore, ShortcutSections } from "./patches/achievements";
+export { AchievementStore } from "./patches/achievements";
+/** @ffi */
+export { HasGameInfo, ShortcutSections } from "./patches/game-info";
 
 // IconsModule varies between Steam builds; a missing icon mustn't break the plugin.
 const PluginIcon = IconsModule?.Download ?? IconsModule?.Settings ?? (() => null);
@@ -43,6 +47,7 @@ export default definePlugin(async () => {
   for (const [name, patch] of [
     ["overviews", overviews.register],
     ["app details", appDetails.register],
+    ["game info", gameInfo.register],
     ["installs", installs.register],
     ["install wizard", installWizard.register],
     ["achievement progress", achievementProgress.register],
@@ -105,6 +110,8 @@ export default definePlugin(async () => {
     jobs.subscribe(repaint),
     // Achievements land a round trip to Epic after the page asking for them drew.
     achievements.subscribe(repaint),
+    // Likewise the info panel's, whose data is in the app data store by then.
+    info.subscribe(repaint),
 
     // A session ending is when an achievement cache is certain to be short.
     onGameStopped((appId) => {

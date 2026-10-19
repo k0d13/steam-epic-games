@@ -2,16 +2,9 @@ import { type AppAchievement, type AppAchievements } from "millennium";
 import * as achievements from "../state/achievements";
 import * as library from "../state/library";
 
-// Steam's details page drops most sections for a shortcut:
-//
-//   e.BIsModOrShortcut() && (s = ["nonsteam", "notes", "screenshots"])
-//
-// The section itself copes, so backend/patches.lua has that line ask
-// `ShortcutSections`, which puts "achievements" back; app-details.ts supplies the data.
-
-interface AppOverview {
-  appid: number;
-}
+// Steam's details page drops the achievements section for a shortcut, which
+// game-info.ts puts back through `ShortcutSections`. The section itself copes;
+// app-details.ts supplies the data.
 
 /**
  * Epic's "2026-06-12 21:21:24.391000+00:00" has a space where ISO's T goes, so Date
@@ -173,9 +166,7 @@ export function AchievementStore(method: string, appId: number): StoreResult<unk
   return ours ? { data: build(ours) } : { loading: true };
 }
 
-/** Called with the sections Steam keeps for a shortcut, before it draws any. */
-export function ShortcutSections(overview: AppOverview, sections: string[]): string[] {
-  const game = library.getByAppId(overview.appid);
-  if (!game || !listFor(game.app_name)) return sections;
-  return [...sections, "achievements"];
+/** Whether a game has any, which starts reading them. For the details page to know what to show. */
+export function hasAchievements(appName: string): boolean {
+  return listFor(appName) !== undefined;
 }
