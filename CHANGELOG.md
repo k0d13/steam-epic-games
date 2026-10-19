@@ -1,5 +1,12 @@
 # epic-games
 
+## 0.5.0
+
+### Minor Changes
+
+- 6db0fff: Shows Steam's game info panel and button on Epic games.
+- e8e829f: Adds Store Page, FAQ and Support links to Epic games' link bar.
+
 ## 0.4.0
 
 ### Minor Changes
