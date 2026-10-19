@@ -1,0 +1,101 @@
+import { ConfirmModal, DialogButton, showModal } from "millennium";
+import { useState } from "react";
+import { forgetAll } from "../../services/steam/artwork";
+import { mainPopup } from "../../services/steam/popups";
+import { type CleanUpResult, cleanUp } from "../../services/sync/clean-up";
+import { sync } from "../../services/sync/sync";
+import { useValue } from "../../state/primitives";
+import { progress } from "../../state/sync-progress";
+import {
+  Actions,
+  Busy,
+  Card,
+  type Message,
+  MessageLine,
+  Meter,
+  plural,
+  Section,
+} from "../ui/primitives";
+
+function describeCleanUp(result: CleanUpResult) {
+  if (result.error) return { text: `Clean up stopped: ${result.error}`, error: true };
+  if (result.removed === 0) return { text: "There was nothing to remove." };
+  return { text: `Removed ${plural(result.removed, "shortcut")}. Safe to uninstall now.` };
+}
+
+// Works signed out, so it can always undo the plugin
+export function Maintenance({
+  games,
+  canRedownload,
+}: {
+  games: EpicGame[] | undefined;
+  canRedownload: boolean;
+}) {
+  const state = useValue(progress);
+  const [message, setMessage] = useState<Message | undefined>(undefined);
+  const cleaning = state.active && state.operation === "cleanUp";
+
+  function redownload() {
+    if (!games) return;
+    forgetAll();
+    setMessage(undefined);
+    void sync(games);
+  }
+
+  function confirmCleanUp() {
+    showModal(
+      <ConfirmModal
+        strTitle="Remove Epic games from Steam?"
+        strDescription={
+          "Every Epic shortcut this plugin has added is removed, duplicates from " +
+          "earlier installs included, with its artwork and the Epic Games collection. " +
+          "Installed games and your Epic sign-in are kept, and Add to Steam brings it all back."
+        }
+        strOKButtonText="Remove"
+        bDestructiveWarning
+        onOK={() => {
+          setMessage(undefined);
+          void cleanUp().then((result) => setMessage(describeCleanUp(result)));
+        }}
+      />,
+      // Explicit because showModal's default, findSP(), throws on this build
+      mainPopup()?.window,
+    );
+  }
+
+  return (
+    <Section heading="Maintenance">
+      <Card>
+        {cleaning ? (
+          <Meter
+            label={state.total ? "Removing from Steam" : "Finding shortcuts…"}
+            done={state.done}
+            total={state.total}
+          />
+        ) : message ? (
+          <MessageLine message={message} />
+        ) : (
+          <div className="epic-dim">
+            Clean up takes everything this plugin added out of Steam, duplicates included. Run it
+            before uninstalling.
+          </div>
+        )}
+        <Actions>
+          {canRedownload && (
+            <DialogButton className="epic-grow" disabled={state.active} onClick={redownload}>
+              Redownload art
+            </DialogButton>
+          )}
+          {/* The harmless action takes the width, and the destructive one sits beside it */}
+          <DialogButton
+            className={canRedownload ? "epic-fixed" : "epic-grow"}
+            disabled={state.active}
+            onClick={confirmCleanUp}
+          >
+            {cleaning ? <Busy>Removing</Busy> : "Clean up"}
+          </DialogButton>
+        </Actions>
+      </Card>
+    </Section>
+  );
+}
