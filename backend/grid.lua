@@ -2,6 +2,7 @@
 local fs = require("fs")
 local log = require("log")
 local millennium = require("millennium")
+local shell = require("shell")
 
 -- The frontend hands Steam the artwork bytes, since Lua here can't fetch or decode
 -- base64; this tidies the grid folder afterwards.
@@ -86,7 +87,8 @@ function PlaceIcon(app_id, account_id)
     return nil
   end
 
-  return target
+  -- Steam shows the icon path as given, like the launch command's.
+  return shell.native_path(target)
 end
 
 ---@ffi
