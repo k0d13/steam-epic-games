@@ -1,5 +1,15 @@
 # epic-games
 
+## 0.4.0
+
+### Minor Changes
+
+- 34f0ef0: Adds Linux support. Shell commands, the legendary download and install
+  jobs now run on Linux, and the Epic Games Launcher import is skipped
+  there. macOS is still not supported.
+- be54447: Runs Epic games through a chosen Proton on Linux, with a prefix per
+  game.
+
 ## 0.3.0
 
 ### Minor Changes
