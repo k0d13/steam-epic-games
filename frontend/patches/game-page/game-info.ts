@@ -1,0 +1,128 @@
+import { searchURL } from "../../services/epic/store";
+import * as achievements from "../../state/achievements";
+import * as info from "../../state/info";
+import * as library from "../../state/library";
+import { hasAchievements } from "./achievements";
+
+// Steam's details page drops most sections for a shortcut:
+//
+//   e.BIsModOrShortcut() && (s = ["nonsteam", "notes", "screenshots"])
+//
+// backend/patches.lua has that line ask `ShortcutSections`, which swaps the "nonsteam"
+// placeholder for the info panel and puts "achievements" back. The panel and the button
+// that open it are guarded by the same check, so both ask `HasGameInfo` first. Beyond
+// that they're Steam's own: they read the app data store, which we fill the way Steam
+// does from the store's reply, and the overview, which overviews completes. The bar of
+// links under the play bar is empty for a shortcut too, so `ShortcutLinks` fills it
+
+interface AppOverview {
+  appid: number;
+}
+
+// Steam's store category ids, which its feature list and filters read
+const CATEGORY = {
+  multiPlayer: 1,
+  singlePlayer: 2,
+  coOp: 9,
+  achievements: 22,
+  cloudSaves: 23,
+} as const;
+
+// Epic's tags that say how a game is played, and the category each is
+const MODE_TAGS: Record<string, number> = {
+  SINGLE_PLAYER: CATEGORY.singlePlayer,
+  MULTIPLAYER: CATEGORY.multiPlayer,
+  CO_OP: CATEGORY.coOp,
+};
+
+const SUPPORT_LINK = { label: "Support", url: "https://www.epicgames.com/help" };
+
+// Shared with the library's filters; achievements only count once read, since this
+// runs for every game
+export function categoriesFor(appName: string) {
+  const details = info.get(appName);
+  if (!details) return [];
+
+  // Lua sends {} for an empty list; Object.values reads both
+  const categories = Object.values(details.tags).flatMap((tag) => MODE_TAGS[tag] ?? []);
+  if (details.cloud_saves) categories.push(CATEGORY.cloudSaves);
+  if ((achievements.getSummary(appName)?.total ?? 0) > 0) categories.push(CATEGORY.achievements);
+  return categories;
+}
+
+// Info already in the app data store; Steam asks the store's website for what it lacks,
+// and for a shortcut that answer would overwrite ours, so the panel waits for this
+const published = new WeakSet<GameInfo>();
+
+// Each name links to Epic's search for it, as Steam's link to its own
+function associations(names: string[]) {
+  return Object.values(names).map((name) => ({ strName: name, strURL: searchURL(name) }));
+}
+
+function publish(appId: number) {
+  const game = library.getByAppId(appId);
+  const details = game && info.get(game.app_name);
+  if (!details) return false;
+  if (published.has(details)) return true;
+
+  const store = globalThis.appDetailsStore;
+  if (!store) return false;
+
+  const data = store.GetAppData(appId);
+  data.associationData = {
+    rgDevelopers: associations(details.developers),
+    rgPublishers: associations(details.publishers),
+    rgFranchises: [],
+  };
+  data.descriptionsData = {
+    strFullDescription: details.description,
+    strSnippet: details.description,
+  };
+  published.add(details);
+  return true;
+}
+
+function isAvailable(appId: number) {
+  const game = library.getByAppId(appId);
+  if (!game) return false;
+
+  info.ensure(game.app_name);
+  // Info kept from an earlier session is there already, and so is published now
+  return publish(appId);
+}
+
+export function register() {
+  // Ahead of the repaint index subscribes, so what it draws already has the data
+  return info.subscribe(() => {
+    for (const appId of library.appIdsWithGames()) publish(appId);
+  });
+}
+
+// False leaves Steam's shortcut behaviour
+export function HasGameInfo(overview: AppOverview) {
+  return isAvailable(overview.appid);
+}
+
+// Asked as the page is built, before info is known, to start the panel closed like a Steam game's
+export function IsEpicGame(overview: AppOverview) {
+  return library.getByAppId(overview.appid) !== undefined;
+}
+
+export function ShortcutSections(overview: AppOverview, sections: string[]) {
+  const game = library.getByAppId(overview.appid);
+  if (!game) return sections;
+
+  // The placeholder says Steam has no details, which stops being the case
+  const result = isAvailable(overview.appid)
+    ? [...sections.filter((section) => section !== "nonsteam"), "info"]
+    : [...sections];
+  if (hasAchievements(game.app_name)) result.push("achievements");
+  return result;
+}
+
+// The links the backend found for the game, which only has those Epic has, and Support
+export function ShortcutLinks(overview: AppOverview) {
+  const game = library.getByAppId(overview.appid);
+  // Lua sends {} for an empty list; Object.values reads both
+  return game ? [...Object.values(info.get(game.app_name)?.links ?? []), SUPPORT_LINK] : [];
+}
