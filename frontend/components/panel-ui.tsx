@@ -15,6 +15,13 @@ export const PANEL_CSS = `
   color: var(--gpSystemLighterGrey, #dcdedf);
   font-size: 13px;
   line-height: 1.4;
+  /* Steam's light grey nudged toward its lighter one: on the cards' raised
+     background the plain light grey falls just short of 4.5:1 at 12px. */
+  --epic-dim: color-mix(
+    in srgb,
+    var(--gpSystemLightGrey, #8b929a) 75%,
+    var(--gpSystemLighterGrey, #dcdedf)
+  );
 }
 
 .epic-card {
@@ -61,10 +68,11 @@ export const PANEL_CSS = `
 }
 
 .epic-dim {
-  color: var(--gpSystemLightGrey, #8b929a);
+  color: var(--epic-dim);
   font-size: 12px;
 }
 
+/* Steam exposes no red variable, so a fixed one, light enough for 4.5:1 on the cards. */
 .epic-error {
   color: #ff7b72;
   font-size: 12px;
@@ -75,7 +83,7 @@ export const PANEL_CSS = `
   justify-content: space-between;
   gap: 8px;
   margin-bottom: 6px;
-  color: var(--gpSystemLightGrey, #8b929a);
+  color: var(--epic-dim);
   font-size: 12px;
 }
 
@@ -123,25 +131,32 @@ export const PANEL_CSS = `
   padding-right: 16px;
 }
 
-/* Ko-fi's own red, so the one button that isn't about the library reads as such. */
+/* Ko-fi's red, so the one button that isn't about the library reads as such.
+   Darker than Ko-fi's own #ff5e5b, which only reaches 3:1 under white text. */
 .epic-actions > .epic-kofi {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  background: #ff5e5b;
+  background: #d63c39;
   color: #fff;
 }
 
 .epic-actions > .epic-kofi:hover,
 .epic-actions > .epic-kofi.gpfocus {
-  background: #ff7673;
+  background: #c2302d;
   color: #fff;
+}
+
+/* Replacing Steam's focus background leaves only a shade change, so add a ring. */
+.epic-actions > .epic-kofi.gpfocus {
+  outline: 2px solid var(--gpColor-White, #fff);
+  outline-offset: 2px;
 }
 
 .epic-heading {
   margin: 0 2px 8px;
-  color: var(--gpSystemLightGrey, #8b929a);
+  color: var(--epic-dim);
   font-size: 12px;
   font-weight: 500;
   letter-spacing: 0.06em;
@@ -193,7 +208,14 @@ export function Meter({ label, done, total }: { label: string; done: number; tot
         <span>{label}</span>
         <strong>{total ? `${done} / ${total}` : ""}</strong>
       </div>
-      <div className="epic-meter">
+      <div
+        className="epic-meter"
+        role="progressbar"
+        aria-label={label}
+        aria-valuemin={0}
+        aria-valuemax={total || undefined}
+        aria-valuenow={total ? done : undefined}
+      >
         <div
           className="epic-meter-fill"
           style={{ width: `${total ? (done / total) * 100 : 0}%` }}

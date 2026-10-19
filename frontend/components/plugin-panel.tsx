@@ -113,7 +113,7 @@ function LibraryCard({
   const busy = loading || sync.active;
 
   let subtitle: string;
-  if (games === undefined) subtitle = "Reading your library...";
+  if (games === undefined) subtitle = "Reading your library…";
   else if (total === 0) subtitle = "No games yet";
   else subtitle = `${plural(total, "game")} · ${installed} installed · ${describeAge(refreshedAt)}`;
 
@@ -139,7 +139,7 @@ function LibraryCard({
       <Identity initial={name.charAt(0).toUpperCase() || "E"} title={name} subtitle={subtitle} />
       {syncing ? (
         <Meter
-          label={sync.total ? "Adding to Steam" : "Checking your Steam library..."}
+          label={sync.total ? "Adding to Steam" : "Checking your Steam library…"}
           done={sync.done}
           total={sync.total}
         />
