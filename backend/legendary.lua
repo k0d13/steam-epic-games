@@ -4,6 +4,7 @@ local fs = require("fs")
 local jobs = require("jobs")
 local json = require("json")
 local log = require("log")
+local paths = require("paths")
 local shell = require("shell")
 local utils = require("utils")
 local vendor = require("vendor")
@@ -205,6 +206,10 @@ function GetLaunchCommand(app_name)
   }
 end
 
+--- Runs the zipapp named by the first argument after the start method is set.
+local FORK_BOOT = "import multiprocessing, runpy, sys; multiprocessing.set_start_method('fork'); "
+  .. "sys.argv = sys.argv[1:]; runpy.run_path(sys.argv[0], run_name='__main__')"
+
 ---Queue a legendary command as a job.
 ---@param app_name string
 ---@param kind JobKind
@@ -213,8 +218,14 @@ end
 local function start_job(app_name, kind, args)
   local binary, err = legendary.get_binary()
   local job
-  if binary then
+  if binary and paths.IS_WINDOWS then
     job, err = jobs.start(app_name, kind, binary, args)
+  elseif binary then
+    -- The Linux build is a zipapp on the system Python. 3.14 made forkserver the
+    -- default, under which legendary's download workers hang, so fork comes back.
+    local boot = { "-c", FORK_BOOT, binary }
+    table.move(args, 1, #args, #boot + 1, boot)
+    job, err = jobs.start(app_name, kind, "python3", boot)
   end
 
   if not job then
