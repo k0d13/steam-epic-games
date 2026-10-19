@@ -1,5 +1,5 @@
 import * as appIds from "./app-ids";
-import { createSignal } from "./signal";
+import { createSignal, createStore } from "./primitives";
 
 // The backend's library in memory, so Steam's render path can ask synchronously.
 
@@ -17,17 +17,36 @@ export function getLatest(): Library | undefined {
   return latest;
 }
 
+// Each game's last installed build, so an update from anywhere, the Epic launcher
+// included, is noticed and whatever was cached for the old build is dropped.
+const versions = createStore<string>("epic-games:versions:v1");
+
+const updated = createSignal<EpicGame>();
+
+/** Hear a game whose installed build changed since we last saw it. */
+export const onUpdated = updated.subscribe;
+
 function reindex(games: EpicGame[]) {
   byAppName.clear();
   byAppId.clear();
+  const newBuilds: EpicGame[] = [];
 
   for (const game of games) {
     byAppName.set(game.app_name, game);
     const appId = appIds.getAppId(game.app_name);
     if (appId !== undefined) byAppId.set(appId, game);
+
+    // Kept through an uninstall, so reinstalling a newer build counts too.
+    if (!game.version) continue;
+    const previous = versions.get(game.app_name);
+    if (previous === game.version) continue;
+    versions.set(game.app_name, game.version);
+    // The first sighting has nothing cached to be stale.
+    if (previous !== undefined) newBuilds.push(game);
   }
 
   changed.emit();
+  for (const game of newBuilds) updated.emit(game);
 }
 
 /** Re-read the appid mapping without refetching the library from the backend. */

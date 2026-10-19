@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import * as steamLibrary from "../services/steam-library";
 import * as library from "../state/library";
-import { useValue } from "../state/signal";
+import { useValue } from "../state/primitives";
 
 export interface LibraryView {
   /** Undefined until the first read lands. */

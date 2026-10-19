@@ -1,5 +1,4 @@
-import { createValue } from "./signal";
-import { createStore } from "./storage";
+import { createStore, createValue } from "./primitives";
 
 // What the panel's toggles remember. Each is applied after every sync, so it
 // holds for games added later too.

@@ -1,5 +1,5 @@
 import * as library from "./library";
-import { createSignal } from "./signal";
+import { createSignal } from "./primitives";
 import * as sizes from "./sizes";
 
 // The backend can't push, so this polls, but only while a job is running or queued.
@@ -11,15 +11,10 @@ const byAppName = new Map<string, Job>();
 const signal = createSignal();
 export const subscribe = signal.subscribe;
 
-const endListeners = new Set<(job: Job) => void>();
+const ended = createSignal<Job>();
 
 /** Hear a job that ran to the end, done or failed; not a pause or a cancel. */
-export function onEnded(listener: (job: Job) => void) {
-  endListeners.add(listener);
-  return () => {
-    endListeners.delete(listener);
-  };
-}
+export const onEnded = ended.subscribe;
 
 let timer: ReturnType<typeof setTimeout> | undefined;
 
@@ -80,8 +75,8 @@ function apply(jobs: Job[]) {
   return { finished, ended, changed };
 }
 
-function announce(ended: Job[]) {
-  for (const job of ended) for (const listener of endListeners) listener(job);
+function announce(jobs: Job[]) {
+  for (const job of jobs) ended.emit(job);
 }
 
 // An empty list arrives as `{}` (Lua has one table type); Object.values reads both.
