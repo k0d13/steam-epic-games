@@ -59,6 +59,12 @@ export const ensure = cache.ensure;
 /** Ask Epic again for one game, whatever we already hold. */
 export const refresh = cache.refresh;
 
+/** Drop a game's achievements, so the next read asks Epic again. */
+export function forget(appName: string) {
+  cache.invalidate(appName);
+  summaries.delete(appName);
+}
+
 /** A game's achievement counts, if read. Never fetches: the whole library asks. */
 export function getSummary(appName: string): AchievementSummary | undefined {
   return summaries.get(appName);
