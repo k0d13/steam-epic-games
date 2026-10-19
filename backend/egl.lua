@@ -11,8 +11,13 @@ local utils = require("utils")
 local egl = {}
 
 ---Import what `egl-sync` can resolve. `--import-only` so we never export into the
----launcher's library.
+---launcher's library. Windows only: elsewhere there's no launcher, and legendary
+---asks for its Wine prefix on stdin instead.
 function egl.sync()
+  if not paths.IS_WINDOWS then
+    return
+  end
+
   local output = legendary.run({ "-y", "egl-sync", "--import-only", "--one-shot" })
   log.info("Epic Games Launcher sync: " .. utils.trim(output))
 end
