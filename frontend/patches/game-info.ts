@@ -13,7 +13,8 @@ import { searchURL } from "./store-menu";
 // and the button that opens it are guarded by the same check, so both ask
 // `HasGameInfo` first. Beyond that they're Steam's own: they read the app data
 // store, which we fill the way Steam does from the store's reply, and the overview,
-// which overviews.ts completes.
+// which overviews.ts completes. The bar of links under the play bar is empty for a
+// shortcut too, so `ShortcutLinks` fills it with Epic's equivalents.
 
 interface AppOverview {
   appid: number;
@@ -123,4 +124,17 @@ export function ShortcutSections(overview: AppOverview, sections: string[]): str
     : [...sections];
   if (hasAchievements(game.app_name)) result.push("achievements");
   return result;
+}
+
+/** Epic's help centre, which isn't about any one game. */
+const SUPPORT_LINK = { label: "Support", url: "https://www.epicgames.com/help" };
+
+/**
+ * Called with a shortcut's overview, for the links Steam leaves out of its bar: the
+ * ones the backend found for the game, which only has those Epic has, and Support.
+ */
+export function ShortcutLinks(overview: AppOverview): GameLink[] {
+  const game = library.getByAppId(overview.appid);
+  // An empty list arrives as `{}` (Lua has one table type); Object.values reads both.
+  return game ? [...Object.values(info.get(game.app_name)?.links ?? []), SUPPORT_LINK] : [];
 }

@@ -14,6 +14,10 @@ local utils = require("utils")
 -- namespace each slug belongs to, so a game is matched by namespace, never by name.
 -- Games Epic doesn't list there keep what the catalog has.
 
+---@class GameLink
+---@field label string
+---@field url string
+
 ---@class GameInfo
 ---@field description string One short paragraph, or "" if Epic has none
 ---@field developers string[]
@@ -21,10 +25,13 @@ local utils = require("utils")
 ---@field released_at integer|nil Unix seconds
 ---@field tags string[] Epic's own, like "SINGLE_PLAYER" or "RPG"
 ---@field cloud_saves boolean
+---@field links GameLink[] Pages about the game on Epic's store
+---@field version integer Which shape of this a saved copy has
 ---@field fetched_at integer Unix seconds
 
 local CONTENT_API = "https://store-content-ipv4.ak.epicgames.com/api"
 local MAPPING_URL = CONTENT_API .. "/content/productmapping"
+local STORE_URL = "https://store.epicgames.com/p/"
 local PRODUCT_URL = CONTENT_API .. "/en-US/content/products/"
 
 local MAPPING_PATH = paths.DATA .. "/cache/product-mapping.json"
@@ -33,6 +40,9 @@ local INFO_PATH = paths.DATA .. "/cache/info.json"
 --- New games get a slug now and then, and a page's details are edited rarely.
 local MAPPING_MAX_AGE = 7 * 24 * 60 * 60
 local INFO_MAX_AGE = 14 * 24 * 60 * 60
+
+--- Raised when GameInfo gains something, so saved copies without it are read again.
+local INFO_VERSION = 4
 
 --- Steam's panel is a few lines wide; some catalog descriptions run to pages.
 local DESCRIPTION_MAX = 400
@@ -99,14 +109,33 @@ end
 ---@param slug string
 ---@return table|nil page
 ---@return boolean missing
+---@return boolean faq Whether the game has a page of frequently asked questions
 local function fetch_page(slug)
   local product, missing = fetch_json(PRODUCT_URL .. slug)
+
+  local home, faq = nil, false
   for _, page in ipairs(object(object(product).pages)) do
-    if object(page).type == "productHome" and type(page.data) == "table" then
-      return page.data, false
+    page = object(page)
+    if page.type == "productHome" and type(page.data) == "table" then
+      home = page.data
+    elseif page.type == "info" and page._slug == "faq" then
+      faq = true
     end
   end
-  return nil, missing
+  return home, home == nil and missing, faq
+end
+
+---The links for a game's pages on Epic's store.
+---@param slug string
+---@param faq boolean
+---@return GameLink[]
+local function build_links(slug, faq)
+  ---@type GameLink[]
+  local links = { { label = "Store Page", url = STORE_URL .. slug } }
+  if faq then
+    table.insert(links, { label = "FAQ", url = STORE_URL .. slug .. "--faq" })
+  end
+  return links
 end
 
 ---A list of names with the blanks and repeats gone.
@@ -170,9 +199,9 @@ local function build(metadata)
   local slugs_by_namespace, current = load_slugs()
   local slug = slugs_by_namespace[metadata.namespace or ""]
 
-  local page, missing, meta, about = nil, false, {}, {}
+  local page, missing, faq, meta, about = nil, false, false, {}, {}
   if slug then
-    page, missing = fetch_page(slug)
+    page, missing, faq = fetch_page(slug)
     meta = object(object(page).meta)
     about = object(object(page).about)
   end
@@ -202,6 +231,8 @@ local function build(metadata)
     released_at = released,
     tags = names(meta.tags),
     cloud_saves = (attribute(metadata, "CloudSaveFolder") or "") ~= "",
+    links = slug and page and build_links(slug, faq) or {},
+    version = INFO_VERSION,
     fetched_at = datetime.unix(),
   }
 
@@ -222,7 +253,12 @@ function GetGameInfo(app_name, refresh)
   infos = infos or cache.read(INFO_PATH, "info") or {}
 
   local cached = infos[app_name]
-  if cached and not refresh and datetime.unix() - cached.fetched_at < INFO_MAX_AGE then
+  if
+    cached
+    and not refresh
+    and cached.version == INFO_VERSION
+    and datetime.unix() - cached.fetched_at < INFO_MAX_AGE
+  then
     return cached
   end
 

@@ -5,7 +5,7 @@ import { createCache } from "./primitives";
 // which knows how old its own copy is, is asked once a session.
 
 const cache = createCache<GameInfo>({
-  persist: "epic-games:info:v1",
+  persist: "epic-games:info:v4",
   fetch: (appName, refresh) => backend.GetGameInfo(appName, refresh),
 });
 

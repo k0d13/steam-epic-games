@@ -62,6 +62,19 @@ return {
     },
   },
 
+  -- The links under the play bar (Store Page, Community Hub and so on) are only built
+  -- for a Steam game, so a shortcut's bar is empty. game-info.ts adds Epic's links.
+  {
+    file = [[sp\.js]],
+    find = [[const\{bWorkshopVisible:[\w$]+,bMarketPresence:[\w$]+\}=[\w$]+,[\w$]+=[\w$]+\.BIsModOrShortcut\(\),.*?=\[\];if\(![\w$]+\)\{]],
+    transforms = {
+      {
+        match = [[([\w$]+)\.BIsModOrShortcut\(\)(.*?)([\w$]+)=\[\];if\(!([\w$]+)\)\{]],
+        replace = [[\1.BIsModOrShortcut()\2\3=[];if(\4){\3.push(...(#{{self}}?.ShortcutLinks?.(\1)??[]))}if(!\4){]],
+      },
+    },
+  },
+
   -- The info panel (cover, description, developer, release date and features) draws
   -- a shortcut as a bare explanation, so for an Epic game with info, game-info.ts
   -- says it isn't one. The panel reads its shortcut state at the top of render.

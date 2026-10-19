@@ -35,7 +35,7 @@ export { LibraryBadge } from "./patches/library-badge";
 /** @ffi */
 export { AchievementStore } from "./patches/achievements";
 /** @ffi */
-export { HasGameInfo, IsEpicGame, ShortcutSections } from "./patches/game-info";
+export { HasGameInfo, IsEpicGame, ShortcutLinks, ShortcutSections } from "./patches/game-info";
 
 // IconsModule varies between Steam builds; a missing icon mustn't break the plugin.
 const PluginIcon = IconsModule?.Download ?? IconsModule?.Settings ?? (() => null);
