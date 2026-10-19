@@ -3,14 +3,15 @@ local paths = require("paths")
 
 -- Grant dates stand in for Steam's purchase date, read from legendary's on-disk
 -- cache. A game shares its namespace with its DLC, so the earliest grant is the game's.
+-- Also the home of Epic's date format, which info.lua reads release dates in.
 
 local entitlements = {}
 
----Unix seconds from a UTC grant date like "2020-12-09T14:25:48.859Z". Not through
+---Unix seconds from one of Epic's UTC dates like "2020-12-09T14:25:48.859Z". Not through
 ---`os.time`, which reads a date table as local time.
 ---@param value string|nil
 ---@return integer|nil seconds
-local function parse_granted(value)
+function entitlements.parse_date(value)
   if type(value) ~= "string" then
     return nil
   end
@@ -45,7 +46,7 @@ function entitlements.get_granted()
     )
   do
     local namespace = entitlement.namespace
-    local at = parse_granted(entitlement.grantDate)
+    local at = entitlements.parse_date(entitlement.grantDate)
     if
       type(namespace) == "string"
       and at

@@ -53,6 +53,11 @@ interface BrowserManager {
 /** Epic's sign in, landing on the store, where epic-session picks the account up. */
 export const SIGN_IN_URL = `https://www.epicgames.com/id/login?redirectUrl=${encodeURIComponent(`${EPIC}/`)}`;
 
+/** Epic's search for a name, which is where a developer or publisher links to. */
+export function searchURL(query: string): string {
+  return `${EPIC}/browse?q=${encodeURIComponent(query)}`;
+}
+
 /** Open an Epic page in Steam's store tab. */
 export function open(url: string) {
   const browser = window.MainWindowBrowserManager as BrowserManager | undefined;

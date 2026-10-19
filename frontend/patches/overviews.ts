@@ -1,7 +1,9 @@
 import { beforePatch, EDisplayStatus, type SteamAppOverview } from "millennium";
 import { forceFakeLocationChange } from "../services/popups";
+import * as info from "../state/info";
 import * as jobs from "../state/jobs";
 import * as library from "../state/library";
+import { categoriesFor } from "./game-info";
 
 // Steam's overviews draw the library: tiles, filters, sort and the app page. Every
 // one passes through OnAppOverviewChange first, so ours are corrected there.
@@ -43,6 +45,9 @@ interface MutableOverview {
   rt_recent_activity_time?: number;
   rt_last_time_played?: number;
   rt_purchased_time?: number;
+  rt_original_release_date?: number;
+  /** `store_category` is a getter over this, so this is what to write. */
+  m_setStoreCategories?: Set<number>;
 }
 
 /**
@@ -64,6 +69,16 @@ function apply(overview: SteamAppOverview) {
       app.rt_recent_activity_time ?? 0,
       game.purchased_at,
     );
+  }
+
+  // What the game info panel shows as the release date, and its feature list and
+  // the library's feature filters read as categories.
+  const released = info.get(game.app_name)?.released_at;
+  if (released) app.rt_original_release_date = released;
+
+  const categories = categoriesFor(game.app_name);
+  if (categories.length > 0) {
+    app.m_setStoreCategories = new Set([...(app.m_setStoreCategories ?? []), ...categories]);
   }
 
   const job = jobs.get(game.app_name);
