@@ -1,28 +1,32 @@
 import { useSyncExternalStore } from "react";
 
 // Steam's render path reads state synchronously and outside React, so state lives
-// in modules and these three shapes cover all of it: a signal to say something
-// changed, a value to hold one thing, and a cache to hold one thing per key.
+// in modules and these shapes cover all of it: a signal to say something changed,
+// a value to hold one thing, a cache to hold one thing per key, and a store to
+// keep things per key across restarts.
 
 export interface Signal {
   /** Stable, so it goes straight into `useSyncExternalStore`. */
   subscribe(listener: () => void): () => void;
 }
 
-/** Listeners with no payload; they read whatever changed off the module. */
-export function createSignal() {
-  const listeners = new Set<() => void>();
+/**
+ * Listeners, with no payload by default so they read whatever changed off the
+ * module. Give one when the event itself is the news, like a job ending.
+ */
+export function createSignal<T = void>() {
+  const listeners = new Set<(value: T) => void>();
 
   return {
-    subscribe(listener: () => void) {
+    subscribe(listener: (value: T) => void) {
       listeners.add(listener);
       return () => {
         listeners.delete(listener);
       };
     },
 
-    emit() {
-      for (const listener of listeners) listener();
+    emit(value: T) {
+      for (const listener of listeners) listener(value);
     },
   };
 }
@@ -143,6 +147,80 @@ export function createCache<V>({ fetch, isStale = () => false, onLoad }: CacheOp
     invalidate(key: string) {
       values.delete(key);
       invalidated.add(key);
+    },
+  };
+}
+
+/**
+ * A localStorage record mirrored in memory, so syncs don't re-parse it per game.
+ * Version `key` so a format change drops old entries rather than half-reading them.
+ */
+export function createStore<T>(key: string) {
+  let cache: Record<string, T> | undefined;
+
+  function readAll(): Record<string, T> {
+    if (cache) return cache;
+
+    try {
+      const raw = localStorage.getItem(key);
+      const parsed: unknown = raw ? JSON.parse(raw) : {};
+      cache = typeof parsed === "object" && parsed !== null ? (parsed as Record<string, T>) : {};
+    } catch (e) {
+      console.debug(`Failed to read ${key}`, e);
+      cache = {};
+    }
+
+    return cache;
+  }
+
+  function writeAll(entries: Record<string, T>) {
+    cache = entries;
+
+    try {
+      localStorage.setItem(key, JSON.stringify(entries));
+    } catch (e) {
+      console.debug(`Failed to write ${key}`, e);
+    }
+  }
+
+  return {
+    /** Every entry, as a copy - callers iterate this while removing entries. */
+    getAll(): Record<string, T> {
+      return { ...readAll() };
+    },
+
+    get(name: string): T | undefined {
+      return readAll()[name];
+    },
+
+    set(name: string, value: T) {
+      const entries = readAll();
+      entries[name] = value;
+      writeAll(entries);
+    },
+
+    remove(name: string) {
+      const entries = readAll();
+      delete entries[name];
+      writeAll(entries);
+    },
+
+    clear() {
+      writeAll({});
+    },
+
+    /** Drop every entry the predicate rejects. */
+    keep(predicate: (name: string, value: T) => boolean) {
+      const entries = readAll();
+      let changed = false;
+
+      for (const [name, value] of Object.entries(entries)) {
+        if (predicate(name, value)) continue;
+        delete entries[name];
+        changed = true;
+      }
+
+      if (changed) writeAll(entries);
     },
   };
 }

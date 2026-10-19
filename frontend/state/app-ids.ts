@@ -1,4 +1,4 @@
-import { createStore } from "./storage";
+import { createStore } from "./primitives";
 
 /** Steam sets this bit on the appids it hands non-Steam shortcuts, which ours are. */
 const SHORTCUT_APPID_BIT = 0x80000000;

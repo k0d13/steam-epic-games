@@ -6,7 +6,7 @@ import * as hidden from "../services/hidden";
 import { mainPopup } from "../services/popups";
 import * as steamLibrary from "../services/steam-library";
 import * as preferences from "../state/preferences";
-import { useValue } from "../state/signal";
+import { useValue } from "../state/primitives";
 import { Busy, type Message, MessageLine, Meter, plural } from "./panel-ui";
 
 // The panel's lower half: the options once there's something for them to act on,

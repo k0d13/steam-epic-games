@@ -1,5 +1,5 @@
 import { getLastPlayed } from "../services/playtime";
-import { createCache } from "./signal";
+import { createCache } from "./primitives";
 
 // Like state/sizes.ts, answers from memory for Steam's render path. Stale answers
 // are served, then refetched behind the render that asked.
