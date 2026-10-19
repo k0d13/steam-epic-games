@@ -237,7 +237,7 @@ export function UnsupportedPanel() {
     <div className="epic-panel">
       <style>{PANEL_CSS}</style>
       <div className="epic-card">
-        <Identity initial="!" title="Windows only" subtitle="Epic Games" />
+        <Identity initial="!" title="Windows and Linux only" subtitle="Epic Games" />
         <div className="epic-dim">
           Epic Games doesn't support this platform yet, so your library was left as it was.
         </div>
