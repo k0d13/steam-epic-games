@@ -3,7 +3,7 @@ import { useState } from "react";
 import { open, SIGN_IN_URL } from "../patches/store-menu";
 import * as steamLibrary from "../services/steam-library";
 import * as account from "../state/account";
-import { useValue } from "../state/signal";
+import { useValue } from "../state/primitives";
 import { Busy, Identity, type Message, MessageLine, Meter, PANEL_CSS, plural } from "./panel-ui";
 import { Maintenance, Options } from "./settings";
 import { type LibraryView, useLibrary } from "./use-library";

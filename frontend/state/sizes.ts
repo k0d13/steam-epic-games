@@ -1,4 +1,4 @@
-import { createCache } from "./signal";
+import { createCache } from "./primitives";
 
 // Answers from memory for Steam's render path; an unknown game starts a fetch and
 // notifies subscribers when it lands.

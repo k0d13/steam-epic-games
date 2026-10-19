@@ -1,6 +1,5 @@
 import * as appIds from "./app-ids";
-import { createSignal } from "./signal";
-import { createStore } from "./storage";
+import { createSignal, createStore } from "./primitives";
 
 // The backend's library in memory, so Steam's render path can ask synchronously.
 
@@ -22,20 +21,15 @@ export function getLatest(): Library | undefined {
 // included, is noticed and whatever was cached for the old build is dropped.
 const versions = createStore<string>("epic-games:versions:v1");
 
-const updateListeners = new Set<(game: EpicGame) => void>();
+const updated = createSignal<EpicGame>();
 
 /** Hear a game whose installed build changed since we last saw it. */
-export function onUpdated(listener: (game: EpicGame) => void) {
-  updateListeners.add(listener);
-  return () => {
-    updateListeners.delete(listener);
-  };
-}
+export const onUpdated = updated.subscribe;
 
 function reindex(games: EpicGame[]) {
   byAppName.clear();
   byAppId.clear();
-  const updated: EpicGame[] = [];
+  const newBuilds: EpicGame[] = [];
 
   for (const game of games) {
     byAppName.set(game.app_name, game);
@@ -48,11 +42,11 @@ function reindex(games: EpicGame[]) {
     if (previous === game.version) continue;
     versions.set(game.app_name, game.version);
     // The first sighting has nothing cached to be stale.
-    if (previous !== undefined) updated.push(game);
+    if (previous !== undefined) newBuilds.push(game);
   }
 
   changed.emit();
-  for (const game of updated) for (const listener of updateListeners) listener(game);
+  for (const game of newBuilds) updated.emit(game);
 }
 
 /** Re-read the appid mapping without refetching the library from the backend. */

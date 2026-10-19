@@ -1,4 +1,4 @@
-import { createValue } from "./signal";
+import { createValue } from "./primitives";
 
 // Sign in and out happen on Epic's store in Steam's browser (see epic-session), out
 // of the frontend's sight, so the backend's status is polled for them.

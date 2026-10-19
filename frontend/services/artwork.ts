@@ -1,5 +1,5 @@
 import { ELibraryAssetType } from "millennium";
-import { createStore } from "../state/storage";
+import { createStore } from "../state/primitives";
 
 // Art from Epic's catalog metadata, fetched here because Lua has no HTTP client
 // and SetCustomArtworkForApp wants base64 anyway.
