@@ -1,4 +1,4 @@
-import { type SteamAppOverview } from "millennium";
+import { type AppDetails, type SteamAppOverview } from "millennium";
 
 // Client globals @steambrew/client doesn't type. None is guaranteed on a given
 // build, so the code using them feature tests.
@@ -54,6 +54,34 @@ declare global {
    */
   // oxlint-disable-next-line no-var -- `var` is what puts it on `window`'s type.
   var MainWindowBrowserManager: { m_lastLocation?: { hash: string } } | undefined;
+
+  /** What the details page reads for each app, filled from the store's website or by `AppDetailsChanged`. */
+  // oxlint-disable-next-line no-var -- as above.
+  var appDetailsStore:
+    | {
+        m_mapAppData: Map<number, AppDataSlot>;
+        GetAppData(appId: number): AppDataSlot;
+        /** Callable, but not patchable: a non-writable mobx action. */
+        AppDetailsChanged(details: AppDetails): void;
+      }
+    | undefined;
+
+  /** One app's slot in `appDetailsStore`. */
+  interface AppDataSlot {
+    details?: AppDetails;
+    associationData?: {
+      rgDevelopers: AppAssociation[];
+      rgPublishers: AppAssociation[];
+      rgFranchises: AppAssociation[];
+    };
+    descriptionsData?: { strFullDescription: string; strSnippet: string };
+  }
+
+  /** What the info panel reads for each association, from `LibraryAppDetails`. */
+  interface AppAssociation {
+    strName: string;
+    strURL: string;
+  }
 
   /** Steam's client notifications: toasts and the tray. */
   // oxlint-disable-next-line no-var -- as above.

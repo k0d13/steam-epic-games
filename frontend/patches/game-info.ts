@@ -19,22 +19,6 @@ interface AppOverview {
   appid: number;
 }
 
-/** What the panel reads for each association, from `LibraryAppDetails`. */
-interface Association {
-  strName: string;
-  strURL: string;
-}
-
-/** One app's slot in the app data store, as Steam's own reply would have filled it. */
-interface AppData {
-  associationData?: {
-    rgDevelopers: Association[];
-    rgPublishers: Association[];
-    rgFranchises: Association[];
-  };
-  descriptionsData?: { strFullDescription: string; strSnippet: string };
-}
-
 /** Steam's store category ids, which its feature list and filters read. */
 const CATEGORY = {
   multiPlayer: 1,
@@ -73,39 +57,39 @@ export function categoriesFor(appName: string): number[] {
  */
 const published = new WeakSet<GameInfo>();
 
-/** Put every game's info where the panel reads it. */
-function publish() {
-  const store = Reflect.get(globalThis, "appDetailsStore") as
-    | { GetAppData(appId: number): AppData }
-    | undefined;
-  if (!store) return;
+/** Put one game's info where the panel reads it, if it hasn't been already. */
+function publish(appId: number): boolean {
+  const game = library.getByAppId(appId);
+  const details = game && info.get(game.app_name);
+  if (!details) return false;
+  if (published.has(details)) return true;
 
-  for (const appId of library.appIdsWithGames()) {
-    const game = library.getByAppId(appId);
-    const details = game && info.get(game.app_name);
-    if (!details || published.has(details)) continue;
+  const store = globalThis.appDetailsStore;
+  if (!store) return false;
 
-    // Each name links to Epic's search for it, as Steam's link to its own.
-    const associations = (names: string[]) =>
-      Object.values(names).map((name) => ({ strName: name, strURL: searchURL(name) }));
+  // Each name links to Epic's search for it, as Steam's link to its own.
+  const associations = (names: string[]) =>
+    Object.values(names).map((name) => ({ strName: name, strURL: searchURL(name) }));
 
-    const data = store.GetAppData(appId);
-    data.associationData = {
-      rgDevelopers: associations(details.developers),
-      rgPublishers: associations(details.publishers),
-      rgFranchises: [],
-    };
-    data.descriptionsData = {
-      strFullDescription: details.description,
-      strSnippet: details.description,
-    };
-    published.add(details);
-  }
+  const data = store.GetAppData(appId);
+  data.associationData = {
+    rgDevelopers: associations(details.developers),
+    rgPublishers: associations(details.publishers),
+    rgFranchises: [],
+  };
+  data.descriptionsData = {
+    strFullDescription: details.description,
+    strSnippet: details.description,
+  };
+  published.add(details);
+  return true;
 }
 
 export function register() {
   // Ahead of the repaint index.tsx subscribes, so what it draws already has the data.
-  return info.subscribe(publish);
+  return info.subscribe(() => {
+    for (const appId of library.appIdsWithGames()) publish(appId);
+  });
 }
 
 /** Is there an info panel to show for this game? Starts reading it if not yet. */
@@ -114,13 +98,18 @@ function isAvailable(appId: number): boolean {
   if (!game) return false;
 
   info.ensure(game.app_name);
-  const details = info.get(game.app_name);
-  return details !== undefined && published.has(details);
+  // Info kept from an earlier session is there already, and so is published now.
+  return publish(appId);
 }
 
 /** Called from the panel and its button, for which false leaves Steam's shortcut behaviour. */
 export function HasGameInfo(overview: AppOverview): boolean {
   return isAvailable(overview.appid);
+}
+
+/** Called as the page is built, before info is known, to start the panel closed like a Steam game's. */
+export function IsEpicGame(overview: AppOverview): boolean {
+  return library.getByAppId(overview.appid) !== undefined;
 }
 
 /** Called with the sections Steam keeps for a shortcut, before it draws any. */

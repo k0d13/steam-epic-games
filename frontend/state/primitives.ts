@@ -71,24 +71,42 @@ interface CacheOptions<V> {
   fetch(key: string, refresh: boolean): Promise<V | null | undefined>;
   /** Whether an answer, or the lack of one, is old enough to ask again. Never, by default. */
   isStale?(key: string, value: V | undefined): boolean;
-  /** Hears every answer that arrives, before subscribers do. */
-  onLoad?(key: string, value: V): void;
+  /**
+   * localStorage key to keep answers under, versioned like `createStore`'s. After a
+   * restart they're served at once, and asked for again behind the render.
+   */
+  persist?: string;
 }
 
 /**
  * Answers per key from memory, for render paths that can't wait: `get` never
  * fetches, `ensure` starts a fetch if needed and is safe to call every render.
- * Misses are remembered, or every render would run a subprocess.
+ * Misses are remembered, or every render would run a subprocess. An answer that
+ * goes out of date is still served until its replacement arrives.
  */
-export function createCache<V>({ fetch, isStale = () => false, onLoad }: CacheOptions<V>) {
+export function createCache<V>({ fetch, isStale = () => false, persist }: CacheOptions<V>) {
   const signal = createSignal();
+  const saved = persist ? createStore<V>(persist) : undefined;
 
   /** `null` records a key we asked about and got nothing for, so we stop asking. */
   const values = new Map<string, V | null>();
   const pending = new Set<string>();
 
+  /** Keys served from `saved` that the backend hasn't been asked about since the restart. */
+  const restored = new Set<string>();
+
   /** Keys whose next read has to go past the backend's cache. See `invalidate`. */
   const invalidated = new Set<string>();
+
+  /** Bring a key's saved answer into memory, the first time it's wanted. */
+  function restore(key: string) {
+    if (values.has(key)) return;
+
+    const value = saved?.get(key);
+    if (value === undefined) return;
+    values.set(key, value);
+    restored.add(key);
+  }
 
   async function load(key: string, refresh: boolean) {
     if (pending.has(key)) return;
@@ -100,11 +118,16 @@ export function createCache<V>({ fetch, isStale = () => false, onLoad }: CacheOp
     } finally {
       pending.delete(key);
       invalidated.delete(key);
+      restored.delete(key);
     }
 
     if (result) {
+      // Asking again mostly brings back what we served, which needs no repaint.
+      const changed = JSON.stringify(result) !== JSON.stringify(values.get(key));
       values.set(key, result);
-      onLoad?.(key, result);
+      if (!changed) return;
+
+      saved?.set(key, result);
       signal.emit();
     } else if (!values.get(key)) {
       // A failed refresh keeps the answer we already have.
@@ -124,15 +147,17 @@ export function createCache<V>({ fetch, isStale = () => false, onLoad }: CacheOp
 
     /** The answer for a key, if we already have it. Never blocks, never fetches. */
     get(key: string): V | undefined {
+      restore(key);
       return values.get(key) ?? undefined;
     },
 
     /** Make sure we're getting this key's answer, without waiting for it. */
     ensure(key: string) {
       if (pending.has(key)) return;
+      restore(key);
 
       const held = values.get(key);
-      const settled = values.has(key) && !invalidated.has(key);
+      const settled = values.has(key) && !invalidated.has(key) && !restored.has(key);
       if (settled && (held === null || !isStale(key, held))) return;
 
       void load(key, needsRefresh(key)).catch((reason: unknown) => {
@@ -143,9 +168,11 @@ export function createCache<V>({ fetch, isStale = () => false, onLoad }: CacheOp
     /** Ask again for one key, whatever we already hold. */
     refresh: (key: string) => load(key, true),
 
-    /** Drop a key's answer, and have the next read go past the backend's cache too. */
+    /**
+     * Mark a key's answer out of date. It's served until the next read has asked
+     * again, past the backend's cache too.
+     */
     invalidate(key: string) {
-      values.delete(key);
       invalidated.add(key);
     },
   };

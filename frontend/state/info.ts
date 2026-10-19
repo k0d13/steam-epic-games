@@ -1,9 +1,11 @@
 import { createCache } from "./primitives";
 
 // Like state/sizes.ts, answers from memory for Steam's render path. What the game
-// info panel shows doesn't change in a session, so an answer is kept as it is.
+// info panel shows rarely changes, so a saved answer is served and the backend,
+// which knows how old its own copy is, is asked once a session.
 
 const cache = createCache<GameInfo>({
+  persist: "epic-games:info:v1",
   fetch: (appName, refresh) => backend.GetGameInfo(appName, refresh),
 });
 

@@ -1,4 +1,5 @@
 import { type AppDetails, callOriginal, replacePatch } from "millennium";
+import * as info from "../state/info";
 import * as jobs from "../state/jobs";
 import * as library from "../state/library";
 import * as sizes from "../state/sizes";
@@ -83,17 +84,12 @@ const applied = new Map<number, string>();
  * observers see the same reference and don't re-render.
  */
 export function refreshAll() {
-  const store = Reflect.get(globalThis, "appDetailsStore") as
-    | {
-        m_mapAppData: Map<number, { details?: AppDetails }>;
-        /** Callable, but not patchable - see above. */
-        AppDetailsChanged(details: AppDetails): void;
-      }
-    | undefined;
+  const store = globalThis.appDetailsStore;
   if (!store) return;
 
   for (const { details } of store.m_mapAppData.values()) {
-    if (!details || library.getByAppId(details.unAppID) === undefined) continue;
+    const game = details && library.getByAppId(details.unAppID);
+    if (!details || !game) continue;
 
     const updated = { ...details };
     apply(updated);
@@ -104,6 +100,8 @@ export function refreshAll() {
       updated.lDiskSpaceRequiredBytes,
       updated.achievements?.nAchieved,
       updated.achievements?.nTotal,
+      // The info panel and its button appear with this, and read nothing from the details.
+      info.get(game.app_name)?.fetched_at,
     ].join("|");
     if (applied.get(details.unAppID) === signature) continue;
 

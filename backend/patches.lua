@@ -76,6 +76,20 @@ return {
     },
   },
 
+  -- A shortcut's info panel starts open, as its only content was the explanation. An
+  -- Epic game's starts as a Steam game's does, open for the games the user opened it
+  -- on, and it arrives after the page has drawn, so this can't wait for HasGameInfo.
+  {
+    file = [[sp\.js]],
+    find = [[this\.state=\{bShowGameInfo:[\w$]+\.overview\.BIsModOrShortcut\(\)\|\|[\w$]+\.s_setGameInfoVisible\.has\(this\.props\.overview\.appid\),suppressTransition]],
+    transforms = {
+      {
+        match = [[bShowGameInfo:([\w$]+)\.overview\.BIsModOrShortcut\(\)\|\|]],
+        replace = [[bShowGameInfo:\1.overview.BIsModOrShortcut()&&!#{{self}}?.IsEpicGame?.(\1.overview)||]],
+      },
+    },
+  },
+
   -- The play bar's button that opens the info panel, which a shortcut doesn't get.
   {
     file = [[sp\.js]],

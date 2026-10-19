@@ -2,7 +2,8 @@ import { getLastPlayed } from "../services/playtime";
 import { createCache } from "./primitives";
 
 // Like state/sizes.ts, answers from memory for Steam's render path. Stale answers
-// are served, then refetched behind the render that asked.
+// are served, then refetched behind the render that asked. Saved across restarts
+// too, so the library sorts and the pages draw without waiting on the backend.
 
 /** How old an answer can get before the next read goes back to Epic. */
 const STALE_AFTER_MS = 10 * 60 * 1000;
@@ -11,15 +12,16 @@ const STALE_AFTER_MS = 10 * 60 * 1000;
 const STARTUP_GRACE_MS = 30_000;
 
 /**
- * Counts for every game the backend has cached. Kept apart from the full answers
- * because the library home reads every game as it draws and must never start a fetch.
+ * Counts for every game the backend has cached, for those we hold no full answer
+ * for yet. Kept apart because the library home reads every game as it draws and
+ * must never start a fetch.
  */
 const summaries = new Map<string, AchievementSummary>();
 
-/** Enough of an answer to date it, which both a full read and a summary are. */
-type Dated = { total: number; fetched_at: number };
+/** Enough of an answer to date it and show progress, which both a full read and a summary are. */
+type Counts = Pick<AchievementSummary, "total" | "unlocked" | "fetched_at">;
 
-function isStale(appName: string, entry: Dated | undefined): boolean {
+function isStale(appName: string, entry: Counts | undefined): boolean {
   // The summary dates the backend's cache for games nothing has opened this session.
   entry ??= summaries.get(appName);
 
@@ -36,15 +38,7 @@ function isStale(appName: string, entry: Dated | undefined): boolean {
 const cache = createCache<GameAchievements>({
   fetch: (appName, refresh) => backend.GetAchievements(appName, refresh),
   isStale,
-  // Keep the summary on the same answer, whichever read brought it back.
-  onLoad(appName, result) {
-    summaries.set(appName, {
-      app_name: appName,
-      total: result.total,
-      unlocked: result.unlocked,
-      fetched_at: result.fetched_at,
-    });
-  },
+  persist: "epic-games:achievements:v1",
 });
 
 /** Fires when achievements or counts arrive, so whatever is showing them can repaint. */
@@ -59,15 +53,12 @@ export const ensure = cache.ensure;
 /** Ask Epic again for one game, whatever we already hold. */
 export const refresh = cache.refresh;
 
-/** Drop a game's achievements, so the next read asks Epic again. */
-export function forget(appName: string) {
-  cache.invalidate(appName);
-  summaries.delete(appName);
-}
+/** Have a game's achievements read again by the next read, which serves the old ones meanwhile. */
+export const forget = cache.invalidate;
 
 /** A game's achievement counts, if read. Never fetches: the whole library asks. */
-export function getSummary(appName: string): AchievementSummary | undefined {
-  return summaries.get(appName);
+export function getSummary(appName: string): Counts | undefined {
+  return cache.get(appName) ?? summaries.get(appName);
 }
 
 /** Seed the counts from the backend's cache, without asking Epic. */
@@ -85,7 +76,7 @@ export async function loadSummaries() {
 
 /** Re-read games played since we last asked Epic, one legendary run at a time. */
 async function refreshPlayed() {
-  for (const [appName, summary] of summaries) {
-    if (isStale(appName, summary)) await refresh(appName);
+  for (const appName of summaries.keys()) {
+    if (isStale(appName, getSummary(appName))) await refresh(appName);
   }
 }
