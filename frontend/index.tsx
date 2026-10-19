@@ -1,5 +1,5 @@
 import { definePlugin, IconsModule } from "millennium";
-import { PluginPanel, UnsupportedPanel } from "./components/plugin-panel";
+import { PluginPanel } from "./components/plugin-panel";
 import * as achievementProgress from "./patches/achievement-progress";
 import * as appDetails from "./patches/app-details";
 import * as downloadOverview from "./patches/download-overview";
@@ -35,12 +35,6 @@ export { AchievementStore, ShortcutSections } from "./patches/achievements";
 const PluginIcon = IconsModule?.Download ?? IconsModule?.Settings ?? (() => null);
 
 export default definePlugin(async () => {
-  // legendary ships for Windows and Linux; a Mac has neither its binary nor Proton.
-  if (navigator.userAgent.includes("Mac OS X")) {
-    console.warn("On macOS, so nothing was patched");
-    return { title: "Epic Games", icon: <PluginIcon />, content: <UnsupportedPanel /> };
-  }
-
   // Before the library loads, so overviews built meanwhile are patched. Guarded so
   // a patch that no longer applies only costs its own feature.
   const unpatches: (() => void)[] = [];

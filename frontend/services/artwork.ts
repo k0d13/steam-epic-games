@@ -106,7 +106,7 @@ async function applyIcon(appId: number, game: EpicGame): Promise<boolean> {
     const base64 = await cropToIcon(source);
     await SteamClient.Apps.SetCustomArtworkForApp(appId, base64, "png", ELibraryAssetType.Icon);
 
-    // As strings: Millennium on Linux wraps numbers past 2^31, and shortcut ids are.
+    // As strings: Millennium can wrap numbers past 2^31, and shortcut ids are.
     const path = await backend.PlaceIcon(String(appId), String(accountId() ?? ""));
     if (!path) return false;
 

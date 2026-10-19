@@ -33,8 +33,8 @@ interface InstallFolderStore {
 }
 
 /**
- * legendary uses forward slashes and Steam backslashes on Windows, which also
- * ignores case. Linux paths are compared as they are.
+ * legendary and Steam can disagree on slashes. Drive-letter paths ignore case;
+ * others are compared as they are.
  */
 function normalise(path: string) {
   const trimmed = path.replace(/\\/g, "/").replace(/\/+$/, "");

@@ -32,7 +32,7 @@ function OptionRow(props: {
   );
 }
 
-/** Linux only: the Proton every Epic game runs through. Hidden on Windows. */
+/** The Proton every Epic game runs through, hidden where the backend has none to offer. */
 function ProtonRow({ games }: { games: EpicGame[] }) {
   const [choice, setChoice] = useState<ProtonChoice | undefined>(undefined);
 

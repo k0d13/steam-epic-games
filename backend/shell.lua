@@ -76,13 +76,12 @@ function shell.run(exe, args)
   end
 
   local command = table.concat(parts, " ") .. " 2>&1"
-  -- Steam's stdin never closes, so a prompt would block the Lua state for good.
-  if not paths.IS_WINDOWS then
-    command = command .. " </dev/null"
-  end
-  -- `cmd /c` strips the outer quotes, which would split the exe path at a space.
   if paths.IS_WINDOWS then
+    -- `cmd /c` strips the outer quotes, which would split the exe path at a space.
     command = '"' .. command .. '"'
+  else
+    -- Steam's stdin never closes, so a prompt would block the Lua state for good.
+    command = command .. " </dev/null"
   end
   local output, status = utils.exec(command)
   return output or "", tonumber(status) or -1

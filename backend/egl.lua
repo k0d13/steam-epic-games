@@ -11,10 +11,10 @@ local utils = require("utils")
 local egl = {}
 
 ---Import what `egl-sync` can resolve. `--import-only` so we never export into the
----launcher's library. Windows only: elsewhere there's no launcher, and legendary
----asks for its Wine prefix on stdin instead.
+---launcher's library. Only where the launcher can be: elsewhere legendary asks
+---for its Wine prefix on stdin instead.
 function egl.sync()
-  if not paths.IS_WINDOWS then
+  if not paths.egl_manifests() then
     return
   end
 
