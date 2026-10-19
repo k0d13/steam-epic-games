@@ -26,7 +26,8 @@ local sizes = nil
 ---@return GameSize|nil
 function GetGameSize(app_name, refresh)
   sizes = sizes or cache.read(SIZES_PATH, "sizes") or {}
-  if sizes[app_name] and not refresh then
+  -- A negative size was wrapped by the Linux decoder before cache.decode fixed it.
+  if sizes[app_name] and sizes[app_name].disk >= 0 and not refresh then
     return sizes[app_name]
   end
 

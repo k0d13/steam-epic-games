@@ -15,7 +15,7 @@ export const steamShortcuts = () =>
 // are also recognised by what they run: legendary, from wherever it was, with
 // the `launch "<app name>"` GetLaunchCommand gives them.
 
-const LEGENDARY_EXE = /(^|[\\/])legendary\.exe$/i;
+const LEGENDARY_EXE = /(^|[\\/])legendary(\.exe)?$/i;
 const LAUNCH_ARGUMENTS = /^\s*launch\s+"([^"]+)"\s*$/;
 
 /** Details Steam hasn't answered in this long are treated as someone else's shortcut. */
@@ -98,6 +98,10 @@ export async function align() {
     if (!alignedExes.has(appId)) {
       // Quoted the way Steam stores it, or a space in the path splits it.
       SteamClient.Apps.SetShortcutExe(appId, `"${launch.exe}"`);
+      // legendary starts Proton itself where a game needs it. A compatibility
+      // tool on the shortcut would run legendary under Wine, where the game
+      // silently never starts, so any set in Properties is cleared.
+      SteamClient.Apps.SpecifyCompatTool(appId, "");
       alignedExes.add(appId);
     }
 
@@ -160,7 +164,7 @@ export async function removeArtwork(ids: number[]): Promise<number> {
   if (ids.length === 0) return 0;
 
   try {
-    return await backend.RemoveArtwork(ids.join(","), artwork.accountId());
+    return await backend.RemoveArtwork(ids.join(","), String(artwork.accountId() ?? ""));
   } catch (reason: unknown) {
     console.warn("Could not remove shortcut artwork", reason);
     return 0;

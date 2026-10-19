@@ -6,7 +6,6 @@ local json = require("json")
 local log = require("log")
 local paths = require("paths")
 local runner = require("runner")
-local shell = require("shell")
 local utils = require("utils")
 
 -- Installs, updates and uninstalls, one at a time since legendary allows one.
@@ -66,14 +65,30 @@ local function build(dir, meta)
   ---@type JobState
   local state
   if exit_code then
-    state = exit_code == 0 and "done" or "failed"
+    -- legendary exits 0 after some fatal errors, like another instance holding its
+    -- install lock, so a CRITICAL line fails the job too.
+    local fatal = (runner.read(dir, "error") or ""):find("CRITICAL:", 1, true) ~= nil
+    state = (exit_code == 0 and not fatal) and "done" or "failed"
   elseif fs.is_file(runner.file(dir, "paused")) then
     -- Pausing is a kill; this marker says the process was meant to be gone.
     state = "paused"
   elseif not spawned_at then
     state = "queued"
+  elseif runner.is_running(dir, pid, spawned_at) then
+    state = "running"
   else
-    state = runner.is_running(dir, pid, spawned_at) and "running" or "failed"
+    state = "failed"
+    -- legendary can outlive its runner, as across a Steam restart, and would hold
+    -- the install lock against every retry. The exit code stops this repeating on
+    -- the next poll.
+    if pid then
+      runner.reap(pid)
+    end
+    exit_code = -1
+    utils.write_file(runner.file(dir, "exit"), "-1")
+    if not runner.read(dir, "error") then
+      utils.write_file(runner.file(dir, "error"), "The download stopped unexpectedly.")
+    end
   end
 
   return {
@@ -207,8 +222,7 @@ function jobs.start(app_name, kind, exe, args)
   return jobs.get(app_name)
 end
 
----Kill a job's runner. `/T` takes legendary down with it, and `/F` because it
----ignores anything gentler mid-download.
+---Kill a job's runner, and legendary with it.
 ---@param job Job
 ---@return boolean stopped
 local function stop(job)
@@ -221,7 +235,7 @@ local function stop(job)
   utils.write_file(runner.file(job_dir(job.app_name), "paused"), "1")
 
   if job.state == "running" and job.pid then
-    shell.run("taskkill", { "/F", "/T", "/PID", tostring(job.pid) })
+    runner.kill(job.pid)
   end
   return true
 end
