@@ -138,11 +138,7 @@ export function register() {
       }
 
       close();
-      void jobs.install(
-        appName,
-        folder && installDirectory(folder.strFolderPath),
-        folderName,
-      );
+      void jobs.install(appName, folder && installDirectory(folder.strFolderPath), folderName);
       return Promise.resolve();
     }),
 
