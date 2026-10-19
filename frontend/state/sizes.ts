@@ -1,9 +1,11 @@
 import { createCache } from "./primitives";
 
 // Answers from memory for Steam's render path; an unknown game starts a fetch and
-// notifies subscribers when it lands.
+// notifies subscribers when it lands. Kept across restarts, so a size is there
+// the moment a page draws.
 
 const cache = createCache<GameSize>({
+  persist: "epic-games:sizes:v1",
   fetch: (appName, refresh) => backend.GetGameSize(appName, refresh),
 });
 
@@ -17,7 +19,8 @@ export const get = cache.get;
 export const ensure = cache.ensure;
 
 /**
- * Drop a game's size here and in the backend, whose cache can't tell a new build
- * shipped. state/jobs.ts calls this when a job finishes.
+ * Have a game's size read again, past the backend's cache, which can't tell a new
+ * build shipped. The old size shows until then. state/jobs.ts calls this when a
+ * job finishes.
  */
 export const forget = cache.invalidate;
