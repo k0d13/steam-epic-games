@@ -35,8 +35,9 @@ export { AchievementStore, ShortcutSections } from "./patches/achievements";
 const PluginIcon = IconsModule?.Download ?? IconsModule?.Settings ?? (() => null);
 
 export default definePlugin(async () => {
-  if (!navigator.userAgent.includes("Windows")) {
-    console.warn("Not on Windows, so nothing was patched");
+  // legendary ships for Windows and Linux; a Mac has neither its binary nor Proton.
+  if (navigator.userAgent.includes("Mac OS X")) {
+    console.warn("On macOS, so nothing was patched");
     return { title: "Epic Games", icon: <PluginIcon />, content: <UnsupportedPanel /> };
   }
 
