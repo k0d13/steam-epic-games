@@ -65,14 +65,31 @@ local function build(dir, meta)
   ---@type JobState
   local state
   if exit_code then
-    state = exit_code == 0 and "done" or "failed"
+    -- legendary exits 0 after some fatal errors, like another instance holding its
+    -- install lock, so a CRITICAL line fails the job too.
+    local fatal = (runner.read(dir, "error") or ""):find("CRITICAL:", 1, true) ~= nil
+    state = (exit_code == 0 and not fatal) and "done" or "failed"
   elseif fs.is_file(runner.file(dir, "paused")) then
     -- Pausing is a kill; this marker says the process was meant to be gone.
     state = "paused"
   elseif not spawned_at then
     state = "queued"
+  elseif runner.is_running(dir, pid, spawned_at) then
+    state = "running"
   else
-    state = runner.is_running(dir, pid, spawned_at) and "running" or "failed"
+    state = "failed"
+    -- legendary can outlive its runner, as across a Steam restart, and would hold
+    -- the install lock against every retry. Linux only: there the PID names the
+    -- runner's process group, while Windows may have reused it for anything.
+    -- The exit code stops this repeating on the next poll.
+    if pid and not paths.IS_WINDOWS then
+      runner.kill(pid)
+    end
+    exit_code = -1
+    utils.write_file(runner.file(dir, "exit"), "-1")
+    if not runner.read(dir, "error") then
+      utils.write_file(runner.file(dir, "error"), "The download stopped unexpectedly.")
+    end
   end
 
   return {
