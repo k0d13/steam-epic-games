@@ -8,6 +8,7 @@ import * as installWizard from "./patches/install-wizard";
 import * as installs from "./patches/installs";
 import * as overviews from "./patches/overviews";
 import * as storage from "./patches/storage";
+import * as artwork from "./services/artwork";
 import * as epicSession from "./services/epic-session";
 import { notifyDownloadCompleted } from "./services/notifications";
 import * as orders from "./services/orders";
@@ -19,6 +20,7 @@ import * as achievements from "./state/achievements";
 import * as appIds from "./state/app-ids";
 import * as jobs from "./state/jobs";
 import * as library from "./state/library";
+import * as sizes from "./state/sizes";
 
 // Millennium puts these on our PLUGIN_LIST slot, where backend/patches.lua has
 // Steam's own code call them.
@@ -83,6 +85,15 @@ export default definePlugin(async () => {
       if (job.state !== "done" || !jobs.isDownload(job)) return;
       const appId = appIds.getAppId(job.app_name);
       if (appId !== undefined) notifyDownloadCompleted(appId);
+    }),
+
+    // A new build can bring new art, achievements and size. Achievements wait for
+    // something to read them, since each is a legendary run.
+    library.onUpdated((game) => {
+      sizes.forget(game.app_name);
+      achievements.forget(game.app_name);
+      const appId = appIds.getAppId(game.app_name);
+      if (appId !== undefined) void artwork.apply(appId, game);
     }),
 
     // Running installs repaint every second: the progress bar reads off the overview.

@@ -6,7 +6,7 @@ import * as hidden from "../services/hidden";
 import { mainPopup } from "../services/popups";
 import * as steamLibrary from "../services/steam-library";
 import * as preferences from "../state/preferences";
-import { useValue } from "../state/signal";
+import { useValue } from "../state/primitives";
 import { Busy, type Message, MessageLine, Meter, plural } from "./panel-ui";
 
 // The panel's lower half: the options once there's something for them to act on,
@@ -33,11 +33,23 @@ function OptionRow(props: {
 }
 
 /** The Proton every Epic game runs through, hidden where the backend has none to offer. */
-function ProtonRow({ games }: { games: EpicGame[] }) {
+function ProtonRow({
+  games,
+  setMessage,
+}: {
+  games: EpicGame[];
+  setMessage(message: Message | undefined): void;
+}) {
   const [choice, setChoice] = useState<ProtonChoice | undefined>(undefined);
 
   useEffect(() => {
-    void backend.GetProton().then(setChoice);
+    backend
+      .GetProton()
+      .then(setChoice)
+      .catch((reason: unknown) => {
+        console.warn("GetProton failed", reason);
+        setMessage({ text: "Couldn't read the Proton builds.", error: true });
+      });
   }, []);
 
   if (!choice?.supported) return null;
@@ -65,10 +77,21 @@ function ProtonRow({ games }: { games: EpicGame[] }) {
           onChange={(option) => {
             const path = option.data as string;
             setChoice({ ...choice, selected: path || null });
-            void backend.SetProton(
-              path,
-              games.map((game) => game.app_name),
-            );
+            // Shown straight away; put back if the backend didn't take it.
+            const failed = (reason?: unknown) => {
+              if (reason) console.warn("SetProton failed", reason);
+              setChoice(choice);
+              setMessage({ text: "Couldn't change the Proton build.", error: true });
+            };
+            backend
+              .SetProton(
+                path,
+                games.map((game) => game.app_name),
+              )
+              .then((ok) => {
+                if (!ok) failed();
+              })
+              .catch(failed);
           }}
         />
       </div>
@@ -122,7 +145,7 @@ export function Options({
           disabled={sync.active}
           onChange={(value) => steamLibrary.setHideDuplicates(games, value)}
         />
-        <ProtonRow games={games} />
+        <ProtonRow games={games} setMessage={setMessage} />
       </div>
     </div>
   );
@@ -178,7 +201,7 @@ export function Maintenance({
       <div className="epic-card">
         {cleaning ? (
           <Meter
-            label={sync.total ? "Removing from Steam" : "Finding shortcuts..."}
+            label={sync.total ? "Removing from Steam" : "Finding shortcuts…"}
             done={sync.done}
             total={sync.total}
           />
@@ -196,7 +219,12 @@ export function Maintenance({
               Redownload art
             </DialogButton>
           )}
-          <DialogButton className="epic-grow" disabled={sync.active} onClick={onCleanUp}>
+          {/* The harmless action takes the width; the destructive one sits beside it. */}
+          <DialogButton
+            className={canRedownload ? "epic-fixed" : "epic-grow"}
+            disabled={sync.active}
+            onClick={onCleanUp}
+          >
             {cleaning ? <Busy>Removing</Busy> : "Clean up"}
           </DialogButton>
         </Focusable>

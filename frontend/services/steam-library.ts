@@ -2,7 +2,7 @@ import { sleep } from "millennium";
 import * as appIds from "../state/app-ids";
 import * as library from "../state/library";
 import * as preferences from "../state/preferences";
-import { createValue } from "../state/signal";
+import { createValue } from "../state/primitives";
 import * as artwork from "./artwork";
 import * as collection from "./collection";
 import * as hidden from "./hidden";
