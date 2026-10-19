@@ -15,6 +15,9 @@ function cache.decode(text)
   local trimmed = utils.trim(text or "")
   local first, last = trimmed:sub(1, 1), trimmed:sub(-1)
   if (first == "{" and last == "}") or (first == "[" and last == "]") then
+    -- Millennium's Linux decoder wraps integers at 32 bits, so a 2.5 GB size came
+    -- back negative. Ten digits and up are decoded as floats, exact below 2^53.
+    trimmed = trimmed:gsub("([:,%[]%s*)(%-?%d%d%d%d%d%d%d%d%d%d+)(%s*[,%]}])", "%1%2.0%3")
     return json.decode(trimmed)
   end
   return nil
