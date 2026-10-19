@@ -18,6 +18,9 @@ local proton = {}
 local STATE_PATH = paths.DATA .. "/proton.json"
 local PREFIXES = paths.DATA .. "/prefixes"
 
+--- Windows runs games natively, so there's nothing to choose.
+local SUPPORTED = not paths.IS_WINDOWS
+
 ---@class ProtonBuild
 ---@field name string Its folder name, which is what Steam shows
 ---@field path string The folder holding its `proton` script
@@ -158,7 +161,7 @@ end
 ---@param app_names string[]
 ---@return boolean ok
 function proton.apply(app_names)
-  if paths.IS_WINDOWS then
+  if not SUPPORTED then
     return true
   end
 
@@ -204,7 +207,7 @@ end
 ---The Proton builds to choose from and the one chosen. Empty on Windows.
 ---@return ProtonChoice
 function GetProton()
-  if paths.IS_WINDOWS then
+  if not SUPPORTED then
     return { supported = false, builds = {}, selected = nil }
   end
   return { supported = true, builds = proton.list(), selected = proton.selected() }

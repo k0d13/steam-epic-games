@@ -77,9 +77,6 @@ export async function findOurs(): Promise<{ appId: number; appName: string }[]> 
 /** The working directory each shortcut was last given this session. */
 const startDirs = new Map<number, string>();
 
-/** Steam's UI is Chromium, whose user agent names the OS. */
-const IS_LINUX = navigator.userAgent.includes("Linux");
-
 /** Shortcuts whose exe has been pointed at legendary this session. */
 const alignedExes = new Set<number>();
 
@@ -101,10 +98,10 @@ export async function align() {
     if (!alignedExes.has(appId)) {
       // Quoted the way Steam stores it, or a space in the path splits it.
       SteamClient.Apps.SetShortcutExe(appId, `"${launch.exe}"`);
-      // legendary is a Linux binary that starts Proton itself. A compatibility
-      // tool on the shortcut would run it under Wine, where the game silently
-      // never starts, so any set in Properties is cleared.
-      if (IS_LINUX) SteamClient.Apps.SpecifyCompatTool(appId, "");
+      // legendary starts Proton itself where a game needs it. A compatibility
+      // tool on the shortcut would run legendary under Wine, where the game
+      // silently never starts, so any set in Properties is cleared.
+      SteamClient.Apps.SpecifyCompatTool(appId, "");
       alignedExes.add(appId);
     }
 

@@ -79,11 +79,10 @@ local function build(dir, meta)
   else
     state = "failed"
     -- legendary can outlive its runner, as across a Steam restart, and would hold
-    -- the install lock against every retry. Linux only: there the PID names the
-    -- runner's process group, while Windows may have reused it for anything.
-    -- The exit code stops this repeating on the next poll.
-    if pid and not paths.IS_WINDOWS then
-      runner.kill(pid)
+    -- the install lock against every retry. The exit code stops this repeating on
+    -- the next poll.
+    if pid then
+      runner.reap(pid)
     end
     exit_code = -1
     utils.write_file(runner.file(dir, "exit"), "-1")

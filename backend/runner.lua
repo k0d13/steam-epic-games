@@ -148,6 +148,15 @@ function runner.kill(pid)
   end
 end
 
+---Kill whatever a dead runner left running. Only where the PID names the runner's
+---process group: on Windows a dead runner's PID may have been reused for anything.
+---@param pid integer
+function runner.reap(pid)
+  if not paths.IS_WINDOWS then
+    runner.kill(pid)
+  end
+end
+
 ---The download progress the runner last wrote, if any.
 ---@param dir string
 ---@return JobProgress|nil

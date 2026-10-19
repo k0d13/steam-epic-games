@@ -210,6 +210,25 @@ end
 local FORK_BOOT = "import multiprocessing, runpy, sys; multiprocessing.set_start_method('fork'); "
   .. "sys.argv = sys.argv[1:]; runpy.run_path(sys.argv[0], run_name='__main__')"
 
+---The program and arguments that run legendary for a job. The Linux build is a
+---zipapp on the system Python, and 3.14 made forkserver the default, under which
+---legendary's download workers hang, so fork comes back.
+---@param binary string
+---@param args string[]
+---@return string exe
+---@return string[] args
+local function job_command(binary, args)
+  if paths.IS_WINDOWS then
+    return binary, args
+  end
+
+  local boot = { "-c", FORK_BOOT, binary }
+  for _, arg in ipairs(args) do
+    table.insert(boot, arg)
+  end
+  return "python3", boot
+end
+
 ---Queue a legendary command as a job.
 ---@param app_name string
 ---@param kind JobKind
@@ -218,14 +237,9 @@ local FORK_BOOT = "import multiprocessing, runpy, sys; multiprocessing.set_start
 local function start_job(app_name, kind, args)
   local binary, err = legendary.get_binary()
   local job
-  if binary and paths.IS_WINDOWS then
-    job, err = jobs.start(app_name, kind, binary, args)
-  elseif binary then
-    -- The Linux build is a zipapp on the system Python. 3.14 made forkserver the
-    -- default, under which legendary's download workers hang, so fork comes back.
-    local boot = { "-c", FORK_BOOT, binary }
-    table.move(args, 1, #args, #boot + 1, boot)
-    job, err = jobs.start(app_name, kind, "python3", boot)
+  if binary then
+    local exe, command_args = job_command(binary, args)
+    job, err = jobs.start(app_name, kind, exe, command_args)
   end
 
   if not job then
