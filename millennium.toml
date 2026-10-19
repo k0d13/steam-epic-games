@@ -1,5 +1,5 @@
 # Files read at runtime through millennium.assets, under these same paths.
-assets = [["backend/scripts/*"]]
+assets = [["backend/jobs/scripts/*"]]
 
 [plugin]
 id = "epic-games"

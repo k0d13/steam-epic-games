@@ -1,22 +1,25 @@
+local account = require("epic.account")
 local fs = require("fs")
-local legendary = require("legendary")
-local library = require("library")
-local log = require("log")
+local library = require("steam.library")
+local log = require("core.log")
 local millennium = require("millennium")
-local paths = require("paths")
+local paths = require("core.paths")
 
--- These only define ffi functions, so nothing else requires them.
-require("details")
-require("grid")
+-- These only define ffi functions, so nothing else requires them
+require("jobs.start")
+require("steam.achievements")
+require("steam.info")
+require("steam.shortcuts")
+require("steam.sizes")
 
 local function on_load()
   log.info("Backend loading on " .. (paths.IS_WINDOWS and "Windows" or "Linux"))
 
-  -- Left behind by versions that ran commands through a PowerShell daemon.
-  -- pcall'd because one still running from before a reload holds its lock file.
+  -- Left behind by versions that ran commands through a PowerShell daemon, and pcall'd
+  -- because one still running from before a reload holds its lock file
   pcall(fs.remove_all, paths.DATA .. "/daemon")
 
-  -- Cache only, so the first GetLibrary is answered from disk.
+  -- Cache only, so the first GetLibrary is answered from disk
   library.load()
 
   millennium.ready()
@@ -24,8 +27,8 @@ local function on_load()
 end
 
 local function on_frontend_loaded()
-  -- Downloads legendary if missing, so startup pays for it, not the first action.
-  local status = legendary.get_status()
+  -- Downloads legendary if missing, so startup pays for it and not the first action
+  local status = account.status()
   log.info(
     "Frontend loaded. legendary available="
       .. tostring(status.available)
