@@ -7,27 +7,34 @@ import { begin, errorMessage, finish, step } from "./operation";
 export interface LoadResult {
   loaded: number;
   failed: number;
+  // Already had their details, so weren't asked about
+  skipped: number;
+}
+
+function isRead(appName: string, withInfo: boolean) {
+  // A summary is what the library reads, and the backend's cache already has those
+  return achievements.getSummary(appName) !== undefined && (!withInfo || info.get(appName));
 }
 
 // The library's filters and collections only know the games whose details have been read,
 // which happens as a page is opened; this reads the rest. The backend answers one call at
-// a time, so it goes game by game
+// a time, so it goes game by game, and only the games still missing something count
 export async function loadAll(games: EpicGame[]): Promise<LoadResult | undefined> {
-  if (!begin("load", games.length)) return undefined;
+  const withInfo = preferences.get().gameInfo;
+  const missing = games.filter((game) => !isRead(game.app_name, withInfo));
+  if (!begin("load", missing.length)) return undefined;
 
-  const result = { loaded: 0, failed: 0 };
+  const result = { loaded: 0, failed: 0, skipped: games.length - missing.length };
   try {
     let done = 0;
-    for (const { app_name } of games) {
+    for (const { app_name } of missing) {
       // One game failing shouldn't stop the rest
       try {
-        const withInfo = preferences.get().gameInfo;
         if (withInfo) await info.fill(app_name);
         await achievements.fill(app_name);
 
         // A fill that got nothing back leaves nothing to read
-        const read = achievements.get(app_name) && (!withInfo || info.get(app_name));
-        if (read) result.loaded++;
+        if (isRead(app_name, withInfo)) result.loaded++;
         else result.failed++;
       } catch (reason: unknown) {
         console.warn("Could not load a game's details", { app_name, reason });

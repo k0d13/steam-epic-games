@@ -13,7 +13,7 @@ export function SupportCard() {
       </div>
       <Actions>
         <DialogButton
-          className="epic-grow epic-kofi"
+          className="epic-wide epic-kofi"
           onClick={() => SteamClient.System.OpenInSystemBrowser(KOFI_URL)}
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
