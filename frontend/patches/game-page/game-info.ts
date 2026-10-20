@@ -26,28 +26,36 @@ const CATEGORY = {
   coOp: 9,
   achievements: 22,
   cloudSaves: 23,
+  fullController: 28,
 } as const;
 
-// Epic's tags that say how a game is played, and the category each is
-const MODE_TAGS: Record<string, number> = {
-  SINGLE_PLAYER: CATEGORY.singlePlayer,
-  MULTIPLAYER: CATEGORY.multiPlayer,
-  CO_OP: CATEGORY.coOp,
+// egdata's tags and features that Steam has a category for. Epic doesn't say how much of
+// a game a controller covers, so its support counts as full
+const TAG_CATEGORIES: Record<string, number> = {
+  "Single Player": CATEGORY.singlePlayer,
+  Multiplayer: CATEGORY.multiPlayer,
+  "Online Multiplayer": CATEGORY.multiPlayer,
+  "Co-op": CATEGORY.coOp,
+  "Controller Support": CATEGORY.fullController,
+  Achievements: CATEGORY.achievements,
+  "Cloud Saves": CATEGORY.cloudSaves,
 };
 
 const SUPPORT_LINK = { label: "Support", url: "https://www.epicgames.com/help" };
 
-// Shared with the library's filters; achievements only count once read, since this
-// runs for every game
+// Shared with the library's filters; achievements count from a tag, or once read, since
+// this runs for every game
 export function categoriesFor(appName: string) {
   const details = info.get(appName);
   if (!details) return [];
 
   // Lua sends {} for an empty list; Object.values reads both
-  const categories = Object.values(details.tags).flatMap((tag) => MODE_TAGS[tag] ?? []);
-  if (details.cloud_saves) categories.push(CATEGORY.cloudSaves);
-  if ((achievements.getSummary(appName)?.total ?? 0) > 0) categories.push(CATEGORY.achievements);
-  return categories;
+  const categories = new Set(
+    Object.values(details.tags).flatMap((tag) => TAG_CATEGORIES[tag] ?? []),
+  );
+  if (details.cloud_saves) categories.add(CATEGORY.cloudSaves);
+  if ((achievements.getSummary(appName)?.total ?? 0) > 0) categories.add(CATEGORY.achievements);
+  return [...categories];
 }
 
 // Info already in the app data store; Steam asks the store's website for what it lacks,
