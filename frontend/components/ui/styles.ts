@@ -109,22 +109,26 @@ export const PANEL_CSS = `
   vertical-align: -0.125em;
 }
 
+/* Two equal columns, so buttons line up whatever their labels; a wide one takes a row */
 .epic-actions {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
 
-.epic-actions > .epic-grow {
-  flex: 1;
+.epic-actions > * {
+  width: 100%;
   min-width: 0;
+  margin: 0;
+  padding-left: 12px;
+  padding-right: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.epic-actions > .epic-fixed {
-  flex: none;
-  width: auto;
-  min-width: 0;
-  padding-left: 16px;
-  padding-right: 16px;
+.epic-actions > .epic-wide {
+  grid-column: 1 / -1;
 }
 
 /* Ko-fi's red, so the one button that isn't about the library reads as such.

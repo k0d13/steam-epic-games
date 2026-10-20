@@ -47,9 +47,11 @@ function describeResult(result: SyncResult) {
 }
 
 function describeLoad(result: LoadResult) {
-  const read = `Read the details of ${plural(result.loaded, "game")}.`;
-  if (result.failed === 0) return { text: read };
-  return { text: `${read} ${result.failed} couldn't be read; try again later.`, error: true };
+  if (result.loaded + result.failed === 0) return { text: "Every game is already scanned." };
+
+  const scanned = `Scanned ${plural(result.loaded, "game")}.`;
+  if (result.failed === 0) return { text: scanned };
+  return { text: `${scanned} ${result.failed} couldn't be read; scan again later.`, error: true };
 }
 
 function describeLibrary(games: EpicGame[] | undefined, refreshedAt: number) {
@@ -80,9 +82,10 @@ export function LibraryCard({
 }) {
   const { games, refreshedAt, loading, error, synced, refresh } = view;
   const state = useValue(progress);
-  // A clean up only disables the buttons, and its progress is in the Maintenance card
+  // A clean up only disables the buttons, and its progress is in the Maintenance card;
+  // a sync and a scan take this card's meter while they run
   const syncing = state.active && state.operation === "sync";
-  const reading = state.active && state.operation === "load";
+  const scanning = state.active && state.operation === "load";
 
   const total = games?.length ?? 0;
   const busy = loading || state.active;
@@ -106,15 +109,16 @@ export function LibraryCard({
 
     showModal(
       <ConfirmModal
-        strTitle="Read every game's details?"
+        strTitle="Scan every game?"
         strDescription={
-          `Reads ${withInfo ? "info and achievements" : "achievements"} for all ` +
-          `${plural(games.length, "game")} from Epic${withInfo ? " and egdata" : ""}, one at a ` +
-          "time. This can take a long while, but you can keep using Steam meanwhile. " +
-          "Games that already have details are skipped, so it's safe to run again" +
-          (withInfo ? "" : ". Turn on Show game info first to read the rest too.")
+          `Reads ${withInfo ? "info and achievements" : "achievements"} from Epic` +
+          `${withInfo ? " and egdata" : ""} for the games that don't have them yet, so the ` +
+          "library's filters and collections know about every game. One game at a time, so " +
+          "it can take a long while, but you can keep using Steam meanwhile, and a game " +
+          "scanned already is skipped" +
+          (withInfo ? "." : ". Turn on Show game info first to read the rest too.")
         }
-        strOKButtonText="Read"
+        strOKButtonText="Scan"
         onOK={() => {
           setMessage(undefined);
           void loadAll(games).then((result) => result && setMessage(describeLoad(result)));
@@ -138,6 +142,8 @@ export function LibraryCard({
           done={state.done}
           total={state.total}
         />
+      ) : scanning ? (
+        <Meter label="Scanning games" done={state.done} total={state.total} />
       ) : (
         total > 0 && (
           <Meter
@@ -149,14 +155,14 @@ export function LibraryCard({
       )}
       <MessageLine message={shown} />
       <Actions>
-        <DialogButton className="epic-grow" disabled={busy || total === 0} onClick={onSync}>
+        <DialogButton className="epic-wide" disabled={busy || total === 0} onClick={onSync}>
           {syncing ? <Busy>{action}</Busy> : action}
         </DialogButton>
-        <DialogButton className="epic-fixed" disabled={busy} onClick={refresh}>
+        <DialogButton disabled={busy} onClick={refresh}>
           {loading ? <Busy>Checking</Busy> : "Refresh"}
         </DialogButton>
-        <DialogButton className="epic-fixed" disabled={busy || total === 0} onClick={confirmLoad}>
-          {reading ? <Busy>Reading</Busy> : "Read details"}
+        <DialogButton disabled={busy || total === 0} onClick={confirmLoad}>
+          {scanning ? <Busy>Scanning</Busy> : "Scan games"}
         </DialogButton>
       </Actions>
     </Card>
