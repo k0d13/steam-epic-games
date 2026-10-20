@@ -2,6 +2,7 @@ import { searchURL } from "../../services/epic/store";
 import * as achievements from "../../state/achievements";
 import * as info from "../../state/info";
 import * as library from "../../state/library";
+import * as preferences from "../../state/preferences";
 import { hasAchievements } from "./achievements";
 
 // Steam's details page drops most sections for a shortcut:
@@ -86,25 +87,40 @@ const GENRE_TAGS: Record<string, number> = {
 
 const SUPPORT_LINK = { label: "Support", url: "https://www.epicgames.com/help" };
 
-// Shared with the library's filters; achievements count from a tag, or once read, since
-// this runs for every game
-export function categoriesFor(appName: string) {
-  const details = info.get(appName);
-  if (!details) return [];
+// Everything from egdata waits on the preference, so with it off Steam and other plugins
+// have non-Steam games' info to themselves
+function isEnabled() {
+  return preferences.get().gameInfo;
+}
 
-  // Lua sends {} for an empty list; Object.values reads both
-  const categories = new Set(
-    Object.values(details.tags).flatMap((tag) => TAG_CATEGORIES[tag] ?? []),
-  );
-  if (details.cloud_saves) categories.add(CATEGORY.cloudSaves);
+// The info the library shows. Achievements count from a tag, or once read, since this
+// runs for every game; reading them has nothing to do with the preference
+export function categoriesFor(appName: string) {
+  const categories = new Set<number>();
   if ((achievements.getSummary(appName)?.total ?? 0) > 0) categories.add(CATEGORY.achievements);
+
+  const details = isEnabled() ? info.get(appName) : undefined;
+  if (details) {
+    // Lua sends {} for an empty list; Object.values reads both
+    for (const tag of Object.values(details.tags)) {
+      const category = TAG_CATEGORIES[tag];
+      if (category) categories.add(category);
+    }
+    if (details.cloud_saves) categories.add(CATEGORY.cloudSaves);
+  }
   return [...categories];
 }
 
 // The store tags the library filters genres by
 export function storeTagsFor(appName: string) {
+  if (!isEnabled()) return [];
   // Lua sends {} for an empty list; Object.values reads both
   return Object.values(info.get(appName)?.genres ?? []).flatMap((genre) => GENRE_TAGS[genre] ?? []);
+}
+
+// When the game came out, for the info panel and the library's release date sort
+export function releasedAt(appName: string) {
+  return (isEnabled() ? info.get(appName)?.released_at : undefined) ?? undefined;
 }
 
 // Info already in the app data store; Steam asks the store's website for what it lacks,
@@ -117,6 +133,8 @@ function associations(names: string[]) {
 }
 
 function publish(appId: number) {
+  if (!isEnabled()) return false;
+
   const game = library.getByAppId(appId);
   const details = game && info.get(game.app_name);
   if (!details) return false;
@@ -141,7 +159,7 @@ function publish(appId: number) {
 
 function isAvailable(appId: number) {
   const game = library.getByAppId(appId);
-  if (!game) return false;
+  if (!game || !isEnabled()) return false;
 
   info.ensure(game.app_name);
   // Info kept from an earlier session is there already, and so is published now
@@ -162,7 +180,7 @@ export function HasGameInfo(overview: AppOverview) {
 
 // Asked as the page is built, before info is known, to start the panel closed like a Steam game's
 export function IsEpicGame(overview: AppOverview) {
-  return library.getByAppId(overview.appid) !== undefined;
+  return isEnabled() && library.getByAppId(overview.appid) !== undefined;
 }
 
 export function ShortcutSections(overview: AppOverview, sections: string[]) {
@@ -179,7 +197,7 @@ export function ShortcutSections(overview: AppOverview, sections: string[]) {
 
 // The links the backend found for the game, which only has those Epic has, and Support
 export function ShortcutLinks(overview: AppOverview) {
-  const game = library.getByAppId(overview.appid);
+  const game = isEnabled() ? library.getByAppId(overview.appid) : undefined;
   // Lua sends {} for an empty list; Object.values reads both
   return game ? [...Object.values(info.get(game.app_name)?.links ?? []), SUPPORT_LINK] : [];
 }

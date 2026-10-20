@@ -22,6 +22,7 @@ import * as appIds from "./state/app-ids";
 import * as info from "./state/info";
 import * as jobs from "./state/jobs";
 import * as library from "./state/library";
+import * as preferences from "./state/preferences";
 import * as sizes from "./state/sizes";
 
 // Millennium puts these on our PLUGIN_LIST slot, where backend/patches.lua has Steam's
@@ -125,6 +126,8 @@ function connect() {
     // Achievements and info land a round trip to Epic after the page asking for them drew
     achievements.subscribe(repaint),
     info.subscribe(repaint),
+    // Turning game info on or off changes what every overview and page shows
+    preferences.subscribe(repaint),
 
     // A session ending is when an achievement cache is certain to be short
     onGameStopped((appId) => {
