@@ -1,11 +1,13 @@
 --# selene: allow(unused_variable)
 local cache = require("core.cache")
+local egdata = require("epic.egdata")
 local legendary = require("epic.legendary")
 local log = require("core.log")
 local paths = require("core.paths")
 
--- Steam's "Space Required", one manifest fetch per game and cached with no way to tell
--- it's stale, so the frontend drops a game's size when a job touches it
+-- Steam's "Space Required", cached with no way to tell it's stale, so the frontend drops
+-- a game's size when a job touches it. egdata has the size of every build it has seen,
+-- which costs one small request; legendary's manifest fetch is the fallback
 
 ---@class GameSize
 ---@field disk integer Bytes the installed game occupies
@@ -13,8 +15,76 @@ local paths = require("core.paths")
 
 local store = cache.open(paths.DATA .. "/cache/sizes.json", "sizes")
 
+---The newest build of the game, preferring the live one legendary installs
+---@param builds table[]
+---@param app_name string
+---@return table|nil
+local function pick_build(builds, app_name)
+  local best, best_live = nil, false
+  for _, build in ipairs(builds) do
+    if
+      type(build) == "table"
+      and build.appName == app_name
+      and build.platform == "Windows"
+      and type(build.installedSizeBytes) == "number"
+    then
+      local live = type(build.labelName) == "string" and build.labelName:find("^Live") ~= nil
+      local seen = type(build.lastSeenAt) == "string" and build.lastSeenAt or ""
+      if
+        not best
+        or (live and not best_live)
+        or (live == best_live and seen > (best.lastSeenAt or ""))
+      then
+        best, best_live = build, live
+      end
+    end
+  end
+  return best
+end
+
+---@param app_name string
+---@return GameSize|nil
+local function from_egdata(app_name)
+  -- legendary's own copy of the catalog entry, whose id is the catalog item
+  local entry =
+    cache.read(paths.legendary_config() .. "/metadata/" .. app_name .. ".json", "catalog")
+  local item_id = type(entry) == "table" and type(entry.metadata) == "table" and entry.metadata.id
+  if type(item_id) ~= "string" then
+    return nil
+  end
+
+  local builds = egdata.builds(item_id)
+  local build = builds and pick_build(builds, app_name)
+  if not build then
+    return nil
+  end
+
+  return {
+    disk = build.installedSizeBytes,
+    download = type(build.downloadSizeBytes) == "number" and build.downloadSizeBytes
+      or build.installedSizeBytes,
+  }
+end
+
+---@param app_name string
+---@return GameSize|nil
+local function from_legendary(app_name)
+  local decoded, err = legendary.decode_json(legendary.run({ "info", app_name, "--json" }))
+  -- No manifest means legendary could not reach Epic
+  local manifest = type(decoded) == "table" and decoded.manifest or nil
+  if type(manifest) ~= "table" or type(manifest.disk_size) ~= "number" then
+    log.warn("Could not size " .. app_name .. ": " .. tostring(err))
+    return nil
+  end
+
+  return {
+    disk = manifest.disk_size,
+    download = manifest.download_size or manifest.disk_size,
+  }
+end
+
 ---@ffi
----A miss costs a manifest fetch from Epic
+---A miss costs a request to egdata, or a manifest fetch from Epic if it doesn't know the game
 ---@param app_name string
 ---@param refresh? boolean Re-read even if it's cached
 ---@return GameSize|nil
@@ -26,20 +96,14 @@ function GetGameSize(app_name, refresh)
     return cached
   end
 
-  local decoded, err = legendary.decode_json(legendary.run({ "info", app_name, "--json" }))
-  -- No manifest means legendary could not reach Epic
-  local manifest = type(decoded) == "table" and decoded.manifest or nil
-  if type(manifest) ~= "table" or type(manifest.disk_size) ~= "number" then
-    log.warn("Could not size " .. app_name .. ": " .. tostring(err))
+  local size = from_egdata(app_name) or from_legendary(app_name)
+  if not size then
     return nil
   end
 
-  sizes[app_name] = {
-    disk = manifest.disk_size,
-    download = manifest.download_size or manifest.disk_size,
-  }
+  sizes[app_name] = size
   store.save()
 
-  log.info("Sized " .. app_name .. ": " .. manifest.disk_size .. " bytes on disk")
-  return sizes[app_name]
+  log.info("Sized " .. app_name .. ": " .. size.disk .. " bytes on disk")
+  return size
 end

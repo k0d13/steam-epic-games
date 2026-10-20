@@ -3,7 +3,7 @@ import { createCache } from "./primitives";
 // What the info panel shows rarely changes, so a saved answer is served and the
 // backend is asked once a session
 const cache = createCache<GameInfo>({
-  persist: "epic-games:info:v4",
+  persist: "epic-games:info:v6",
   fetch: (appName, refresh) => backend.GetGameInfo(appName, refresh),
 });
 
