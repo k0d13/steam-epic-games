@@ -1,7 +1,8 @@
 -- Edits Millennium makes to Steam's JavaScript as it serves it. `find` takes the
 -- first match and `transforms` rewrite inside it; one that stops matching after a
 -- Steam update is skipped. `#{{self}}` is our PLUGIN_LIST slot, which holds the
--- frontend entry's exports
+-- frontend entry's exports. There are no backreferences in a `find`, and a `` in a
+-- `replace` mustn't be followed by a letter or digit, which would read as a longer group name
 
 return {
   -- Manage has no Uninstall or Cancel for shortcuts, so library/manage-menu.ts adds them to
@@ -138,6 +139,20 @@ return {
       {
         match = [[(GetMyAchievements|GetGlobalAchievements|GetPlayerAchievements)\(([\w$]+)(,[\w$]+)?\)\{]],
         replace = [[\1(\2\3){const epicGames=#{{self}}?.AchievementStore?.("\1",\2);if(epicGames)return epicGames;]],
+      },
+    },
+  },
+
+  -- The feed's "Say something about this game" box posts a status to friends, which can't
+  -- say it's about an Epic game, as Steam's servers have no such app, so an Epic game's
+  -- feed has no box
+  {
+    file = [[sp\.js]],
+    find = [[render\(\)\{const\{appid:[\w$]+,showTextBox:[\w$]+\}=this\.props,]],
+    transforms = {
+      {
+        match = [[render\(\)\{const\{appid:([\w$]+),showTextBox:([\w$]+)\}=this\.props,]],
+        replace = [[render(){const{appid:\1,showTextBox:epicGamesTextBox}=this.props,\2=epicGamesTextBox&&!#{{self}}?.IsEpicApp?.(\1),]],
       },
     },
   },
