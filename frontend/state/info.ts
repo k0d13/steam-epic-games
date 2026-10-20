@@ -10,3 +10,9 @@ const cache = createCache<GameInfo>({
 export const subscribe = cache.subscribe;
 export const get = cache.get;
 export const ensure = cache.ensure;
+export const fill = cache.fill;
+
+export async function clear() {
+  await backend.ClearGameInfo();
+  cache.clear();
+}

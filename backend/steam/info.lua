@@ -223,6 +223,12 @@ local function build(metadata)
 end
 
 ---@ffi
+---Forgets every game's info, so the next read asks again
+function ClearGameInfo()
+  store.clear()
+end
+
+---@ffi
 ---A miss costs a few requests to egdata and Epic, and is cached for weeks
 ---@param app_name string
 ---@param refresh? boolean Ask Epic again even if it's cached

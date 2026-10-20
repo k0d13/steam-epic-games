@@ -84,6 +84,12 @@ local function from_legendary(app_name)
 end
 
 ---@ffi
+---Forgets every game's size, so the next read looks it up again
+function ClearGameSizes()
+  store.clear()
+end
+
+---@ffi
 ---A miss costs a request to egdata, or a manifest fetch from Epic if it doesn't know the game
 ---@param app_name string
 ---@param refresh? boolean Re-read even if it's cached
