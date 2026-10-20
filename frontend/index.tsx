@@ -10,10 +10,11 @@ import * as gameInfo from "./patches/game-page/game-info";
 import * as achievementProgress from "./patches/library/achievement-progress";
 import * as appDetails from "./patches/library/app-details";
 import * as overviews from "./patches/library/overviews";
+import * as freeGames from "./services/epic/free-games";
 import * as orders from "./services/epic/orders";
 import * as epicSession from "./services/epic/session";
 import * as artwork from "./services/steam/artwork";
-import { notifyDownloadCompleted } from "./services/steam/notifications";
+import { notify } from "./services/steam/notifications";
 import { onGameStopped, onSessionEnded } from "./services/steam/playtime";
 import * as shortcuts from "./services/steam/shortcuts";
 import { autoSync } from "./services/sync/sync";
@@ -105,11 +106,13 @@ function connect() {
     epicSession.start(),
     // A game bought or claimed there lands in Steam without a manual refresh
     orders.watch(),
+    // Epic's free games change on a fixed weekly schedule
+    freeGames.watch(),
     // Steam notifies a download finishing, and ours do too
     jobs.onEnded((job) => {
       if (job.state !== "done" || !jobs.isDownload(job)) return;
       const appId = appIds.getAppId(job.app_name);
-      if (appId !== undefined) notifyDownloadCompleted(appId);
+      if (appId !== undefined) notify("download-completed", appId);
     }),
 
     // A new build can bring new art, achievements and size; achievements wait for

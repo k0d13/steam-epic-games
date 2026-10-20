@@ -62,6 +62,12 @@ export function Options({
             onChange={(value) => preferences.set("reportPlaytime", value)}
           />
         </Row>
+        <Row title="Free games notice" detail="When Epic swaps them, Thursdays 8:00 AM Pacific">
+          <Toggle
+            value={prefs.freeGamesNotice}
+            onChange={(value) => preferences.set("freeGamesNotice", value)}
+          />
+        </Row>
         <ProtonRow games={games} setMessage={setMessage} />
       </div>
     </Section>

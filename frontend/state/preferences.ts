@@ -9,6 +9,7 @@ export interface Preferences {
   gameInfo: boolean;
   // Off by default, as it writes to the user's Epic account
   reportPlaytime: boolean;
+  freeGamesNotice: boolean;
 }
 
 const DEFAULTS: Preferences = {
@@ -17,6 +18,7 @@ const DEFAULTS: Preferences = {
   hideDuplicates: false,
   gameInfo: false,
   reportPlaytime: false,
+  freeGamesNotice: true,
 };
 
 const store = createStore<boolean>("epic-games:preferences:v1");
