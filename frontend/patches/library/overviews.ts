@@ -2,6 +2,7 @@ import { beforePatch, EDisplayStatus, type SteamAppOverview } from "millennium";
 import { forceFakeLocationChange } from "../../services/steam/popups";
 import * as jobs from "../../state/jobs";
 import * as library from "../../state/library";
+import * as playtime from "../../state/playtime";
 import { categoriesFor, releasedAt, storeTagsFor } from "../game-page/game-info";
 
 // Steam's overviews draw the library: tiles, filters, sort and the app page. Every
@@ -44,6 +45,7 @@ interface MutableOverview {
   size_on_disk?: string;
   rt_recent_activity_time?: number;
   rt_last_time_played?: number;
+  minutes_playtime_forever?: number;
   rt_purchased_time?: number;
   rt_original_release_date?: number;
   // `store_category` and `store_tag` are getters over these, so these are what to write
@@ -106,6 +108,17 @@ function apply(overview: SteamAppOverview) {
   if (!game) return;
 
   const app = overview as unknown as MutableOverview;
+
+  // Steam counts from when the shortcut was made, so what we and Epic kept can be more;
+  // the larger is kept, as Steam's own grows with each session too
+  const played = playtime.get(game.app_name);
+  if (played) {
+    app.minutes_playtime_forever = Math.max(
+      app.minutes_playtime_forever ?? 0,
+      Math.floor(played.seconds / 60),
+    );
+    app.rt_last_time_played = Math.max(app.rt_last_time_played ?? 0, played.last_played ?? 0);
+  }
 
   // Shortcuts have no purchase date, so every Epic game would land in "No recorded
   // activity"; as for Steam's own apps, it's the later of last play and the grant

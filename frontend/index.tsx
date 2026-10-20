@@ -13,7 +13,7 @@ import * as orders from "./services/epic/orders";
 import * as epicSession from "./services/epic/session";
 import * as artwork from "./services/steam/artwork";
 import { notifyDownloadCompleted } from "./services/steam/notifications";
-import { onGameStopped } from "./services/steam/playtime";
+import { onGameStopped, onSessionEnded } from "./services/steam/playtime";
 import * as shortcuts from "./services/steam/shortcuts";
 import { autoSync } from "./services/sync/sync";
 import * as account from "./state/account";
@@ -22,6 +22,7 @@ import * as appIds from "./state/app-ids";
 import * as info from "./state/info";
 import * as jobs from "./state/jobs";
 import * as library from "./state/library";
+import * as playtime from "./state/playtime";
 import * as preferences from "./state/preferences";
 import * as sizes from "./state/sizes";
 
@@ -126,6 +127,7 @@ function connect() {
     // Achievements and info land a round trip to Epic after the page asking for them drew
     achievements.subscribe(repaint),
     info.subscribe(repaint),
+    playtime.subscribe(repaint),
     // Turning game info on or off changes what every overview and page shows
     preferences.subscribe(repaint),
 
@@ -133,6 +135,11 @@ function connect() {
     onGameStopped((appId) => {
       const game = library.getByAppId(appId);
       if (game) void achievements.refresh(game.app_name);
+    }),
+    // Kept by app name, so it survives the shortcut being made again
+    onSessionEnded((appId, startedAt, endedAt) => {
+      const game = library.getByAppId(appId);
+      if (game) void playtime.record(game.app_name, startedAt, endedAt);
     }),
   ];
 }
@@ -145,6 +152,9 @@ async function load() {
 
   // Installs are detached and outlive a Steam restart, so resume polling them
   await jobs.refresh();
+
+  // What we and Epic last had, then Epic's latest, which costs a round trip
+  void playtime.load().then(() => playtime.load(true));
 
   // Lets the library home sort by completion early; last, since it follows up with a
   // round trip per recently played game
