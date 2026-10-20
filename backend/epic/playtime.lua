@@ -50,7 +50,6 @@ end
 
 ---@param method string
 ---@param body string|nil
----@return HTTPResponse|nil response
 local function request(method, body)
   local response
   for attempt = 1, 2 do
