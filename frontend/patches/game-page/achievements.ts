@@ -35,7 +35,7 @@ function convert(achievement: Achievement) {
 const converted = new WeakMap<GameAchievements, AppAchievement[]>();
 
 // Latest unlock first; undefined while waiting on Epic, and what starts the fetch
-function listFor(appName: string) {
+export function listFor(appName: string) {
   achievements.ensure(appName);
 
   const result = achievements.get(appName);

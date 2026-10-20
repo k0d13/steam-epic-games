@@ -191,7 +191,8 @@ export function ShortcutSections(overview: AppOverview, sections: string[]) {
   const result = isAvailable(overview.appid)
     ? [...sections.filter((section) => section !== "nonsteam"), "info"]
     : [...sections];
-  if (hasAchievements(game.app_name)) result.push("achievements");
+  // Their unlocks are what the activity feed shows, which is blank without any
+  if (hasAchievements(game.app_name)) result.push("achievements", "activity");
   return result;
 }
 

@@ -5,6 +5,7 @@ import * as installWizard from "./patches/downloads/install-wizard";
 import * as installs from "./patches/downloads/installs";
 import * as downloadOverview from "./patches/downloads/overview";
 import * as storage from "./patches/downloads/storage";
+import * as activity from "./patches/game-page/activity";
 import * as gameInfo from "./patches/game-page/game-info";
 import * as achievementProgress from "./patches/library/achievement-progress";
 import * as appDetails from "./patches/library/app-details";
@@ -39,6 +40,8 @@ export { LibraryBadge } from "./patches/library/badge";
 /** @ffi */
 export { AchievementStore } from "./patches/game-page/achievements";
 /** @ffi */
+export { IsEpicApp } from "./patches/game-page/activity";
+/** @ffi */
 export {
   HasGameInfo,
   IsEpicGame,
@@ -56,6 +59,7 @@ const PATCHES = [
   ["installs", installs.register],
   ["install wizard", installWizard.register],
   ["achievement progress", achievementProgress.register],
+  ["activity", activity.register],
   ["storage", storage.register],
   ["downloads", downloads.register],
 ] as const;
