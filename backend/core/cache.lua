@@ -84,6 +84,11 @@ function cache.open(path, label)
     return cache.write(path, store.get(), label)
   end
 
+  function store.clear()
+    value = {}
+    return store.save()
+  end
+
   return store
 end
 

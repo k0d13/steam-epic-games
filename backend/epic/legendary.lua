@@ -6,7 +6,7 @@ local utils = require("utils")
 local vendor = require("epic.vendor")
 
 -- A wrapper around the legendary CLI (https://github.com/derrod/legendary), which
--- owns Epic's OAuth entirely, so we never see a password or a token
+-- owns Epic's OAuth entirely, so we never see a password and only read its token
 
 local legendary = {}
 

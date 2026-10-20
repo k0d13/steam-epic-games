@@ -17,7 +17,7 @@ export function Card({ children }: { children: ReactNode }) {
 
 export function Actions({ children }: { children: ReactNode }) {
   return (
-    <Focusable className="epic-actions" flow-children="horizontal">
+    <Focusable className="epic-actions" flow-children="grid">
       {children}
     </Focusable>
   );

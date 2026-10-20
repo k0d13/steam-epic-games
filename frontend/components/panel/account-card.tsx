@@ -1,6 +1,5 @@
 import { DialogButton } from "millennium";
 import { useState } from "react";
-import { open, SIGN_IN_URL } from "../../services/epic/store";
 import { Actions, Busy, Card, Identity } from "../ui/primitives";
 
 // Every state but signed in: connecting, unavailable, signed out
@@ -32,7 +31,7 @@ export function AccountCard({ status }: { status: EpicStatus | undefined }) {
           {status.error ?? "legendary couldn't be downloaded or run."}
         </div>
         <Actions>
-          <DialogButton className="epic-grow" disabled={retrying} onClick={retry}>
+          <DialogButton className="epic-wide" disabled={retrying} onClick={retry}>
             {retrying ? <Busy>Retrying</Busy> : "Retry"}
           </DialogButton>
         </Actions>
@@ -46,11 +45,6 @@ export function AccountCard({ status }: { status: EpicStatus | undefined }) {
       <div className="epic-dim">
         Sign in on the Epic Games Store inside Steam and your games show up here.
       </div>
-      <Actions>
-        <DialogButton className="epic-grow" onClick={() => open(SIGN_IN_URL)}>
-          Sign in to Epic Games
-        </DialogButton>
-      </Actions>
     </Card>
   );
 }
