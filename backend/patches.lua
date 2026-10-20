@@ -75,6 +75,20 @@ return {
     },
   },
 
+  -- The info panel's developer, publisher and franchise names are bare anchors to
+  -- steam://openurl/, which sends any page that isn't Steam's to the system browser, so
+  -- services/epic/store.ts opens Epic's in the client instead
+  {
+    file = [[sp\.js]],
+    find = [[let [\w$]+=this\.GetURL\([\w$]+\.strName,[\w$]+\.strURL,[\w$]+\);[\w$]+\.push\(\(0,[\w$]+\.jsx\)\("a",\{className:[\w$]+\(\)\.Name,href:[\w$]+,]],
+    transforms = {
+      {
+        match = [[this\.GetURL\(([\w$]+)\.strName,(.*?href:[\w$]+),$]],
+        replace = [[this.GetURL(\1.strName,\2,onClick:#{{self}}?.EpicLinkClick?.(\1.strURL),]],
+      },
+    },
+  },
+
   -- The info panel (cover, description, developer, release date and features) draws
   -- a shortcut as a bare explanation, so for an Epic game with info, game-page/game-info.ts
   -- says it isn't one, as the panel reads its shortcut state at the top of render
