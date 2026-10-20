@@ -1,5 +1,25 @@
 # epic-games
 
+## 0.6.0
+
+### Minor Changes
+
+- 5394149: Sources game info, tags and install sizes from egdata.app.
+- 9c827d4: Applies egdata genres to Epic games as Steam store tags, for filters and
+  collections.
+- b8adf4a: Adds options to scan every game's info and achievements, and to clear
+  the caches.
+- c4243c9: Opens Epic's developer, publisher and franchise links in Steam instead
+  of the system browser.
+- fbd0214: Keeps play time and last played by Epic app name, shows Epic's play
+  time, and can optionally report Steam sessions to Epic.
+- ec7970b: Shows Epic achievement unlocks in Steam's activity feed.
+
+### Patch Changes
+
+- e29cdab: Puts game info behind a setting, off by default, so it can't clash with
+  other plugins.
+
 ## 0.5.0
 
 ### Minor Changes

@@ -1,6 +1,6 @@
 {
   "name": "epic-games",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "license": "CC-BY-NC-ND-4.0",
   "scripts": {
     "prepare": "starlight lsp && oxfmt package.json .luarc.json tsconfig.json webview/tsconfig.json"
