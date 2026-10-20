@@ -2,6 +2,7 @@ import { type AppDetails, callOriginal, replacePatch } from "millennium";
 import * as info from "../../state/info";
 import * as jobs from "../../state/jobs";
 import * as library from "../../state/library";
+import * as preferences from "../../state/preferences";
 import * as sizes from "../../state/sizes";
 import { getAchievements } from "../game-page/achievements";
 
@@ -92,7 +93,8 @@ export function refreshAll() {
       updated.lDiskSpaceRequiredBytes,
       updated.achievements?.nAchieved,
       updated.achievements?.nTotal,
-      // The info panel and its button appear with this, and read nothing from the details
+      // The info panel and its button appear with these, and read nothing from the details
+      preferences.get().gameInfo,
       info.get(game.app_name)?.fetched_at,
     ].join("|");
     if (applied.get(details.unAppID) === signature) continue;

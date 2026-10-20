@@ -50,6 +50,12 @@ export function Options({
             onChange={(value) => setHideDuplicates(games, value)}
           />
         </Row>
+        <Row
+          title="Show game info"
+          detail="Details, tags and genres from egdata; may clash with other plugins"
+        >
+          <Toggle value={prefs.gameInfo} onChange={(value) => preferences.set("gameInfo", value)} />
+        </Row>
         <ProtonRow games={games} setMessage={setMessage} />
       </div>
     </Section>
