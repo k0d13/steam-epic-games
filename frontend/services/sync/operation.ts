@@ -9,8 +9,8 @@ export function errorMessage(reason: unknown) {
   return reason instanceof Error ? reason.message : String(reason);
 }
 
-// A sync and a clean up share the active flag, so only one runs at a time
-export function begin(operation: "sync" | "cleanUp", total: number) {
+// A sync, a clean up and a load share the active flag, so only one runs at a time
+export function begin(operation: "sync" | "cleanUp" | "load", total: number) {
   if (progress.get().active) return false;
   progress.update({ active: true, operation, done: 0, total, lastResult: undefined });
   return true;
