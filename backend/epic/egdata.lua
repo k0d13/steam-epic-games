@@ -25,6 +25,23 @@ function egdata.features(offer_id)
   return type(document.features) == "table" and document.features or {}
 end
 
+---@param offer_id string
+---@return string[]|nil genres Like "Action" or "RPG", nil if egdata couldn't be asked
+function egdata.genres(offer_id)
+  local document = fetch.json(API .. "/offers/" .. offer_id .. "/genres")
+  if not document then
+    return nil
+  end
+
+  local genres = {}
+  for _, genre in ipairs(document) do
+    if type(genre) == "table" and type(genre.name) == "string" then
+      table.insert(genres, genre.name)
+    end
+  end
+  return genres
+end
+
 ---@param item_id string
 ---@return table[]|nil builds Each with appName, platform, labelName, lastSeenAt, downloadSizeBytes and installedSizeBytes
 ---@return boolean missing egdata answered, and has no such item
