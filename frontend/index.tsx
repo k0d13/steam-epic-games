@@ -30,7 +30,7 @@ import * as sizes from "./state/sizes";
 /** @ffi */
 export { ManageSubmenu } from "./patches/library/manage-menu";
 /** @ffi */
-export { IsEpicURL } from "./services/epic/store";
+export { EpicLinkClick, IsEpicURL } from "./services/epic/store";
 /** @ffi */
 export { SupernavMenu } from "./patches/store/menu";
 /** @ffi */
