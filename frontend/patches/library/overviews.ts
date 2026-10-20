@@ -3,7 +3,7 @@ import { forceFakeLocationChange } from "../../services/steam/popups";
 import * as info from "../../state/info";
 import * as jobs from "../../state/jobs";
 import * as library from "../../state/library";
-import { categoriesFor } from "../game-page/game-info";
+import { categoriesFor, storeTagsFor } from "../game-page/game-info";
 
 // Steam's overviews draw the library: tiles, filters, sort and the app page. Every
 // one passes through OnAppOverviewChange first, so ours are corrected there
@@ -47,8 +47,9 @@ interface MutableOverview {
   rt_last_time_played?: number;
   rt_purchased_time?: number;
   rt_original_release_date?: number;
-  // `store_category` is a getter over this, so this is what to write
+  // `store_category` and `store_tag` are getters over these, so these are what to write
   m_setStoreCategories?: Set<number>;
+  m_setStoreTags?: Set<number>;
 }
 
 function idleStatus(game: EpicGame, current: number | undefined) {
@@ -77,14 +78,19 @@ function apply(overview: SteamAppOverview) {
     );
   }
 
-  // The release date the info panel shows, and the categories its feature list and the
-  // library's feature filters read
+  // The release date the info panel shows, the categories its feature list and the
+  // library's feature filters read, and the tags its genre filters read
   const released = info.get(game.app_name)?.released_at;
   if (released) app.rt_original_release_date = released;
 
   const categories = categoriesFor(game.app_name);
   if (categories.length > 0) {
     app.m_setStoreCategories = new Set([...(app.m_setStoreCategories ?? []), ...categories]);
+  }
+
+  const storeTags = storeTagsFor(game.app_name);
+  if (storeTags.length > 0) {
+    app.m_setStoreTags = new Set([...(app.m_setStoreTags ?? []), ...storeTags]);
   }
 
   const job = jobs.get(game.app_name);

@@ -23,6 +23,7 @@ local utils = require("utils")
 ---@field publishers string[]
 ---@field released_at integer|nil Unix seconds
 ---@field tags string[] egdata's tags and features, like "Single Player" or "RPG"
+---@field genres string[] egdata's genres, like "Action" or "Strategy"
 ---@field cloud_saves boolean
 ---@field links GameLink[] Pages about the game on Epic's store
 ---@field version integer Which shape of this a saved copy has
@@ -38,7 +39,7 @@ local store = cache.open(paths.DATA .. "/cache/info.json", "info")
 local INFO_MAX_AGE = 14 * 24 * 60 * 60
 
 -- Raised when GameInfo gains something, so saved copies without it are read again
-local INFO_VERSION = 6
+local INFO_VERSION = 7
 
 -- Steam's panel is a few lines wide, and some catalog descriptions run to pages
 local DESCRIPTION_MAX = 400
@@ -166,16 +167,18 @@ local function build(metadata)
   local complete = offer.id ~= nil or missing
 
   -- Tags say what the game is, features what it supports; the panel reads both the same way
-  local tags = {}
+  local tags, genres = {}, {}
   for _, tag in ipairs(object(offer.tags)) do
     table.insert(tags, object(tag).name)
   end
   if type(offer.id) == "string" then
     local features = egdata.features(offer.id)
-    complete = complete and features ~= nil
+    local found = egdata.genres(offer.id)
+    complete = complete and features ~= nil and found ~= nil
     for _, feature in ipairs(features or {}) do
       table.insert(tags, feature)
     end
+    genres = found or genres
   end
 
   local faq = false
@@ -209,6 +212,7 @@ local function build(metadata)
     ),
     released_at = released,
     tags = names(tags),
+    genres = names(genres),
     cloud_saves = (attribute(metadata, "CloudSaveFolder") or "") ~= "",
     links = slug and build_links(slug, faq) or {},
     version = INFO_VERSION,

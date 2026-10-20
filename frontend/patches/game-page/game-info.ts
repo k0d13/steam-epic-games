@@ -41,6 +41,49 @@ const TAG_CATEGORIES: Record<string, number> = {
   "Cloud Saves": CATEGORY.cloudSaves,
 };
 
+// Steam's store tag ids, which its genre and tag filters and dynamic collections read,
+// for each of egdata's genres
+const GENRE_TAGS: Record<string, number> = {
+  Action: 19,
+  Adventure: 21,
+  "Action-Adventure": 4106,
+  Strategy: 9,
+  RPG: 122,
+  Simulation: 599,
+  Casual: 597,
+  Indie: 492,
+  Sports: 701,
+  Racing: 699,
+  Music: 1621,
+  Platformer: 1625,
+  "Tower Defense": 1645,
+  Survival: 1662,
+  Puzzle: 1664,
+  "Card Game": 1666,
+  Horror: 1667,
+  RTS: 1676,
+  "Turn-Based": 1677,
+  Fantasy: 1684,
+  Stealth: 1687,
+  "Open World": 1695,
+  "Rogue-Lite": 3959,
+  MOBA: 1718,
+  Comedy: 1719,
+  "Dungeon Crawler": 1720,
+  "Turn-Based Strategy": 1741,
+  Narration: 1742,
+  Fighting: 1743,
+  Rhythm: 1752,
+  Space: 1755,
+  Shooter: 1774,
+  Exploration: 3834,
+  "First Person": 3839,
+  Retro: 4004,
+  "City Builder": 4328,
+  Party: 7178,
+  Trivia: 10437,
+};
+
 const SUPPORT_LINK = { label: "Support", url: "https://www.epicgames.com/help" };
 
 // Shared with the library's filters; achievements count from a tag, or once read, since
@@ -56,6 +99,12 @@ export function categoriesFor(appName: string) {
   if (details.cloud_saves) categories.add(CATEGORY.cloudSaves);
   if ((achievements.getSummary(appName)?.total ?? 0) > 0) categories.add(CATEGORY.achievements);
   return [...categories];
+}
+
+// The store tags the library filters genres by
+export function storeTagsFor(appName: string) {
+  // Lua sends {} for an empty list; Object.values reads both
+  return Object.values(info.get(appName)?.genres ?? []).flatMap((genre) => GENRE_TAGS[genre] ?? []);
 }
 
 // Info already in the app data store; Steam asks the store's website for what it lacks,
