@@ -1,6 +1,9 @@
-import { DialogButton } from "millennium";
+import { ConfirmModal, DialogButton, showModal } from "millennium";
 import { type LibraryView } from "../../hooks/use-library";
+import { mainPopup } from "../../services/steam/popups";
+import { type LoadResult, loadAll } from "../../services/sync/caches";
 import { sync } from "../../services/sync/sync";
+import * as preferences from "../../state/preferences";
 import { useValue } from "../../state/primitives";
 import { type SyncResult, progress } from "../../state/sync-progress";
 import {
@@ -43,6 +46,12 @@ function describeResult(result: SyncResult) {
   return parts.length > 0 ? { text: `Last sync: ${parts.join(", ")}.` } : undefined;
 }
 
+function describeLoad(result: LoadResult) {
+  const read = `Read the details of ${plural(result.loaded, "game")}.`;
+  if (result.failed === 0) return { text: read };
+  return { text: `${read} ${result.failed} couldn't be read; try again later.`, error: true };
+}
+
 function describeLibrary(games: EpicGame[] | undefined, refreshedAt: number) {
   if (games === undefined) return "Reading your library…";
   if (games.length === 0) return "No games yet";
@@ -73,6 +82,7 @@ export function LibraryCard({
   const state = useValue(progress);
   // A clean up only disables the buttons, and its progress is in the Maintenance card
   const syncing = state.active && state.operation === "sync";
+  const reading = state.active && state.operation === "load";
 
   const total = games?.length ?? 0;
   const busy = loading || state.active;
@@ -88,6 +98,31 @@ export function LibraryCard({
     setMessage(undefined);
     // The service owns progress and result so they survive the dialog closing
     void sync(games);
+  }
+
+  function confirmLoad() {
+    if (!games) return;
+    const withInfo = preferences.get().gameInfo;
+
+    showModal(
+      <ConfirmModal
+        strTitle="Read every game's details?"
+        strDescription={
+          `Reads ${withInfo ? "info and achievements" : "achievements"} for all ` +
+          `${plural(games.length, "game")} from Epic${withInfo ? " and egdata" : ""}, one at a ` +
+          "time. This can take a long while, but you can keep using Steam meanwhile. " +
+          "Games that already have details are skipped, so it's safe to run again" +
+          (withInfo ? "" : ". Turn on Show game info first to read the rest too.")
+        }
+        strOKButtonText="Read"
+        onOK={() => {
+          setMessage(undefined);
+          void loadAll(games).then((result) => result && setMessage(describeLoad(result)));
+        }}
+      />,
+      // Explicit because showModal's default, findSP(), throws on this build
+      mainPopup()?.window,
+    );
   }
 
   return (
@@ -119,6 +154,9 @@ export function LibraryCard({
         </DialogButton>
         <DialogButton className="epic-fixed" disabled={busy} onClick={refresh}>
           {loading ? <Busy>Checking</Busy> : "Refresh"}
+        </DialogButton>
+        <DialogButton className="epic-fixed" disabled={busy || total === 0} onClick={confirmLoad}>
+          {reading ? <Busy>Reading</Busy> : "Read details"}
         </DialogButton>
       </Actions>
     </Card>
