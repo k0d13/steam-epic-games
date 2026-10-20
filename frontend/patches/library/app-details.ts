@@ -2,6 +2,7 @@ import { type AppDetails, callOriginal, replacePatch } from "millennium";
 import * as info from "../../state/info";
 import * as jobs from "../../state/jobs";
 import * as library from "../../state/library";
+import * as playtime from "../../state/playtime";
 import * as preferences from "../../state/preferences";
 import * as sizes from "../../state/sizes";
 import { getAchievements } from "../game-page/achievements";
@@ -20,6 +21,16 @@ function apply(details: AppDetails) {
   // alone while waiting, so the section doesn't flicker
   const achievements = getAchievements(game.app_name);
   if (achievements) details.achievements = achievements;
+
+  // The play bar reads these, not the overview; the larger is kept, as in the overviews
+  const played = playtime.get(game.app_name);
+  if (played) {
+    details.nPlaytimeForever = Math.max(
+      details.nPlaytimeForever ?? 0,
+      Math.floor(played.seconds / 60),
+    );
+    details.rtLastTimePlayed = Math.max(details.rtLastTimePlayed ?? 0, played.last_played ?? 0);
+  }
 
   if (game.installed) return;
 
@@ -93,6 +104,8 @@ export function refreshAll() {
       updated.lDiskSpaceRequiredBytes,
       updated.achievements?.nAchieved,
       updated.achievements?.nTotal,
+      updated.nPlaytimeForever,
+      updated.rtLastTimePlayed,
       // The info panel and its button appear with these, and read nothing from the details
       preferences.get().gameInfo,
       info.get(game.app_name)?.fetched_at,
