@@ -18,12 +18,19 @@ function field(number: number, value: number) {
   return bytes;
 }
 
-export function notifyDownloadCompleted(appId: number) {
-  // CClientNotificationDownloadCompleted: appid = 1, no dlc_appid, no remote client
-  const message = new Uint8Array(field(1, appId));
-  window.NotificationStore?.OnNotification(nextId++, DOWNLOAD_COMPLETED, message);
-}
+export function notify(type: "download-completed", appId: number): void;
+export function notify(title: string & {}, body: string, onClick?: () => void): void;
+export function notify(
+  typeOrTitle: "download-completed" | (string & {}),
+  detail: number | string,
+  onClick?: () => void,
+) {
+  if (typeof detail === "number") {
+    // CClientNotificationDownloadCompleted: appid = 1, no dlc_appid, no remote client
+    const message = new Uint8Array(field(1, detail));
+    window.NotificationStore?.OnNotification(nextId++, DOWNLOAD_COMPLETED, message);
+    return;
+  }
 
-export function toast(title: string, body: string) {
-  return toaster.toast({ title, body, playSound: false, duration: 5000 });
+  toaster.toast({ title: typeOrTitle, body: detail, onClick, playSound: false, duration: 5000 });
 }

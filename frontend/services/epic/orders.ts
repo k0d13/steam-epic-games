@@ -1,7 +1,7 @@
 import { ChromeDevToolsProtocol as cdp } from "millennium";
 import * as appIds from "../../state/app-ids";
 import * as library from "../../state/library";
-import { toast } from "../steam/notifications";
+import { notify } from "../steam/notifications";
 import { autoSync } from "../sync/sync";
 import { isEpicTab } from "./session";
 import { isEpicHost } from "./store";
@@ -54,7 +54,7 @@ function announce(games: EpicGame[]) {
   const list = names.join(names.length > 2 ? ", " : " and ");
 
   const inSteam = games.every((game) => appIds.getAppId(game.app_name) !== undefined);
-  toast(
+  notify(
     one ? "New Epic game" : `${games.length} new Epic games`,
     inSteam
       ? `${list} ${one ? "is" : "are"} in your Steam library.`
@@ -82,7 +82,7 @@ export function watch() {
   const look = async (last: boolean) => {
     const result = await library.load(true, true);
     if (result.error) {
-      toast("Couldn't check your Epic library", result.error);
+      notify("Couldn't check your Epic library", result.error);
       return true;
     }
 
@@ -90,7 +90,7 @@ export function watch() {
 
     const added = result.games.filter((game) => !before?.has(game.app_name));
     if (added.length > 0) announce(added);
-    else if (last) toast("No new Epic games", "Nothing new showed up in your library after that.");
+    else if (last) notify("No new Epic games", "Nothing new showed up in your library after that.");
     return added.length > 0;
   };
 
@@ -100,7 +100,7 @@ export function watch() {
     // A burst of signals is one order: announced once, refreshed after the last
     if (timers.size === 0) {
       before = new Set(library.getLatest()?.games.map((game) => game.app_name));
-      toast("Checking your Epic library", "Looks like you got a game on the Epic store.");
+      notify("Checking your Epic library", "Looks like you got a game on the Epic store.");
     }
     for (const timer of timers) clearTimeout(timer);
     timers.clear();
