@@ -5,9 +5,19 @@ export interface Preferences {
   autoSync: boolean;
   collection: boolean;
   hideDuplicates: boolean;
+  // Off leaves non-Steam games' info to Steam and to other plugins
+  gameInfo: boolean;
+  // Off by default, as it writes to the user's Epic account
+  reportPlaytime: boolean;
 }
 
-const DEFAULTS: Preferences = { autoSync: true, collection: false, hideDuplicates: false };
+const DEFAULTS: Preferences = {
+  autoSync: true,
+  collection: false,
+  hideDuplicates: false,
+  gameInfo: false,
+  reportPlaytime: false,
+};
 
 const store = createStore<boolean>("epic-games:preferences:v1");
 

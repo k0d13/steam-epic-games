@@ -83,6 +83,12 @@ declare global {
     | { OnNotification(id: number, type: number, data: Uint8Array): void }
     | undefined;
 
+  // The store behind each game page's activity feed
+  // oxlint-disable-next-line no-var
+  var appActivityStore:
+    | { FetchLatestActivityFromServer(appId: number, latest: boolean): Promise<void> }
+    | undefined;
+
   // oxlint-disable-next-line no-var
   var appAchievementProgressCache:
     | {

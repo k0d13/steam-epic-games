@@ -10,8 +10,8 @@ export interface SyncResult {
 
 interface SyncState {
   active: boolean;
-  // A clean up shares the flag, so neither starts while the other runs
-  operation?: "sync" | "cleanUp";
+  // A clean up and a load share the flag, so none starts while another runs
+  operation?: "sync" | "cleanUp" | "load";
   done: number;
   total: number;
   // Kept so a panel opened later can say what the last sync did

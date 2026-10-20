@@ -1,9 +1,9 @@
 import { beforePatch, EDisplayStatus, type SteamAppOverview } from "millennium";
 import { forceFakeLocationChange } from "../../services/steam/popups";
-import * as info from "../../state/info";
 import * as jobs from "../../state/jobs";
 import * as library from "../../state/library";
-import { categoriesFor } from "../game-page/game-info";
+import * as playtime from "../../state/playtime";
+import { categoriesFor, releasedAt, storeTagsFor } from "../game-page/game-info";
 
 // Steam's overviews draw the library: tiles, filters, sort and the app page. Every
 // one passes through OnAppOverviewChange first, so ours are corrected there
@@ -45,10 +45,53 @@ interface MutableOverview {
   size_on_disk?: string;
   rt_recent_activity_time?: number;
   rt_last_time_played?: number;
+  minutes_playtime_forever?: number;
   rt_purchased_time?: number;
   rt_original_release_date?: number;
-  // `store_category` is a getter over this, so this is what to write
+  // `store_category` and `store_tag` are getters over these, so these are what to write
   m_setStoreCategories?: Set<number>;
+  m_setStoreTags?: Set<number>;
+}
+
+// What we last put in an overview's release date, categories and tags, taken back out
+// before the next pass so turning the info off or a tag going away leaves nothing behind
+interface Added {
+  released?: number;
+  categories: number[];
+  tags: number[];
+}
+
+const added = new Map<number, Added>();
+
+function applyInfo(app: MutableOverview, appId: number, appName: string) {
+  const previous = added.get(appId);
+  const next: Added = {
+    released: releasedAt(appName),
+    categories: categoriesFor(appName),
+    tags: storeTagsFor(appName),
+  };
+  added.set(appId, next);
+
+  // The release date the info panel shows
+  if (next.released) app.rt_original_release_date = next.released;
+  else if (previous?.released && app.rt_original_release_date === previous.released) {
+    app.rt_original_release_date = 0;
+  }
+
+  // The categories the info panel's feature list and the library's feature filters read,
+  // and the tags its genre filters read
+  if (previous || next.categories.length > 0) {
+    const categories = new Set(app.m_setStoreCategories ?? []);
+    for (const id of previous?.categories ?? []) categories.delete(id);
+    for (const id of next.categories) categories.add(id);
+    app.m_setStoreCategories = categories;
+  }
+  if (previous || next.tags.length > 0) {
+    const tags = new Set(app.m_setStoreTags ?? []);
+    for (const id of previous?.tags ?? []) tags.delete(id);
+    for (const id of next.tags) tags.add(id);
+    app.m_setStoreTags = tags;
+  }
 }
 
 function idleStatus(game: EpicGame, current: number | undefined) {
@@ -66,6 +109,17 @@ function apply(overview: SteamAppOverview) {
 
   const app = overview as unknown as MutableOverview;
 
+  // Steam counts from when the shortcut was made, so what we and Epic kept can be more;
+  // the larger is kept, as Steam's own grows with each session too
+  const played = playtime.get(game.app_name);
+  if (played) {
+    app.minutes_playtime_forever = Math.max(
+      app.minutes_playtime_forever ?? 0,
+      Math.floor(played.seconds / 60),
+    );
+    app.rt_last_time_played = Math.max(app.rt_last_time_played ?? 0, played.last_played ?? 0);
+  }
+
   // Shortcuts have no purchase date, so every Epic game would land in "No recorded
   // activity"; as for Steam's own apps, it's the later of last play and the grant
   if (game.purchased_at) {
@@ -77,15 +131,7 @@ function apply(overview: SteamAppOverview) {
     );
   }
 
-  // The release date the info panel shows, and the categories its feature list and the
-  // library's feature filters read
-  const released = info.get(game.app_name)?.released_at;
-  if (released) app.rt_original_release_date = released;
-
-  const categories = categoriesFor(game.app_name);
-  if (categories.length > 0) {
-    app.m_setStoreCategories = new Set([...(app.m_setStoreCategories ?? []), ...categories]);
-  }
+  applyInfo(app, overview.appid, game.app_name);
 
   const job = jobs.get(game.app_name);
   const status = job && JOB_STATUSES[job.kind]?.[JOB_STATES.indexOf(job.state)];

@@ -38,6 +38,13 @@ export const get = cache.get;
 export const ensure = cache.ensure;
 export const refresh = cache.refresh;
 export const forget = cache.invalidate;
+export const fill = cache.fill;
+
+export async function clear() {
+  await backend.ClearAchievements();
+  summaries.clear();
+  cache.clear();
+}
 
 export function getSummary(appName: string) {
   return cache.get(appName) ?? summaries.get(appName);

@@ -50,6 +50,18 @@ export function Options({
             onChange={(value) => setHideDuplicates(games, value)}
           />
         </Row>
+        <Row
+          title="Show game info"
+          detail="Details, tags and genres from egdata; may clash with other plugins"
+        >
+          <Toggle value={prefs.gameInfo} onChange={(value) => preferences.set("gameInfo", value)} />
+        </Row>
+        <Row title="Send play time to Epic" detail="So Epic counts time played from Steam">
+          <Toggle
+            value={prefs.reportPlaytime}
+            onChange={(value) => preferences.set("reportPlaytime", value)}
+          />
+        </Row>
         <ProtonRow games={games} setMessage={setMessage} />
       </div>
     </Section>

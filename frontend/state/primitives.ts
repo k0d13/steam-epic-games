@@ -150,6 +150,23 @@ export function createCache<V>({ fetch, isStale = () => false, persist }: CacheO
 
     refresh: (key: string) => load(key, true),
 
+    // Resolves once the key has an answer, for work that wants one rather than a fresh one:
+    // a saved answer will do, and an earlier miss is asked about again
+    fill(key: string) {
+      restore(key);
+      if (values.get(key) && !invalidated.has(key)) return Promise.resolve();
+      return load(key, invalidated.has(key));
+    },
+
+    // Forgets every answer, here and saved, so the next read asks again
+    clear() {
+      values.clear();
+      restored.clear();
+      invalidated.clear();
+      saved?.clear();
+      signal.emit();
+    },
+
     // Served until the next read has asked again, past the backend's cache too
     invalidate(key: string) {
       invalidated.add(key);

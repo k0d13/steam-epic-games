@@ -16,3 +16,26 @@ export function onGameStopped(callback: (appId: number) => void) {
 
   return () => registration.unregister();
 }
+
+// Unix seconds; a game already running when we loaded has no start, so isn't counted
+export function onSessionEnded(
+  callback: (appId: number, startedAt: number, endedAt: number) => void,
+) {
+  const startedAt = new Map<number, number>();
+
+  const registration = SteamClient.GameSessions.RegisterForAppLifetimeNotifications(
+    (notification) => {
+      const now = Math.floor(Date.now() / 1000);
+      if (notification.bRunning) {
+        startedAt.set(notification.unAppID, now);
+        return;
+      }
+
+      const start = startedAt.get(notification.unAppID);
+      startedAt.delete(notification.unAppID);
+      if (start !== undefined) callback(notification.unAppID, start, now);
+    },
+  );
+
+  return () => registration.unregister();
+}

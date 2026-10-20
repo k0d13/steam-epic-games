@@ -29,3 +29,12 @@ export function open(url: string) {
   }
   browser.ShowURL(url);
 }
+
+// For a link Steam would send to the system browser; anything not Epic's is left to it
+export function EpicLinkClick(url: string | undefined) {
+  if (!url || !IsEpicURL(url)) return undefined;
+  return (event: { preventDefault(): void }) => {
+    event.preventDefault();
+    open(url);
+  };
+}

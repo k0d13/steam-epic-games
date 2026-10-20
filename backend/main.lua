@@ -9,6 +9,7 @@ local paths = require("core.paths")
 require("jobs.start")
 require("steam.achievements")
 require("steam.info")
+require("steam.playtime")
 require("steam.shortcuts")
 require("steam.sizes")
 
