@@ -2,6 +2,7 @@ import { ConfirmModal, DialogButton, showModal } from "millennium";
 import { useState } from "react";
 import { forgetAll } from "../../services/steam/artwork";
 import { mainPopup } from "../../services/steam/popups";
+import { clearAll } from "../../services/sync/caches";
 import { type CleanUpResult, cleanUp } from "../../services/sync/clean-up";
 import { sync } from "../../services/sync/sync";
 import { useValue } from "../../state/primitives";
@@ -42,6 +43,17 @@ export function Maintenance({
     void sync(games);
   }
 
+  function clearCache() {
+    setMessage(undefined);
+    void clearAll().then((error) =>
+      setMessage(
+        error
+          ? { text: `Couldn't clear the cache: ${error}`, error: true }
+          : { text: "Cache cleared. Each game reads its details again as it's opened." },
+      ),
+    );
+  }
+
   function confirmCleanUp() {
     showModal(
       <ConfirmModal
@@ -76,8 +88,9 @@ export function Maintenance({
           <MessageLine message={message} />
         ) : (
           <div className="epic-dim">
-            Clean up takes everything this plugin added out of Steam, duplicates included. Run it
-            before uninstalling.
+            Clear cache forgets the details, achievements and sizes read so far. Clean up takes
+            everything this plugin added out of Steam, duplicates included; run it before
+            uninstalling.
           </div>
         )}
         <Actions>
@@ -86,6 +99,9 @@ export function Maintenance({
               Redownload art
             </DialogButton>
           )}
+          <DialogButton className="epic-fixed" disabled={state.active} onClick={clearCache}>
+            Clear cache
+          </DialogButton>
           {/* The harmless action takes the width, and the destructive one sits beside it */}
           <DialogButton
             className={canRedownload ? "epic-fixed" : "epic-grow"}
