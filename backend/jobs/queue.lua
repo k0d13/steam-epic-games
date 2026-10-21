@@ -8,15 +8,15 @@ local paths = require("core.paths")
 local runner = require("jobs.runner")
 local utils = require("utils")
 
--- Installs, updates and uninstalls, one at a time since legendary allows one. Each job
--- is a directory runner.lua's process reports into, and the queue is those directories,
--- moved along whenever the frontend polls
+-- Installs, updates, repairs, verifies and uninstalls, one at a time since legendary
+-- allows one. Each job is a directory runner.lua's process reports into, and the queue is
+-- those directories, moved along whenever the frontend polls
 
 local queue = {}
 
 local ROOT = paths.DATA .. "/jobs"
 
----@alias JobKind "install" | "update" | "uninstall"
+---@alias JobKind "install" | "update" | "repair" | "verify" | "uninstall"
 ---@alias JobState "queued" | "running" | "paused" | "done" | "failed"
 
 ---@class JobProgress
@@ -67,8 +67,11 @@ local function build(dir, meta)
   if exit_code then
     -- legendary exits 0 after some fatal errors, like another instance holding its
     -- install lock, so a CRITICAL line fails the job too
-    local fatal = (runner.read(dir, "error") or ""):find("CRITICAL:", 1, true) ~= nil
-    state = (exit_code == 0 and not fatal) and "done" or "failed"
+    local errors = runner.read(dir, "error") or ""
+    local fatal = errors:find("CRITICAL:", 1, true) ~= nil
+    -- A verify that found bad files exits 0 too, and says so in its last ERROR line
+    local bad_files = meta.kind == "verify" and errors ~= ""
+    state = (exit_code == 0 and not fatal and not bad_files) and "done" or "failed"
   elseif fs.is_file(runner.file(dir, "paused")) then
     -- Pausing is a kill, and this marker says the process was meant to be gone
     state = "paused"

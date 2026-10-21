@@ -57,7 +57,9 @@ export function register() {
       const game = library.getByAppId(appId);
       if (!game) return callOriginal;
 
-      if (jobs.get(game.app_name)) void jobs.resume(game.app_name);
+      // A verify has nothing to resume, and the game may be due an update
+      const job = jobs.get(game.app_name);
+      if (job && job.kind !== "verify") void jobs.resume(game.app_name);
       else if (game.installed && game.needs_update) void jobs.update(game.app_name);
       else void jobs.install(game.app_name);
 

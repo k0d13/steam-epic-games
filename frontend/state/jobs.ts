@@ -36,9 +36,14 @@ export function paused() {
   return inState("paused");
 }
 
-// Downloads show on the downloads page, uninstalls don't
+// Running, or waiting its turn: touching the game's files, or about to
+export function isBusy(job: Job | undefined) {
+  return job?.state === "running" || job?.state === "queued";
+}
+
+// Downloads show on the downloads page, verifies and uninstalls don't
 export function isDownload(job: Job) {
-  return job.kind === "install" || job.kind === "update";
+  return job.kind === "install" || job.kind === "update" || job.kind === "repair";
 }
 
 // Steam draws the bar in whole percent
@@ -162,9 +167,29 @@ export async function uninstall(appName: string) {
   return track(appName, await backend.StartUninstall(appName));
 }
 
-// An update re-run as an install could reinstall from scratch if legendary rejects the partial download
+// Fails when any file is wrong, with the counts in the job's error
+export async function verify(appName: string) {
+  return track(appName, await backend.StartVerify(appName));
+}
+
+// Re-downloads what a verify found wrong; only for an installed game
+export async function repair(appName: string) {
+  return track(appName, await backend.StartRepair(appName));
+}
+
+// An update re-run as an install could reinstall from scratch if legendary rejects the
+// partial download, and a repair as either would skip checking what's already there
 export function resume(appName: string) {
-  return get(appName)?.kind === "update" ? update(appName) : install(appName);
+  switch (get(appName)?.kind) {
+    case "update":
+      return update(appName);
+    case "repair":
+      return repair(appName);
+    case "verify":
+      return verify(appName);
+    default:
+      return install(appName);
+  }
 }
 
 export async function pauseAll() {
