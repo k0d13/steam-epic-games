@@ -61,6 +61,13 @@ function proton.selected()
   return nil
 end
 
+---Whether a game's prefix has been made, which Proton does on its first launch
+---@param app_name string
+---@return boolean
+function proton.has_prefix(app_name)
+  return proton.selected() ~= nil and fs.is_directory(PREFIXES .. "/" .. app_name .. "/pfx")
+end
+
 ---Sections of raw lines, so whatever legendary or the user wrote survives a rewrite
 ---untouched, and the lines before any header have no name
 ---@param text string

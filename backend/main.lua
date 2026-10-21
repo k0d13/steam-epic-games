@@ -8,6 +8,7 @@ local paths = require("core.paths")
 -- These only define ffi functions, so nothing else requires them
 require("jobs.start")
 require("steam.achievements")
+require("steam.cloud")
 require("steam.info")
 require("steam.playtime")
 require("steam.shortcuts")

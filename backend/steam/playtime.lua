@@ -78,14 +78,11 @@ end
 
 ---@ffi
 ---Every game's play time; a refresh asks Epic, otherwise its last answer is used
----@param refresh? boolean
----@param report? boolean Send sessions earlier reports couldn't
+---@param refresh? boolean Also sends sessions earlier reports couldn't
 ---@return Playtime[]
-function GetPlaytime(refresh, report)
+function GetPlaytime(refresh)
   if refresh then
-    if report then
-      flush()
-    end
+    flush()
     refresh_totals()
   end
 
@@ -105,13 +102,12 @@ function GetPlaytime(refresh, report)
 end
 
 ---@ffi
----Adds a session Steam saw end to our record, and to Epic's if asked
+---Adds a session Steam saw end to our record, and to Epic's
 ---@param app_name string
 ---@param started_at integer Unix seconds
 ---@param ended_at integer Unix seconds
----@param report? boolean
 ---@return Playtime
-function RecordSession(app_name, started_at, ended_at, report)
+function RecordSession(app_name, started_at, ended_at)
   local seconds = math.floor(ended_at - started_at)
   if seconds <= 0 then
     return combined(app_name)
@@ -124,24 +120,20 @@ function RecordSession(app_name, started_at, ended_at, report)
   game.last_played = math.floor(ended_at)
   data.games[app_name] = game
 
-  if report then
-    data.pending = data.pending or {}
-    table.insert(
-      data.pending,
-      { app_name = app_name, started_at = math.floor(started_at), ended_at = game.last_played }
-    )
-    while #data.pending > MAX_PENDING do
-      table.remove(data.pending, 1)
-    end
+  data.pending = data.pending or {}
+  table.insert(
+    data.pending,
+    { app_name = app_name, started_at = math.floor(started_at), ended_at = game.last_played }
+  )
+  while #data.pending > MAX_PENDING do
+    table.remove(data.pending, 1)
   end
   record.save()
   log.info("Played " .. app_name .. " for " .. seconds .. "s")
 
-  if report then
-    flush()
-    -- Epic's total now includes the session, if it took it
-    refresh_totals()
-  end
+  flush()
+  -- Epic's total now includes the session, if it took it
+  refresh_totals()
 
   return combined(app_name)
 end

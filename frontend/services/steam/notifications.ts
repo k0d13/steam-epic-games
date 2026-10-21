@@ -1,10 +1,14 @@
 import { toaster } from "millennium";
 
-// Download Complete goes to Steam's notification store the way the client's own
-// does, so it gets its toast, tray entry and settings
+// Download Complete and the cloud sync problems go to Steam's notification store the
+// way the client's own do, so they get its toast, tray entry and settings
 
-// EClientUINotificationType's DownloadCompleted
-const DOWNLOAD_COMPLETED = 1;
+// EClientUINotificationType, by the name we take them by; each message is just an appid
+const TYPES = {
+  "download-completed": 1,
+  "cloud-sync-failed": 15,
+  "cloud-sync-conflict": 16,
+} as const;
 
 // Clear of the client's ids, which count up from 1, and its tests', from 10000
 let nextId = 0x7f000000;
@@ -18,17 +22,18 @@ function field(number: number, value: number) {
   return bytes;
 }
 
-export function notify(type: "download-completed", appId: number): void;
+export function notify(type: keyof typeof TYPES, appId: number): void;
 export function notify(title: string & {}, body: string, onClick?: () => void): void;
 export function notify(
-  typeOrTitle: "download-completed" | (string & {}),
+  typeOrTitle: keyof typeof TYPES | (string & {}),
   detail: number | string,
   onClick?: () => void,
 ) {
   if (typeof detail === "number") {
-    // CClientNotificationDownloadCompleted: appid = 1, no dlc_appid, no remote client
+    // appid = 1 in all three, leaving out DownloadCompleted's dlc_appid and remote client
     const message = new Uint8Array(field(1, detail));
-    window.NotificationStore?.OnNotification(nextId++, DOWNLOAD_COMPLETED, message);
+    const type = TYPES[typeOrTitle as keyof typeof TYPES];
+    window.NotificationStore?.OnNotification(nextId++, type, message);
     return;
   }
 
