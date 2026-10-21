@@ -1,4 +1,5 @@
 import { type AppDetails, callOriginal, replacePatch } from "millennium";
+import * as cloud from "../../state/cloud";
 import * as info from "../../state/info";
 import * as jobs from "../../state/jobs";
 import * as library from "../../state/library";
@@ -6,6 +7,7 @@ import * as playtime from "../../state/playtime";
 import * as preferences from "../../state/preferences";
 import * as sizes from "../../state/sizes";
 import { getAchievements } from "../game-page/achievements";
+import { applyCloud, checkCloud } from "../game-page/cloud";
 
 // "Space Required" reads `bHasAnyLocalContent` and `lDiskSpaceRequiredBytes`, which
 // shortcuts get wrong; AppDetailsChanged is a non-writable mobx action, so we patch
@@ -31,6 +33,8 @@ function apply(details: AppDetails) {
     );
     details.rtLastTimePlayed = Math.max(details.rtLastTimePlayed ?? 0, played.last_played ?? 0);
   }
+
+  applyCloud(details, game);
 
   if (game.installed) return;
 
@@ -62,8 +66,9 @@ export function registerUnpatched(
 export function register() {
   // replacePatch, so our wrapper can replace the callback argument
   const patch = replacePatch(SteamClient.Apps, "RegisterForAppDetails", (args) => {
-    const [, callback] = args;
+    const [appId, callback] = args;
     if (!unpatched) {
+      checkCloud(appId);
       args[1] = (details) => {
         apply(details);
         callback(details);
@@ -73,12 +78,13 @@ export function register() {
     return callOriginal as never;
   });
 
-  // A size arriving is asynchronous and has no other way back into the UI
-  const unsubscribe = sizes.subscribe(refreshAll);
+  // A size arriving is asynchronous and has no other way back into the UI, nor has a
+  // sync moving on
+  const unsubscribes = [sizes.subscribe(refreshAll), cloud.subscribe(refreshAll)];
 
   return () => {
     patch.unpatch();
-    unsubscribe();
+    unsubscribes.forEach((unsubscribe) => unsubscribe());
   };
 }
 
@@ -106,6 +112,9 @@ export function refreshAll() {
       updated.achievements?.nTotal,
       updated.nPlaytimeForever,
       updated.rtLastTimePlayed,
+      updated.bCloudEnabledForApp,
+      updated.bCloudEnabledForAccount,
+      updated.eCloudStatus,
       // The info panel and its button appear with these, and read nothing from the details
       preferences.get().gameInfo,
       info.get(game.app_name)?.fetched_at,

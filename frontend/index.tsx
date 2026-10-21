@@ -6,6 +6,7 @@ import * as installs from "./patches/downloads/installs";
 import * as downloadOverview from "./patches/downloads/overview";
 import * as storage from "./patches/downloads/storage";
 import * as activity from "./patches/game-page/activity";
+import * as cloudSaves from "./patches/game-page/cloud";
 import * as gameInfo from "./patches/game-page/game-info";
 import * as achievementProgress from "./patches/library/achievement-progress";
 import * as appDetails from "./patches/library/app-details";
@@ -21,6 +22,7 @@ import { autoSync } from "./services/sync/sync";
 import * as account from "./state/account";
 import * as achievements from "./state/achievements";
 import * as appIds from "./state/app-ids";
+import * as cloud from "./state/cloud";
 import * as info from "./state/info";
 import * as jobs from "./state/jobs";
 import * as library from "./state/library";
@@ -61,6 +63,7 @@ const PATCHES = [
   ["install wizard", installWizard.register],
   ["achievement progress", achievementProgress.register],
   ["activity", activity.register],
+  ["cloud saves", cloudSaves.register],
   ["storage", storage.register],
   ["downloads", downloads.register],
 ] as const;
@@ -143,10 +146,14 @@ function connect() {
       const game = library.getByAppId(appId);
       if (game) void achievements.refresh(game.app_name);
     }),
-    // Kept by app name, so it survives the shortcut being made again
+    // What the session changed goes to Epic together: its play time, kept by app name so
+    // it survives the shortcut being made again, and its saves. Only for sessions we saw
+    // start, as a game running when we loaded may not have had its saves synced first
     onSessionEnded((appId, startedAt, endedAt) => {
       const game = library.getByAppId(appId);
-      if (game) void playtime.record(game.app_name, startedAt, endedAt);
+      if (!game) return;
+      void playtime.record(game.app_name, startedAt, endedAt);
+      void cloudSaves.syncAfterExit(appId);
     }),
   ];
 }
@@ -162,6 +169,9 @@ async function load() {
 
   // What we and Epic last had, then Epic's latest, which costs a round trip
   void playtime.load().then(() => playtime.load(true));
+
+  // Each game's last sync, for the play bar until the next launch syncs again
+  void cloud.load();
 
   // Lets the library home sort by completion early; last, since it follows up with a
   // round trip per recently played game

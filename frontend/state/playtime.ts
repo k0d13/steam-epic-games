@@ -1,4 +1,3 @@
-import * as preferences from "./preferences";
 import { createSignal } from "./primitives";
 
 // Play time by app name, from our own record and Epic's, which outlive the shortcuts
@@ -27,10 +26,9 @@ function store(list: Playtime[]) {
 // `refresh` asks Epic, which is a round trip, otherwise its last answer is used
 export async function load(refresh = false) {
   // Lua sends {} for an empty list; Object.values reads both
-  store(Object.values(await backend.GetPlaytime(refresh, preferences.get().reportPlaytime)));
+  store(Object.values(await backend.GetPlaytime(refresh)));
 }
 
 export async function record(appName: string, startedAt: number, endedAt: number) {
-  const report = preferences.get().reportPlaytime;
-  store([await backend.RecordSession(appName, startedAt, endedAt, report)]);
+  store([await backend.RecordSession(appName, startedAt, endedAt)]);
 }

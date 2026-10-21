@@ -3,13 +3,18 @@
 -- Steam update is skipped. `#{{self}}` is our PLUGIN_LIST slot, which holds the
 -- frontend entry's exports. There are no backreferences in a `find`, and a `` in a
 -- `replace` mustn't be followed by a letter or digit, which would read as a longer group name
+--
+-- Keep every pattern as short as it can be while still unique. Millennium writes all
+-- enabled plugins' patches to the webhelper as one message, into a pipe with Windows'
+-- default 4 KB buffer, before the webhelper is running to read it; past that the write
+-- never returns and Steam hangs at startup without its UI. This file is about 3.9 KB of it
 
 return {
   -- Manage has no Uninstall or Cancel for shortcuts, so library/manage-menu.ts adds them to
   -- what Steam built, and Steam's own menu stays while the frontend isn't there
   {
     file = [[sp\.js]],
-    find = [[this\.BuildManageSubmenu\(([\w$]+),([\w$]+),([\w$]+)\)]],
+    find = [[this\.BuildManageSubmenu\([^)]*\)]],
     transforms = {
       {
         match = [[this\.BuildManageSubmenu\(([\w$]+),([\w$]+),([\w$]+)\)]],
@@ -23,7 +28,7 @@ return {
   -- class, so the first transform names it where the second can reach it
   {
     file = [[sp\.js]],
-    find = [[const [\w$]+=[\w$]+=>\{const\{disabledItemClass:[\w$]+,menuItems:[\w$]+,children:[\w$]+\}=.*?\.CreateContextMenuInstance\([^}]*\}\),[^{}]*\{[^}]*\}\)]],
+    find = [[const [\w$]+=[\w$]+=>\{const\{disabledItemClass:.*?\.CreateContextMenuInstance\([^}]*\}\),[^{}]*\{[^}]*\}\)]],
     transforms = {
       {
         match = [[const ([\w$]+)=([\w$]+)=>\{const\{disabledItemClass:]],
@@ -54,7 +59,7 @@ return {
   -- on the shortcut list, since BIsModOrShortcut is asked in other places too
   {
     file = [[sp\.js]],
-    find = [[\["nonsteam","notes","screenshots"\];.*?\.BIsModOrShortcut\(\)&&\([\w$]+=[\w$]+\)]],
+    find = [["screenshots"\];.*?\.BIsModOrShortcut\(\)&&\([\w$]+=[\w$]+\)]],
     transforms = {
       {
         match = [[([\w$]+)\.BIsModOrShortcut\(\)&&\(([\w$]+)=([\w$]+)\)]],
@@ -67,7 +72,7 @@ return {
   -- for a Steam game, so a shortcut's bar is empty. game-page/game-info.ts adds Epic's links
   {
     file = [[sp\.js]],
-    find = [[const\{bWorkshopVisible:[\w$]+,bMarketPresence:[\w$]+\}=[\w$]+,[\w$]+=[\w$]+\.BIsModOrShortcut\(\),.*?=\[\];if\(![\w$]+\)\{]],
+    find = [[bMarketPresence:[\w$]+\}=[\w$]+,[\w$]+=[\w$]+\.BIsModOrShortcut\(\),.*?=\[\];if\(![\w$]+\)\{]],
     transforms = {
       {
         match = [[([\w$]+)\.BIsModOrShortcut\(\)(.*?)([\w$]+)=\[\];if\(!([\w$]+)\)\{]],
@@ -81,7 +86,7 @@ return {
   -- services/epic/store.ts opens Epic's in the client instead
   {
     file = [[sp\.js]],
-    find = [[let [\w$]+=this\.GetURL\([\w$]+\.strName,[\w$]+\.strURL,[\w$]+\);[\w$]+\.push\(\(0,[\w$]+\.jsx\)\("a",\{className:[\w$]+\(\)\.Name,href:[\w$]+,]],
+    find = [[this\.GetURL\([\w$]+\.strName,.{0,80}?\.Name,href:[\w$]+,]],
     transforms = {
       {
         match = [[this\.GetURL\(([\w$]+)\.strName,(.*?href:[\w$]+),$]],
@@ -95,7 +100,7 @@ return {
   -- says it isn't one, as the panel reads its shortcut state at the top of render
   {
     file = [[sp\.js]],
-    find = [[let [\w$]+=this\.props\.overview\.BIsModOrShortcut\(\),[\w$]+=![\w$]+&&[\w$]+\.H\.GetAssociations\(]],
+    find = [[=this\.props\.overview\.BIsModOrShortcut\(\),]],
     transforms = {
       {
         match = [[=this\.props\.overview\.BIsModOrShortcut\(\),]],
@@ -109,7 +114,7 @@ return {
   -- on, and as it arrives after the page has drawn this can't wait for HasGameInfo
   {
     file = [[sp\.js]],
-    find = [[this\.state=\{bShowGameInfo:[\w$]+\.overview\.BIsModOrShortcut\(\)\|\|[\w$]+\.s_setGameInfoVisible\.has\(this\.props\.overview\.appid\),suppressTransition]],
+    find = [[this\.state=\{bShowGameInfo:[\w$]+\.overview\.BIsModOrShortcut\(\)\|\|[\w$]+\.s_setGameInfoVisible]],
     transforms = {
       {
         match = [[bShowGameInfo:([\w$]+)\.overview\.BIsModOrShortcut\(\)\|\|]],
@@ -121,11 +126,25 @@ return {
   -- The play bar's button that opens the info panel, which a shortcut doesn't get
   {
     file = [[sp\.js]],
-    find = [[![\w$]+\.BIsModOrShortcut\(\)&&\(0,[\w$]+\.jsx\)\([\w$]+\.[\w$]+,\{direction:"bottom",className:\(0,[\w$]+\.A\)\([\w$]+\(\)\.MenuButton,this\.props\.bShowInfoExpanded]],
+    find = [[![\w$]+\.BIsModOrShortcut\(\)&&.{0,80}?bShowInfoExpanded]],
     transforms = {
       {
         match = [[!([\w$]+)\.BIsModOrShortcut\(\)&&]],
         replace = [[(!\1.BIsModOrShortcut()||#{{self}}?.HasGameInfo?.(\1))&&]],
+      },
+    },
+  },
+
+  -- The play bar's Cloud Status, and the status row that's its narrow form, which both
+  -- bail for a shortcut before reading the details; game-page/cloud.ts fills those in for
+  -- an Epic game whose saves it syncs, and leaves them saying there's no cloud otherwise
+  {
+    file = [[sp\.js]],
+    find = [[if\(![\w$]+\|\|[\w$]+\.BIsModOrShortcut\(\)\)return null;const [\w$]+=[\w$]+\.details\.eCloudStatus.*?\.details\.eCloudStatus]],
+    transforms = {
+      {
+        match = [[\|\|([\w$]+)\.BIsModOrShortcut\(\)\)return null;]],
+        replace = [[||\1.BIsModOrShortcut()&&!#{{self}}?.IsEpicApp?.(\1.appid))return null;]],
       },
     },
   },
@@ -162,7 +181,7 @@ return {
   -- read at the top of render, so the match carries everything up to the container
   {
     file = [[sp\.js]],
-    find = [[render\(\)\{let\{app:[\w$]+,appid:[\w$]+,appinfo:[\w$]+,className:[\w$]+,rgSources:.*?return\(0,[\w$]+\.jsxs\)\("div",\{className:[\w$]+,children:\[]],
+    find = [[render\(\)\{let\{app:[\w$]+,appid:[\w$]+,appinfo:.*?return\(0,[\w$]+\.jsxs\)\("div",\{className:[\w$]+,children:\[]],
     transforms = {
       {
         match = [[(render\(\)\{let\{app:([\w$]+),appid:([\w$]+),.*?eAssetType:([\w$]+),.*?children:\[)$]],

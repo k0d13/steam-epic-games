@@ -30,6 +30,7 @@ local CACHE_PATH = paths.DATA .. "/cache/library.json"
 ---@field art_portrait string|nil Tall box art URL
 ---@field art_hero string|nil Wide art URL
 ---@field purchased_at integer|nil Unix seconds the account was granted the game
+---@field cloud_saves boolean Whether Epic keeps the game's saves
 
 ---@class Library
 ---@field games EpicGame[]
@@ -168,6 +169,7 @@ local function merge_game(entry, local_game, granted)
     art_portrait = pick_art(metadata.keyImages, "portrait"),
     art_hero = pick_art(metadata.keyImages, "hero"),
     purchased_at = granted[namespace(entry) or ""],
+    cloud_saves = (((metadata.customAttributes or {}).CloudSaveFolder or {}).value or "") ~= "",
   }
 
   return apply_installed(game, local_game, type(build_version) == "string" and build_version or nil)
