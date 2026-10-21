@@ -48,20 +48,20 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Setup toolchain
         uses: ./.github/actions/toolchain
 
       - name: Download dist artifacts
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: dist
           path: .millennium/
 
       - name: Process changesets
         id: changesets
-        uses: changesets/action@v2
+        uses: changesets/action@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2
         with:
           version-script: bash .github/scripts/release-version.sh
           publish-script: bash .github/scripts/release-publish.sh
@@ -93,7 +93,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Setup toolchain
         uses: ./.github/actions/toolchain

@@ -19,6 +19,8 @@ local utils = require("utils")
 local record = cache.open(paths.DATA .. "/playtime.json", "play time")
 local epic_store = cache.open(paths.DATA .. "/cache/playtime.json", "Epic play time")
 
+local MAX_PENDING = 100
+
 -- Epic tells sessions apart by machine, and this stands in for the launcher's id
 local function machine_id()
   local data = record.get()
@@ -44,7 +46,8 @@ local function flush()
   local id = machine_id()
   local kept = {}
   for _, entry in ipairs(data.pending) do
-    if not epic.report(id, entry.app_name, entry.started_at, entry.ended_at) then
+    -- One failure means Epic or the session is down, so the rest wait for next time
+    if #kept > 0 or not epic.report(id, entry.app_name, entry.started_at, entry.ended_at) then
       table.insert(kept, entry)
     end
   end
@@ -127,6 +130,9 @@ function RecordSession(app_name, started_at, ended_at, report)
       data.pending,
       { app_name = app_name, started_at = math.floor(started_at), ended_at = game.last_played }
     )
+    while #data.pending > MAX_PENDING do
+      table.remove(data.pending, 1)
+    end
   end
   record.save()
   log.info("Played " .. app_name .. " for " .. seconds .. "s")

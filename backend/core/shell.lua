@@ -28,10 +28,16 @@ function shell.is_locked(path)
   return utils.write_file(path, "") ~= true
 end
 
+-- PowerShell also closes a single-quoted string at ‘ ’ ‚ ‛
+local PS_QUOTES = { "'", "\226\128\152", "\226\128\153", "\226\128\154", "\226\128\155" }
+
 ---For a single-quoted PowerShell literal
 ---@param value string
 function shell.ps_quote(value)
-  return "'" .. value:gsub("'", "''") .. "'"
+  for _, quote in ipairs(PS_QUOTES) do
+    value = value:gsub(quote, quote .. quote)
+  end
+  return "'" .. value .. "'"
 end
 
 ---For /bin/sh: close the quote, escape one, reopen
@@ -40,9 +46,13 @@ function shell.sh_quote(arg)
   return "'" .. arg:gsub("'", [['\'']]) .. "'"
 end
 
+---cmd.exe has no escape inside quotes, so a " can't be passed through it safely
 ---@param arg string
 local function cmd_quote(arg)
-  return '"' .. arg:gsub('"', '\\"') .. '"'
+  if arg:find('["\r\n]') then
+    return nil
+  end
+  return '"' .. arg:gsub("(\\+)$", "%1%1") .. '"'
 end
 
 ---A VBScript that starts a PowerShell script hidden without waiting, which
@@ -64,7 +74,11 @@ function shell.run(exe, args)
   local quote = paths.IS_WINDOWS and cmd_quote or shell.sh_quote
   local parts = { quote(exe) }
   for _, arg in ipairs(args) do
-    table.insert(parts, quote(arg))
+    local quoted = quote(arg)
+    if not quoted then
+      return "Refused an argument that can't be quoted: " .. arg, -1
+    end
+    table.insert(parts, quoted)
   end
 
   local command = table.concat(parts, " ") .. " 2>&1"

@@ -89,11 +89,10 @@ local function fetch(destination)
     "-ExecutionPolicy",
     "Bypass",
     "-Command",
-    "$ProgressPreference='SilentlyContinue'; Invoke-WebRequest -UseBasicParsing -Uri '"
-      .. URL
-      .. "' -OutFile '"
-      .. target
-      .. "'",
+    "$ProgressPreference='SilentlyContinue'; Invoke-WebRequest -UseBasicParsing -Uri "
+      .. shell.ps_quote(URL)
+      .. " -OutFile "
+      .. shell.ps_quote(target),
   })
 
   return fs.is_file(destination)

@@ -1,6 +1,7 @@
 --# selene: allow(unused_variable)
 local cache = require("core.cache")
 local fs = require("fs")
+local legendary = require("epic.legendary")
 local log = require("core.log")
 local millennium = require("millennium")
 local paths = require("core.paths")
@@ -176,18 +177,20 @@ function proton.apply(app_names)
   set(sections, "default", "no_wine", selected and "true" or nil)
 
   for _, app_name in ipairs(app_names) do
-    local prefix = PREFIXES .. "/" .. app_name
-    if selected then
-      fs.create_directories(prefix)
+    if legendary.is_app_name(app_name) then
+      local prefix = PREFIXES .. "/" .. app_name
+      if selected then
+        fs.create_directories(prefix)
+      end
+      local env = app_name .. ".env"
+      set(sections, env, "STEAM_COMPAT_DATA_PATH", selected and prefix or nil)
+      set(
+        sections,
+        env,
+        "STEAM_COMPAT_CLIENT_INSTALL_PATH",
+        selected and millennium.steam_path() or nil
+      )
     end
-    local env = app_name .. ".env"
-    set(sections, env, "STEAM_COMPAT_DATA_PATH", selected and prefix or nil)
-    set(
-      sections,
-      env,
-      "STEAM_COMPAT_CLIENT_INSTALL_PATH",
-      selected and millennium.steam_path() or nil
-    )
   end
 
   fs.create_directories(fs.parent_path(path))

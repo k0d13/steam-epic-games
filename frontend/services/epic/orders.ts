@@ -108,7 +108,13 @@ export function watch() {
     later(AFTER_CHECKOUT_MS, () => {
       void look(false)
         .then((found) => {
-          if (!found) later(RETRY_AFTER_MS, () => void look(true).catch(() => {}));
+          if (!found) {
+            later(RETRY_AFTER_MS, () => {
+              void look(true).catch((reason: unknown) =>
+                console.warn("Retry after an order failed", reason),
+              );
+            });
+          }
         })
         .catch((reason: unknown) => console.warn("Refresh after an order failed", reason));
     });

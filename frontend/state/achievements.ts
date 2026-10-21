@@ -2,7 +2,8 @@ import { getLastPlayed } from "../services/steam/playtime";
 import { createCache } from "./primitives";
 
 // Answers from memory for Steam's render path; stale ones are served, then refetched
-// behind the render that asked, and saved across restarts
+// behind the render that asked. Not saved, as full lists outgrow the localStorage every
+// plugin shares and the backend keeps them on disk
 
 const STALE_AFTER_MS = 10 * 60 * 1000;
 
@@ -30,7 +31,6 @@ function isStale(appName: string, entry: Counts | undefined) {
 const cache = createCache<GameAchievements>({
   fetch: (appName, refresh) => backend.GetAchievements(appName, refresh),
   isStale,
-  persist: "epic-games:achievements:v1",
 });
 
 export const subscribe = cache.subscribe;

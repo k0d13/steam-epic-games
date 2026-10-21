@@ -27,6 +27,15 @@ function legendary.get_binary()
   return path, err
 end
 
+---App names end up in paths, config sections and command lines
+---@param name any
+---@return boolean
+function legendary.is_app_name(name)
+  return type(name) == "string"
+    and name:match("^[%w%-_.]+$") ~= nil
+    and name:find("..", 1, true) == nil
+end
+
 local function subcommand(args)
   for _, arg in ipairs(args) do
     if arg:sub(1, 1) ~= "-" then

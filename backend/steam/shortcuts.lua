@@ -19,7 +19,7 @@ local shell = require("core.shell")
 ---@param app_name string
 ---@return LaunchCommand|nil
 function GetLaunchCommand(app_name)
-  local binary = legendary.get_binary()
+  local binary = legendary.is_app_name(app_name) and legendary.get_binary()
   if not binary then
     return nil
   end

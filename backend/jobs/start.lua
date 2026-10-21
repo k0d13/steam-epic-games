@@ -32,6 +32,11 @@ end
 ---@param args string[]
 ---@return Job|nil
 local function start_job(app_name, kind, args)
+  if not legendary.is_app_name(app_name) then
+    log.warn("Refused a " .. kind .. " for " .. tostring(app_name))
+    return nil
+  end
+
   local binary, err = legendary.get_binary()
   local job
   if binary then
