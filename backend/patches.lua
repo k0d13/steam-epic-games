@@ -23,20 +23,29 @@ return {
     },
   },
 
+  -- Installed Files is only a Steam game's properties page, so properties/installed-files.tsx
+  -- adds ours after Shortcut, spread into the push, which takes any number of items
+  {
+    file = [[sp\.js]],
+    find = [[\{title:[^"]*"#AppProperties_ShortcutPage".*?unAppID\}\)\}]],
+    transforms = {
+      {
+        match = [[^(\{.*Shortcut\(([\w$]+)\).*)$]],
+        replace = [[...(#{{self}}?.InstalledFilesPage?.(\2,\1)??[\1])]],
+      },
+    },
+  },
+
   -- The supernav menus, which store/menu.ts splits into Steam and Epic submenus when
-  -- it's Store's. Steam's renderer for supernav entries is a sibling of the menu
-  -- class, so the first transform names it where the second can reach it
+  -- it's Store's. Steam's renderer for supernav entries is a sibling of the menu class, so
+  -- it's named where the class's method can reach it, under a name no minified local shadows
   {
     file = [[sp\.js]],
     find = [[const [\w$]+=[\w$]+=>\{const\{disabledItemClass:.*?\.CreateContextMenuInstance\([^}]*\}\),[^{}]*\{[^}]*\}\)]],
     transforms = {
       {
-        match = [[const ([\w$]+)=([\w$]+)=>\{const\{disabledItemClass:]],
-        replace = [[const epicGamesSupernavItems=()=>\1,\1=\2=>{const{disabledItemClass:]],
-      },
-      {
-        match = [[\.CreateContextMenuInstance\((\(0,[\w$]+\.jsx\)\([\w$]+,\{refContextMenu:([\w$]+),[^}]*\}\)),([^{}]*\{[^}]*title:([\w$]+),[^}]*\})\)]],
-        replace = [[.CreateContextMenuInstance((#{{self}}?.SupernavMenu??(m=>m))(\1,\4,\2,epicGamesSupernavItems),\3)]],
+        match = [[const ([\w$]+)=([\w$]+=>\{const\{disabledItemClass:.*?)\.CreateContextMenuInstance\((\(0,[\w$]+\.jsx\)\([\w$]+,\{refContextMenu:([\w$]+),[^}]*\}\)),([^{}]*\{[^}]*title:([\w$]+),[^}]*\})\)]],
+        replace = [[const epicGamesSupernavItems=()=>\1,\1=\2.CreateContextMenuInstance((#{{self}}?.SupernavMenu??(m=>m))(\3,\6,\4,epicGamesSupernavItems),\5)]],
       },
     },
   },
@@ -59,7 +68,7 @@ return {
   -- on the shortcut list, since BIsModOrShortcut is asked in other places too
   {
     file = [[sp\.js]],
-    find = [["screenshots"\];.*?\.BIsModOrShortcut\(\)&&\([\w$]+=[\w$]+\)]],
+    find = [["screenshots"\];.*?\)&&\([\w$]+=[\w$]+\)]],
     transforms = {
       {
         match = [[([\w$]+)\.BIsModOrShortcut\(\)&&\(([\w$]+)=([\w$]+)\)]],
@@ -114,7 +123,7 @@ return {
   -- on, and as it arrives after the page has drawn this can't wait for HasGameInfo
   {
     file = [[sp\.js]],
-    find = [[this\.state=\{bShowGameInfo:[\w$]+\.overview\.BIsModOrShortcut\(\)\|\|[\w$]+\.s_setGameInfoVisible]],
+    find = [[bShowGameInfo:[\w$]+\.overview\.BIsModOrShortcut\(\)\|\|]],
     transforms = {
       {
         match = [[bShowGameInfo:([\w$]+)\.overview\.BIsModOrShortcut\(\)\|\|]],
@@ -140,7 +149,7 @@ return {
   -- an Epic game whose saves it syncs, and leaves them saying there's no cloud otherwise
   {
     file = [[sp\.js]],
-    find = [[if\(![\w$]+\|\|[\w$]+\.BIsModOrShortcut\(\)\)return null;const [\w$]+=[\w$]+\.details\.eCloudStatus.*?\.details\.eCloudStatus]],
+    find = [[\|\|[\w$]+\.BIsModOrShortcut\(\)\)return null;.*?\.details\.eCloudStatus.*?\.details\.eCloudStatus]],
     transforms = {
       {
         match = [[\|\|([\w$]+)\.BIsModOrShortcut\(\)\)return null;]],
@@ -153,7 +162,7 @@ return {
   -- first, so an Epic game's page isn't Steam's cached "Failed to retrieve user stats"
   {
     file = [[sp\.js]],
-    find = [[GetPlayerAchievements\([\w$]+,[\w$]+\)\{if\(.*?GetGlobalAchievements\([\w$]+\)\{]],
+    find = [[GetPlayerAchievements\(.*?GetGlobalAchievements\([\w$]+\)\{]],
     transforms = {
       {
         match = [[(GetMyAchievements|GetGlobalAchievements|GetPlayerAchievements)\(([\w$]+)(,[\w$]+)?\)\{]],
@@ -181,7 +190,7 @@ return {
   -- read at the top of render, so the match carries everything up to the container
   {
     file = [[sp\.js]],
-    find = [[render\(\)\{let\{app:[\w$]+,appid:[\w$]+,appinfo:.*?return\(0,[\w$]+\.jsxs\)\("div",\{className:[\w$]+,children:\[]],
+    find = [[render\(\)\{let\{app:.*?\("div",\{className:[\w$]+,children:\[]],
     transforms = {
       {
         match = [[(render\(\)\{let\{app:([\w$]+),appid:([\w$]+),.*?eAssetType:([\w$]+),.*?children:\[)$]],

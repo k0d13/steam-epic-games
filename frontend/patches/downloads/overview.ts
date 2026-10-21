@@ -32,7 +32,10 @@ export function sync() {
   const overview = globalThis.downloadsStore?.LocalDownloadOverview;
   if (!overview) return;
 
-  const job = jobs.running().find(jobs.isDownload);
+  // A verify is Validating in Steam's bottom bar, as it is for a Steam game
+  const job = jobs
+    .running()
+    .find((running) => jobs.isDownload(running) || running.kind === "verify");
   const appId = job && appIds.getAppId(job.app_name);
 
   if (!job || appId === undefined) {
@@ -46,18 +49,20 @@ export function sync() {
   claimed = appId;
   publish(overview, (copy) => {
     copy.update_appid = appId;
-    copy.update_state = "Downloading";
+    copy.update_state = job.kind === "verify" ? "Validating" : "Downloading";
     // What the downloads page labels the row with, since an update isn't an install
     copy.update_is_install = job.kind === "install";
     copy.update_is_upload = false;
     copy.paused = false;
     copy.overall_percent_complete = job.progress?.percent ?? 0;
     copy.overall_estimated_time_remaining_sec = etaSeconds(job.progress?.eta);
-    copy.update_network_bytes_per_second = (job.progress?.speed ?? 0) * MIB;
+    // A verify's speed is the disk's, not a download's
+    copy.update_network_bytes_per_second =
+      job.kind === "verify" ? 0 : (job.progress?.speed ?? 0) * MIB;
 
     // The downloads page's active row prints these as "x of y"
     const stage = copy.progress?.[PROGRESS_DOWNLOAD];
-    if (stage) {
+    if (stage && jobs.isDownload(job)) {
       [stage.bytes_in_progress, stage.bytes_total] = bytesFor(job);
       stage.estimated_time_remaining_sec = copy.overall_estimated_time_remaining_sec;
     }

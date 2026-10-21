@@ -24,6 +24,9 @@ const JOB_STATUSES: Record<string, number[]> = {
     EDisplayStatus.DownloadQueued,
   ],
   update: [EDisplayStatus.Updating, EDisplayStatus.UpdatePaused, EDisplayStatus.UpdateQueued],
+  // Like an update, as the game stays launchable while its files are checked and fixed
+  repair: [EDisplayStatus.Updating, EDisplayStatus.UpdatePaused, EDisplayStatus.UpdateQueued],
+  verify: [EDisplayStatus.Validating, EDisplayStatus.Validating, EDisplayStatus.Validating],
   uninstall: [
     EDisplayStatus.Uninstalling,
     EDisplayStatus.Uninstalling,

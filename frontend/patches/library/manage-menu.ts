@@ -4,8 +4,8 @@ import { mainPopup } from "../../services/steam/popups";
 import * as jobs from "../../state/jobs";
 import * as library from "../../state/library";
 
-// Manage has no Uninstall or Cancel for shortcuts; backend/patches.lua passes what
-// Steam's `BuildManageSubmenu` built through `ManageSubmenu`, which adds ours
+// Manage has no Uninstall for shortcuts; backend/patches.lua passes what Steam's
+// `BuildManageSubmenu` built through `ManageSubmenu`, which adds ours
 
 // Confirms through OpenUninstallWizard, which downloads/installs intercepts
 const showUninstallDialog = findModuleExport(
@@ -29,19 +29,8 @@ export function ManageSubmenu(menu: ReactElement | undefined, apps: { appid: num
   if (!menu || !app || !game) return menu;
 
   const job = jobs.get(game.app_name);
-  const busy = job?.state === "running" || job?.state === "queued";
+  const busy = jobs.isBusy(job);
   const items: ReactNode[] = [];
-
-  // Like Steam's, but keeping the partial download so Install can resume it
-  if (job && jobs.isDownload(job) && (busy || job.state === "paused")) {
-    items.push(
-      createElement(
-        MenuItem,
-        { key: "epic-cancel", onSelected: () => void jobs.cancel(game.app_name) },
-        job.kind === "update" ? "Cancel update" : "Cancel download",
-      ),
-    );
-  }
 
   // Not while a job is touching the files, or about to
   if (showUninstallDialog && game.installed && !busy) {

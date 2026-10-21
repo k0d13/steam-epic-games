@@ -81,6 +81,23 @@ function StartUpdate(app_name)
 end
 
 ---@ffi
+---Fails the job when any file is wrong, as legendary exits 0 either way
+---@param app_name string
+---@return Job|nil
+function StartVerify(app_name)
+  return start_job(app_name, "verify", { "-y", "verify", app_name })
+end
+
+---@ffi
+---Verifies, then downloads what failed. The caller checks the game is installed, as
+---legendary would install a game it doesn't have
+---@param app_name string
+---@return Job|nil
+function StartRepair(app_name)
+  return start_job(app_name, "repair", { "-y", "install", app_name, "--repair" })
+end
+
+---@ffi
 ---The Steam shortcut is left alone, as keeping uninstalled games in the library is the
 ---point of the plugin
 ---@param app_name string

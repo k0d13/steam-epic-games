@@ -3,7 +3,8 @@
 # names. Started under setsid, so killing the negative PID takes legendary down
 # too. awk keeps POSIX: no capture groups, so a progress line is split on its
 # punctuation instead, and the directory comes in through ENVIRON because `-v`
-# would read its backslashes as escapes.
+# would read its backslashes as escapes. tr makes lines of the carriage-return-ended
+# verification progress, which mawk can't split.
 
 DIR={dir}
 EXE={exe}
@@ -24,7 +25,7 @@ fi
   # The blank line answers a prompt -y doesn't cover; see the PowerShell runner.
   printf '\n' | "$EXE" "$@" 2>&1
   echo $? > "$DIR/{exit}.part"
-) | DIR="$DIR" $AWK '
+) | tr '\r' '\n' | DIR="$DIR" $AWK '
   BEGIN { dir = ENVIRON["DIR"]; percent = 0; done = 0; total = 0; eta = ""; elapsed = ""; speed = 0 }
   {
     print >> (dir "/{log}"); fflush(dir "/{log}")
@@ -33,6 +34,10 @@ fi
       line = $0; sub(/.*Progress: /, "", line); gsub(/[%(),\/]/, " ", line)
       split(line, f, " ")
       percent = f[1]; done = f[2]; total = f[3]; elapsed = f[6]; eta = f[8]
+    } else if ($0 ~ /Verification progress: [0-9]+\/[0-9]+ \([0-9.]+%\) \[[0-9.]+ MiB\/s\]/) {
+      line = $0; sub(/.*Verification progress: /, "", line); gsub(/[]%()[\/]/, " ", line)
+      split(line, f, " ")
+      done = f[1]; total = f[2]; percent = f[3]; speed = f[4]
     } else if ($0 ~ /Download[ \t]+- [0-9.]+ MiB\/s \(raw\)/) {
       line = $0; sub(/.*Download[ \t]+- /, "", line)
       split(line, f, " "); speed = f[1]

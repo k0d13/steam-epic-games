@@ -25,25 +25,29 @@ $percent = 0; $done = 0; $total = 0; $eta = ''; $elapsed = ''; $speed = 0
 # download one Fortnite gets. Stdin closes after it, so another prompt fails the
 # job instead of hanging it.
 @('') | & $Exe @Arguments 2>&1 | ForEach-Object {
-  $line = [string]$_
-  $Log.WriteLine($line)
+  # Verification progress ends in a carriage return, so one line may hold several
+  foreach ($line in ([string]$_ -split "`r")) {
+    $Log.WriteLine($line)
 
-  if ($line -match 'Progress: ([\d.]+)% \((\d+)/(\d+)\), Running for ([\d:]+), ETA: ([\d:]+)') {
-    $percent = $matches[1]; $done = $matches[2]; $total = $matches[3]
-    $elapsed = $matches[4]; $eta = $matches[5]
-  } elseif ($line -match 'Download\s+- ([\d.]+) MiB/s \(raw\)') {
-    $speed = $matches[1]
-  } else {
-    if ($line -match '(ERROR|CRITICAL):') {
-      $line | Out-File -Encoding utf8 -FilePath "$Dir\{error}"
+    if ($line -match 'Progress: ([\d.]+)% \((\d+)/(\d+)\), Running for ([\d:]+), ETA: ([\d:]+)') {
+      $percent = $matches[1]; $done = $matches[2]; $total = $matches[3]
+      $elapsed = $matches[4]; $eta = $matches[5]
+    } elseif ($line -match 'Verification progress: (\d+)/(\d+) \(([\d.]+)%\) \[([\d.]+) MiB/s\]') {
+      $done = $matches[1]; $total = $matches[2]; $percent = $matches[3]; $speed = $matches[4]
+    } elseif ($line -match 'Download\s+- ([\d.]+) MiB/s \(raw\)') {
+      $speed = $matches[1]
+    } else {
+      if ($line -match '(ERROR|CRITICAL):') {
+        $line | Out-File -Encoding utf8 -FilePath "$Dir\{error}"
+      }
+      continue
     }
-    return
-  }
 
-  @(
-    "percent=$percent", "downloaded=$done", "total=$total",
-    "eta=$eta", "elapsed=$elapsed", "speed=$speed"
-  ) -join "`n" | Out-File -Encoding ascii -FilePath "$Dir\{status}"
+    @(
+      "percent=$percent", "downloaded=$done", "total=$total",
+      "eta=$eta", "elapsed=$elapsed", "speed=$speed"
+    ) -join "`n" | Out-File -Encoding ascii -FilePath "$Dir\{status}"
+  }
 }
 
 $code = $LASTEXITCODE

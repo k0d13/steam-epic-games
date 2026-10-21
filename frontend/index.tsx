@@ -14,6 +14,7 @@ import * as overviews from "./patches/library/overviews";
 import * as freeGames from "./services/epic/free-games";
 import * as orders from "./services/epic/orders";
 import * as epicSession from "./services/epic/session";
+import * as verification from "./services/epic/verification";
 import * as artwork from "./services/steam/artwork";
 import { notify } from "./services/steam/notifications";
 import { onGameStopped, onSessionEnded } from "./services/steam/playtime";
@@ -38,6 +39,8 @@ export { ManageSubmenu } from "./patches/library/manage-menu";
 export { EpicLinkClick, IsEpicURL } from "./services/epic/store";
 /** @ffi */
 export { SupernavMenu } from "./patches/store/menu";
+/** @ffi */
+export { InstalledFilesPage } from "./patches/properties/installed-files";
 /** @ffi */
 export { LibraryBadge } from "./patches/library/badge";
 /** @ffi */
@@ -113,6 +116,7 @@ function connect() {
     freeGames.watch(),
     // Steam notifies a download finishing, and ours do too
     jobs.onEnded((job) => {
+      if (job.kind === "verify") return verification.onVerified(job);
       if (job.state !== "done" || !jobs.isDownload(job)) return;
       const appId = appIds.getAppId(job.app_name);
       if (appId !== undefined) notify("download-completed", appId);
