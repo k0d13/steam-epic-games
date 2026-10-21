@@ -34,7 +34,11 @@ function account.status(refresh)
   end
 
   -- The only command that reports the account, and it prints "<not logged in>" for nobody
+  -- Prints nothing when it can't reach Epic, where --offline still reads the stored login
   local decoded, decode_error = legendary.decode_json(legendary.run({ "status", "--json" }))
+  if type(decoded) ~= "table" then
+    decoded = legendary.decode_json(legendary.run({ "status", "--offline", "--json" })) or decoded
+  end
 
   local name = type(decoded) == "table" and decoded.account or nil
   if name == json.null or name == "<not logged in>" then
@@ -70,8 +74,15 @@ end
 ---@param code string The authorizationCode from Epic's redirect page
 ---@return EpicStatus
 function SignIn(code)
+  code = type(code) == "string" and utils.trim(code) or ""
+  if not code:match("^%x+$") then
+    local result = utils.merge({}, account.status())
+    result.error = "That wasn't an authorization code from Epic."
+    return result
+  end
+
   log.info("Signing in with a code from the store's session")
-  local output = legendary.run({ "auth", "--code", utils.trim(code) })
+  local output = legendary.run({ "auth", "--code", code })
   local current = account.status(true)
   if current.authenticated then
     return current

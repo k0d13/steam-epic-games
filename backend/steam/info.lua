@@ -4,6 +4,7 @@ local datetime = require("datetime")
 local egdata = require("epic.egdata")
 local entitlements = require("epic.entitlements")
 local fetch = require("core.fetch")
+local legendary = require("epic.legendary")
 local log = require("core.log")
 local paths = require("core.paths")
 local utils = require("utils")
@@ -234,6 +235,10 @@ end
 ---@param refresh? boolean Ask Epic again even if it's cached
 ---@return GameInfo|nil
 function GetGameInfo(app_name, refresh)
+  if not legendary.is_app_name(app_name) then
+    return nil
+  end
+
   local infos = store.get()
 
   local cached = infos[app_name]

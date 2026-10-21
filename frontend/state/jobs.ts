@@ -106,7 +106,9 @@ async function poll() {
     for (const appName of finished) sizes.forget(appName);
 
     // Before the emit, or the repaint flashes Install between Installing and Play
-    await library.loadInstalled();
+    await library.loadInstalled().catch((reason: unknown) => {
+      console.warn("Could not re-read the installed games", reason);
+    });
   }
 
   if (changed) signal.emit();

@@ -8,17 +8,25 @@ local egdata = {}
 
 local API = "https://api.egdata.app"
 
+local function segment(id)
+  return (
+    tostring(id):gsub("[^%w%-_.~]", function(char)
+      return string.format("%%%02X", char:byte())
+    end)
+  )
+end
+
 ---@param namespace string
 ---@return table|nil offer The sandbox's base game offer
 ---@return boolean missing egdata answered, and has no such game
 function egdata.offer(namespace)
-  return fetch.json(API .. "/sandboxes/" .. namespace .. "/base-game")
+  return fetch.json(API .. "/sandboxes/" .. segment(namespace) .. "/base-game")
 end
 
 ---@param offer_id string
 ---@return string[]|nil features Like "Controller Support", nil if egdata couldn't be asked
 function egdata.features(offer_id)
-  local document = fetch.json(API .. "/offers/" .. offer_id .. "/features")
+  local document = fetch.json(API .. "/offers/" .. segment(offer_id) .. "/features")
   if not document then
     return nil
   end
@@ -28,7 +36,7 @@ end
 ---@param offer_id string
 ---@return string[]|nil genres Like "Action" or "RPG", nil if egdata couldn't be asked
 function egdata.genres(offer_id)
-  local document = fetch.json(API .. "/offers/" .. offer_id .. "/genres")
+  local document = fetch.json(API .. "/offers/" .. segment(offer_id) .. "/genres")
   if not document then
     return nil
   end
@@ -46,7 +54,7 @@ end
 ---@return table[]|nil builds Each with appName, platform, labelName, lastSeenAt, downloadSizeBytes and installedSizeBytes
 ---@return boolean missing egdata answered, and has no such item
 function egdata.builds(item_id)
-  return fetch.json(API .. "/items/" .. item_id .. "/builds")
+  return fetch.json(API .. "/items/" .. segment(item_id) .. "/builds")
 end
 
 return egdata

@@ -84,6 +84,10 @@ end
 ---@param refresh? boolean Ask Epic again even if it's cached
 ---@return GameAchievements|nil
 function GetAchievements(app_name, refresh)
+  if not legendary.is_app_name(app_name) then
+    return nil
+  end
+
   local cached = store.get()
   if cached[app_name] and not refresh then
     return cached[app_name]

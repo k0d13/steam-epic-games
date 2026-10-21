@@ -95,6 +95,10 @@ end
 ---@param refresh? boolean Re-read even if it's cached
 ---@return GameSize|nil
 function GetGameSize(app_name, refresh)
+  if not legendary.is_app_name(app_name) then
+    return nil
+  end
+
   local sizes = store.get()
   local cached = sizes[app_name]
   -- A negative size was wrapped by the Linux decoder before cache.decode fixed it

@@ -105,6 +105,10 @@ export function createCache<V>({ fetch, isStale = () => false, persist }: CacheO
     let result: V | null | undefined;
     try {
       result = await fetch(key, refresh);
+    } catch (reason) {
+      // Remembered as a miss, or every render asks again
+      if (!values.get(key)) values.set(key, null);
+      throw reason;
     } finally {
       pending.delete(key);
       invalidated.delete(key);
@@ -199,7 +203,7 @@ export function createStore<T>(key: string) {
     try {
       localStorage.setItem(key, JSON.stringify(entries));
     } catch (e) {
-      console.debug(`Failed to write ${key}`, e);
+      console.warn(`Failed to write ${key}`, e);
     }
   }
 

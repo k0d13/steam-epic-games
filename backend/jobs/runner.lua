@@ -116,7 +116,12 @@ function runner.is_running(dir, pid, spawned_at)
     if pid == nil then
       return starting
     end
-    return fs.is_directory("/proc/" .. pid)
+    -- After a reboot the PID can belong to something else, so it has to be running our script
+    local cmdline = utils.read_file("/proc/" .. pid .. "/cmdline")
+    if not cmdline or cmdline == "" then
+      return fs.is_directory("/proc/" .. pid)
+    end
+    return cmdline:find(runner.file(dir, "script"), 1, true) ~= nil
   end
 
   local lock = runner.file(dir, "lock")

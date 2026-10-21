@@ -26,8 +26,13 @@ local function write(level, message)
   local line = datetime.format(datetime.now()) .. " " .. level .. " " .. message
   table.insert(lines, line)
 
-  if #lines > MAX_LINES then
-    table.remove(lines, 1)
+  -- Trimmed in batches, since a trim rewrites the whole file
+  if #lines > MAX_LINES * 2 then
+    local kept = {}
+    for index = #lines - MAX_LINES + 1, #lines do
+      table.insert(kept, lines[index])
+    end
+    lines = kept
     utils.write_file(PATH, table.concat(lines, "\n") .. "\n")
   else
     utils.append_file(PATH, line .. "\n")

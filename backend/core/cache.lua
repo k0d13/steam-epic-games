@@ -7,6 +7,38 @@ local utils = require("utils")
 
 local cache = {}
 
+local function widen(number)
+  if number:match("^%-?%d%d%d%d%d%d%d%d%d%d+$") then
+    return number .. ".0"
+  end
+end
+
+---Millennium's Linux decoder wraps integers at 32 bits, so a 2.5 GB size came back
+---negative; ten digits and up are decoded as floats instead, exact below 2^53
+---@param text string
+local function widen_integers(text)
+  local parts = {}
+  local position = 1
+  while true do
+    local open = text:find('"', position, true)
+    local outside = text:sub(position, (open or 0) - 1)
+    table.insert(parts, (outside:gsub("%-?%d[%d%.eE%+%-]*", widen)))
+    if not open then
+      break
+    end
+
+    local close = text:find('"', open + 1, true)
+    while close and #text:sub(open + 1, close - 1):match("\\*$") % 2 == 1 do
+      close = text:find('"', close + 1, true)
+    end
+    close = close or #text
+
+    table.insert(parts, text:sub(open, close))
+    position = close + 1
+  end
+  return table.concat(parts)
+end
+
 ---Decode JSON, or nil for anything not shaped like a document, as a cjson error kills
 ---Millennium's whole Lua VM, pcall or not
 ---@param text string|nil
@@ -15,10 +47,7 @@ function cache.decode(text)
   local trimmed = utils.trim(text or "")
   local first, last = trimmed:sub(1, 1), trimmed:sub(-1)
   if (first == "{" and last == "}") or (first == "[" and last == "]") then
-    -- Millennium's Linux decoder wraps integers at 32 bits, so a 2.5 GB size came back
-    -- negative; ten digits and up are decoded as floats, exact below 2^53
-    trimmed = trimmed:gsub("([:,%[]%s*)(%-?%d%d%d%d%d%d%d%d%d%d+)(%s*[,%]}])", "%1%2.0%3")
-    return json.decode(trimmed)
+    return json.decode(widen_integers(trimmed))
   end
   return nil
 end
