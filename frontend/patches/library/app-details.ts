@@ -8,6 +8,7 @@ import * as library from "../../state/library";
 import * as preferences from "../../state/preferences";
 import { getAchievements } from "../game-page/achievements";
 import { applyCloud, checkCloud } from "../game-page/cloud";
+import { applyDlc } from "../game-page/dlc";
 
 // "Space Required" reads `bHasAnyLocalContent` and `lDiskSpaceRequiredBytes`, which shortcuts
 // get wrong; AppDetailsChanged is a non-writable mobx action, so the callback is patched
@@ -34,6 +35,7 @@ function apply(details: AppDetails) {
   }
 
   applyCloud(details, game);
+  applyDlc(details, game);
 
   if (game.installed) return;
 
@@ -114,6 +116,7 @@ export function refreshAll() {
       updated.bCloudEnabledForApp,
       updated.bCloudEnabledForAccount,
       updated.eCloudStatus,
+      updated.vecDLC.map((dlc) => `${dlc.strState}${dlc.bEnabled}`).join(),
       // The info panel and its button appear with these, and read nothing from the details
       preferences.get().gameInfo,
       info.get(game.app_name)?.fetched_at,

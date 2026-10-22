@@ -58,7 +58,11 @@ export function appIdsWithGames() {
 async function read(request: Promise<Library>, failure: string) {
   // Lua sends {} for an empty list
   const raw = await request;
-  const result: Library = { ...raw, games: Object.values(raw.games) };
+  const games = Object.values(raw.games).map((game) => ({
+    ...game,
+    dlcs: Object.values(game.dlcs ?? {}),
+  }));
+  const result: Library = { ...raw, games };
   if (result.error) console.error(failure, result.error);
 
   latest = result;

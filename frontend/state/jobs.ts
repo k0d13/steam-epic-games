@@ -1,5 +1,6 @@
 import * as sizes from "./game/sizes";
 import * as library from "./library";
+import * as preferences from "./preferences";
 import { createSignal } from "./primitives";
 
 // The backend can't push, so this polls, but only while a job is running or queued
@@ -156,15 +157,24 @@ async function track(appName: string, job: Job | null) {
 
 // Comes back queued if another job is running
 export async function install(appName: string, basePath?: string, gameFolder?: string) {
-  return track(appName, await backend.StartInstall(appName, basePath, gameFolder));
+  const { installDlc } = preferences.get();
+  return track(appName, await backend.StartInstall(appName, basePath, gameFolder, installDlc));
 }
 
 export async function update(appName: string) {
-  return track(appName, await backend.StartUpdate(appName));
+  return track(appName, await backend.StartUpdate(appName, preferences.get().installDlc));
 }
 
 export async function uninstall(appName: string) {
   return track(appName, await backend.StartUninstall(appName));
+}
+
+export async function installDlc(appName: string, dlcName: string) {
+  return track(appName, await backend.StartDlcInstall(appName, dlcName));
+}
+
+export async function uninstallDlc(appName: string, dlcName: string) {
+  return track(appName, await backend.StartDlcUninstall(appName, dlcName));
 }
 
 // Fails when any file is wrong, with the counts in the job's error
@@ -180,7 +190,10 @@ export async function repair(appName: string) {
 // An update re-run as an install could reinstall from scratch if legendary rejects the
 // partial download, and a repair as either would skip checking what's already there
 export function resume(appName: string) {
-  switch (get(appName)?.kind) {
+  const job = get(appName);
+  switch (job?.kind) {
+    case "dlc":
+      return job.target ? installDlc(appName, job.target) : install(appName);
     case "update":
       return update(appName);
     case "repair":

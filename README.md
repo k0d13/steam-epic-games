@@ -16,6 +16,7 @@ playtime without leaving the client.
 - Install, update, pause and uninstall from Steam, with progress on the library tile and
   the Downloads page, and Steam's own notification when an install finishes
 - Verify an install's files and repair whatever is corrupted or missing, from Properties > Installed Files
+- DLC you own installs with its game, shows in the game page's DLC section, and is installed or removed from Properties > DLC like Steam's
 - Launch from Steam, with playtime tracking reported to Epic, "Currently playing" and the overlay
 - Cloud saves synced with Epic before a game starts and after it exits, with Steam's
   Cloud Status on the play bar and its own conflict and sync-failed dialogs

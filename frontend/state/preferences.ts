@@ -8,6 +8,7 @@ export interface Preferences {
   // Off leaves non-Steam games' info to Steam and to other plugins
   gameInfo: boolean;
   freeGamesNotice: boolean;
+  installDlc: boolean;
 }
 
 const DEFAULTS: Preferences = {
@@ -16,6 +17,7 @@ const DEFAULTS: Preferences = {
   hideDuplicates: false,
   gameInfo: false,
   freeGamesNotice: true,
+  installDlc: true,
 };
 
 const store = createStore<boolean>("epic-games:preferences:v1");

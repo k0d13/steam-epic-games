@@ -56,6 +56,12 @@ export function Options({
         >
           <Toggle value={prefs.gameInfo} onChange={(value) => preferences.set("gameInfo", value)} />
         </Row>
+        <Row title="Install owned DLC" detail="With each game, and when it updates">
+          <Toggle
+            value={prefs.installDlc}
+            onChange={(value) => preferences.set("installDlc", value)}
+          />
+        </Row>
         <Row title="Free games notice" detail="When Epic swaps them, Thursdays 8:00 AM Pacific">
           <Toggle
             value={prefs.freeGamesNotice}

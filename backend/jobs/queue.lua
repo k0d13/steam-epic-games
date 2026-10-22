@@ -8,7 +8,7 @@ local paths = require("core.paths")
 local runner = require("jobs.runner")
 local utils = require("utils")
 
--- Installs, updates, repairs, verifies and uninstalls, one at a time since legendary
+-- Installs, updates, repairs, verifies, uninstalls and DLC changes, one at a time since legendary
 -- allows one. Each job is a directory runner.lua's process reports into, and the queue is
 -- those directories, moved along whenever the frontend polls
 
@@ -16,7 +16,7 @@ local queue = {}
 
 local ROOT = paths.DATA .. "/jobs"
 
----@alias JobKind "install" | "update" | "repair" | "verify" | "uninstall"
+---@alias JobKind "install" | "update" | "repair" | "verify" | "uninstall" | "dlc"
 ---@alias JobState "queued" | "running" | "paused" | "done" | "failed"
 
 ---@class JobProgress
@@ -37,6 +37,7 @@ local ROOT = paths.DATA .. "/jobs"
 ---@field exit_code integer|nil Set once the runner has finished
 ---@field progress JobProgress|nil
 ---@field error string|nil Last error line legendary printed, when it failed
+---@field target string|nil The DLC a dlc job installs or removes
 
 ---@class JobEntry
 ---@field dir string
@@ -103,6 +104,7 @@ local function build(dir, meta)
     exit_code = exit_code,
     progress = runner.progress(dir),
     error = state == "failed" and utils.trim(runner.read(dir, "error") or "") or nil,
+    target = meta.target,
   }
 end
 
@@ -184,9 +186,10 @@ end
 ---@param kind JobKind
 ---@param exe string
 ---@param args string[]
+---@param target? string
 ---@return Job|nil job
 ---@return string? error
-function queue.start(app_name, kind, exe, args)
+function queue.start(app_name, kind, exe, args, target)
   local existing = queue.get(app_name)
   if existing and (existing.state == "running" or existing.state == "queued") then
     return existing
@@ -208,6 +211,7 @@ function queue.start(app_name, kind, exe, args)
       started_at = datetime.unix(),
       exe = exe,
       args = args,
+      target = target,
     })
   )
   if not ok then

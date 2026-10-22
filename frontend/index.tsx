@@ -8,6 +8,7 @@ import * as storage from "./patches/downloads/storage";
 import * as achievementPatches from "./patches/game-page/achievements";
 import * as activity from "./patches/game-page/activity";
 import * as cloudSaves from "./patches/game-page/cloud";
+import * as dlc from "./patches/game-page/dlc";
 import * as gameInfo from "./patches/game-page/game-info";
 import * as appDetails from "./patches/library/app-details";
 import * as overviews from "./patches/library/overviews";
@@ -66,6 +67,7 @@ const PATCHES = [
   ["achievements", achievementPatches.register],
   ["activity", activity.register],
   ["cloud saves", cloudSaves.register],
+  ["dlc", dlc.register],
   ["storage", storage.register],
   ["downloads", downloads.register],
 ] as const;
