@@ -2,10 +2,8 @@ import * as appIds from "../../state/app-ids";
 import * as jobs from "../../state/jobs";
 import { bytesFor, etaSeconds, PROGRESS_DOWNLOAD } from "./downloads";
 
-// The app page's bar reads the client's single download overview, not the tile's
-// `status_percentage`, and we only claim it while Steam isn't downloading anything
-// itself. The bottom bar only re-renders when the store hands it a new overview, as
-// Steam's own updates do, so each change is written to a copy that replaces the old one
+// The app page's bar reads the client's one download overview, claimed only while Steam
+// downloads nothing itself; it re-renders on a new overview, so changes go to a copy
 
 // legendary reports MiB/s and Steam wants bytes
 const MIB = 1024 * 1024;

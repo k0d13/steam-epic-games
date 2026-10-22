@@ -10,9 +10,8 @@ export function steamShortcuts() {
   return appStore.allApps.map((app) => app.appid).filter(appIds.isShortcut);
 }
 
-// The appid map lives in localStorage, which a reinstall or dev build can lose, and a
-// sync without it adds every game again; so shortcuts are also recognised by what they
-// run: legendary, from wherever it was, with the `launch "<app name>"` arguments
+// The appid map in localStorage can be lost, which would add every game again, so
+// shortcuts are also recognised by running legendary with `launch "<app name>"`
 const LEGENDARY_EXE = /(^|[\\/])legendary(\.exe)?$/i;
 const LAUNCH_ARGUMENTS = /^\s*launch\s+"([^"]+)"\s*$/;
 
@@ -62,10 +61,8 @@ export async function findOurs() {
   return found;
 }
 
-// A shortcut is made before its game exists, so it starts in legendary's folder; games
-// reading files relative to their working directory need their own, so it follows the
-// install. The exe follows legendary, which has moved before. Both are set once a
-// session per shortcut, then on each change
+// A shortcut starts in legendary's folder; games reading relative paths need their own, so
+// its directory follows the install, and its exe follows legendary, which has moved before
 const startDirs = new Map<number, string>();
 const alignedExes = new Set<number>();
 

@@ -1,10 +1,9 @@
-import { type AppAchievement, type AppAchievements } from "millennium";
-import * as achievements from "../../state/achievements";
+import { type AppAchievement, type AppAchievements, callOriginal, replacePatch } from "millennium";
+import * as achievements from "../../state/game/achievements";
 import * as library from "../../state/library";
 
-// Steam's details page drops the achievements section for a shortcut, which game-info
-// puts back through `ShortcutSections`; the section itself copes, and app-details
-// supplies the data
+// game-info puts back the achievements section Steam drops for a shortcut, and
+// app-details supplies the data
 
 // Epic's "2026-06-12 21:21:24.391000+00:00" has a space where ISO's T goes
 function unlockedAt(achievement: Achievement) {
@@ -43,7 +42,7 @@ export function listFor(appName: string) {
 
   let list = converted.get(result);
   if (!list) {
-    // Lua sends {} for an empty list; Object.values reads both
+    // Lua sends {} for an empty list
     list = Object.values(result.achievements)
       .sort((a, b) => unlockedAt(b) - unlockedAt(a))
       .map(convert);
@@ -80,9 +79,8 @@ export function getAchievements(appName: string) {
   return built;
 }
 
-// The full achievements page has its own store, which caches "Failed to retrieve user
-// stats" for a shortcut for good, so backend/patches.lua has its three getters ask
-// `AchievementStore` first
+// The full achievements page caches "Failed to retrieve user stats" for a shortcut for
+// good, so backend/patches.lua has its store's getters ask `AchievementStore` first
 
 // The store's own grouping, keyed by achievement id
 interface Grouped {
@@ -136,4 +134,35 @@ export function AchievementStore(method: string, appId: number) {
 
   const ours = listFor(game.app_name);
   return ours ? { data: build(ours) } : { loading: true };
+}
+
+// The completion sort reads appAchievementProgressCache, filled from Steam's CM, which
+// knows nothing of shortcuts
+export function register() {
+  const cache = globalThis.appAchievementProgressCache;
+  if (!cache) {
+    console.warn("Could not find the achievement progress cache, the completion sort stays empty");
+    return () => {};
+  }
+
+  const patches = [
+    // Steam defaults unknown appids to true, so uncached games would sort as 0%
+    replacePatch(cache, "BGameHasAchievements", ([appId]: [number]) => {
+      const game = library.getByAppId(appId);
+      if (!game) return callOriginal as unknown as boolean;
+
+      return (achievements.getSummary(game.app_name)?.total ?? 0) > 0;
+    }),
+
+    // Never fetches, as this runs per game on every library render
+    replacePatch(cache, "GetAchievementProgress", ([appId]: [number]) => {
+      const game = library.getByAppId(appId);
+      if (!game) return callOriginal as unknown as number;
+
+      const summary = achievements.getSummary(game.app_name);
+      return summary?.total ? Math.round((summary.unlocked / summary.total) * 100) : 0;
+    }),
+  ];
+
+  return () => patches.forEach((patch) => patch.unpatch());
 }

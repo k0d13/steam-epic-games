@@ -1,13 +1,10 @@
 import { callOriginal, replacePatch } from "millennium";
-import * as achievements from "../../state/achievements";
+import * as achievements from "../../state/game/achievements";
 import * as library from "../../state/library";
 import { listFor } from "./achievements";
 
-// Steam's details page drops the activity section for a shortcut, which game-info puts
-// back through `ShortcutSections`. The feed is filled from Steam's servers, which know
-// nothing of an Epic game, so backend/patches.lua has the store's fetch ask
-// `EpicActivity` first and we add the unlocks to the feed ourselves, as Steam adds the
-// ones its servers send
+// The feed is filled from Steam's servers, which know nothing of an Epic game, so the
+// store's fetch is taken over and the unlocks added to the feed ourselves
 
 // Steam's EUserNewsType for an unlock
 const ACHIEVEMENT_UNLOCKED = 2;

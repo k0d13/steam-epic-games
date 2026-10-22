@@ -1,18 +1,15 @@
-import { createCache } from "./primitives";
+import { createCache } from "../primitives";
 
 // What the info panel shows rarely changes, so a saved answer is served and the
 // backend is asked once a session
 const cache = createCache<GameInfo>({
   persist: "epic-games:info:v7",
   fetch: (appName, refresh) => backend.GetGameInfo(appName, refresh),
+  clearRemote: () => backend.ClearGameInfo(),
 });
 
 export const subscribe = cache.subscribe;
 export const get = cache.get;
 export const ensure = cache.ensure;
 export const fill = cache.fill;
-
-export async function clear() {
-  await backend.ClearGameInfo();
-  cache.clear();
-}
+export const clear = cache.clear;

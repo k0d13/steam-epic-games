@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { autoSync, syncedCount } from "../services/sync/sync";
-import * as library from "../state/library";
-import { useValue } from "../state/primitives";
-import { progress } from "../state/sync-progress";
+import { autoSync, syncedCount } from "../../services/sync/sync";
+import * as library from "../../state/library";
+import { useValue } from "../../state/primitives";
+import { progress } from "../../state/sync-progress";
 
 export interface LibraryView {
   // Undefined until the first read lands

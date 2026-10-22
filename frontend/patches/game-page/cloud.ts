@@ -2,13 +2,11 @@ import { type AppDetails, callOriginal, findModuleExport, replacePatch } from "m
 import { notify } from "../../services/steam/notifications";
 import { isRunning } from "../../services/steam/playtime";
 import { mainPopup } from "../../services/steam/popups";
-import * as cloud from "../../state/cloud";
+import * as cloud from "../../state/game/cloud";
 import * as library from "../../state/library";
 
-// Epic's cloud saves the way Steam's own work: synced before a launch and after the
-// game exits, with the play bar's Cloud Status, which backend/patches.lua lets a
-// shortcut have, and Steam's conflict and failure dialogs and notifications. Those
-// call SteamClient.Cloud with the appid, which we answer for an Epic game
+// Epic's cloud saves sync before a launch and after exit like Steam's own, with the play
+// bar's Cloud Status (enabled for shortcuts by backend/patches.lua) and Steam's dialogs
 
 // EAppCloudStatus
 const STATUS = {
@@ -137,9 +135,8 @@ function appIdOf(gameId: string) {
 
 const launching = new Set<number>();
 
-// Undefined when a launch is already syncing, as Steam marks the game launched as it
-// asks, so a second click lands here mid-sync. Not held over a dialog, which could
-// close without answering and leave the game unable to start
+// Undefined when a launch is already syncing, as a second click lands here mid-sync;
+// not held over a dialog, which could close unanswered and leave the game unable to start
 async function syncForLaunch(appId: number, appName: string, direction?: cloud.Direction) {
   if (launching.has(appId)) return undefined;
   launching.add(appId);

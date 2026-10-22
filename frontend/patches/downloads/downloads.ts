@@ -1,6 +1,6 @@
 import * as appIds from "../../state/app-ids";
+import * as sizes from "../../state/game/sizes";
 import * as jobs from "../../state/jobs";
-import * as sizes from "../../state/sizes";
 
 // Every section of the downloads page derives from the store's `AllTransfers`, so our
 // jobs are appended there in the native shape; the page only re-reads on dispatch

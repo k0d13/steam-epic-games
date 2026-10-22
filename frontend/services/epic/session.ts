@@ -1,11 +1,9 @@
 import { ChromeDevToolsProtocol as cdp } from "millennium";
 import { poll } from "../../state/primitives";
 
-// Keeps legendary signed in exactly when the Epic store in Steam's browser is;
-// Millennium doesn't inject webview scripts into other sites, so this drives the
-// store's tab over the DevTools protocol instead: signed in, Epic's redirect endpoint
-// answers with an authorization code for legendary's client id, printed as JSON, and
-// the tab is sent there and back for it
+// Keeps legendary signed in exactly when the Epic store in Steam's browser is. Webview
+// scripts aren't injected into other sites, so the store's tab is driven over the DevTools
+// protocol: signed in, it's sent to Epic's redirect endpoint for a code and back
 
 const CLIENT_ID = "34a02cf8f4414e29b15921876da36f9a";
 const REDIRECT_URL = `https://www.epicgames.com/id/api/redirect?clientId=${CLIENT_ID}&responseType=code`;

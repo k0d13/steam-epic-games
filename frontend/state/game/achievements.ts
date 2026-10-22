@@ -1,9 +1,8 @@
-import { getLastPlayed } from "../services/steam/playtime";
-import { createCache } from "./primitives";
+import { getLastPlayed } from "../../services/steam/playtime";
+import { createCache } from "../primitives";
 
-// Answers from memory for Steam's render path; stale ones are served, then refetched
-// behind the render that asked. Not saved, as full lists outgrow the localStorage every
-// plugin shares and the backend keeps them on disk
+// Not saved, as full lists outgrow the localStorage every plugin shares and the backend
+// keeps them on disk
 
 const STALE_AFTER_MS = 10 * 60 * 1000;
 
@@ -31,6 +30,10 @@ function isStale(appName: string, entry: Counts | undefined) {
 const cache = createCache<GameAchievements>({
   fetch: (appName, refresh) => backend.GetAchievements(appName, refresh),
   isStale,
+  async clearRemote() {
+    await backend.ClearAchievements();
+    summaries.clear();
+  },
 });
 
 export const subscribe = cache.subscribe;
@@ -39,19 +42,14 @@ export const ensure = cache.ensure;
 export const refresh = cache.refresh;
 export const forget = cache.invalidate;
 export const fill = cache.fill;
-
-export async function clear() {
-  await backend.ClearAchievements();
-  summaries.clear();
-  cache.clear();
-}
+export const clear = cache.clear;
 
 export function getSummary(appName: string) {
   return cache.get(appName) ?? summaries.get(appName);
 }
 
 export async function loadSummaries() {
-  // Lua sends {} for an empty list; Object.values reads both
+  // Lua sends {} for an empty list
   const cached = Object.values(await backend.GetCachedAchievements());
   if (cached.length === 0) return;
 

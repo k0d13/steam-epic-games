@@ -1,4 +1,4 @@
-import { createSignal } from "./primitives";
+import { createSignal } from "../primitives";
 
 // Play time by app name, from our own record and Epic's, which outlive the shortcuts
 // Steam keeps its own under; the overviews show whichever is larger
@@ -25,7 +25,7 @@ function store(list: Playtime[]) {
 
 // `refresh` asks Epic, which is a round trip, otherwise its last answer is used
 export async function load(refresh = false) {
-  // Lua sends {} for an empty list; Object.values reads both
+  // Lua sends {} for an empty list
   store(Object.values(await backend.GetPlaytime(refresh)));
 }
 

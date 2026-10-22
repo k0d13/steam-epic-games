@@ -1,17 +1,16 @@
 import { type AppDetails, callOriginal, replacePatch } from "millennium";
-import * as cloud from "../../state/cloud";
-import * as info from "../../state/info";
+import * as cloud from "../../state/game/cloud";
+import * as info from "../../state/game/info";
+import * as playtime from "../../state/game/playtime";
+import * as sizes from "../../state/game/sizes";
 import * as jobs from "../../state/jobs";
 import * as library from "../../state/library";
-import * as playtime from "../../state/playtime";
 import * as preferences from "../../state/preferences";
-import * as sizes from "../../state/sizes";
 import { getAchievements } from "../game-page/achievements";
 import { applyCloud, checkCloud } from "../game-page/cloud";
 
-// "Space Required" reads `bHasAnyLocalContent` and `lDiskSpaceRequiredBytes`, which
-// shortcuts get wrong; AppDetailsChanged is a non-writable mobx action, so we patch
-// the callback instead
+// "Space Required" reads `bHasAnyLocalContent` and `lDiskSpaceRequiredBytes`, which shortcuts
+// get wrong; AppDetailsChanged is a non-writable mobx action, so the callback is patched
 
 // An install in progress counts as installed, so the play bar doesn't shift under the
 // cursor as progress appears
