@@ -184,6 +184,7 @@ export function ShortcutSections(overview: AppOverview, sections: string[]) {
     ? [...sections.filter((section) => section !== "nonsteam"), "info"]
     : [...sections];
   if (hasAchievements(game.app_name)) result.push("achievements");
+  if (game.dlcs.length > 0) result.push("dlc");
   result.push("activity");
   return result;
 }

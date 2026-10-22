@@ -82,8 +82,7 @@ function egl.import_skipped(owned, installed)
   for _, game in ipairs(owned) do
     local manifest = manifests[game.app_name]
     if manifest and not installed[game.app_name] then
-      -- --skip-dlcs avoids a prompt with no stdin to answer it, and DLC follows the base game
-      legendary.run({ "-y", "import", "--skip-dlcs", game.app_name, manifest.install_path })
+      legendary.run({ "-y", "import", "--with-dlcs", game.app_name, manifest.install_path })
       table.insert(titles, manifest.title)
     end
   end

@@ -52,21 +52,22 @@ export function register() {
         if (folder.vecApps.some((app) => app.nAppID === appId)) continue;
 
         const size = game.install_size ?? 0;
+        const dlcSize = game.dlcs.reduce((total, dlc) => total + (dlc.install_size ?? 0), 0);
         folder.vecApps.push({
           nAppID: appId,
           strAppName: game.title,
           strSortAs: game.title,
           rtLastPlayed: getLastPlayed(game.app_name),
-          nUsedSize: size,
+          nUsedSize: size + dlcSize,
           nAppSize: size,
-          nDLCSize: 0,
+          nDLCSize: dlcSize,
           nWorkshopSize: 0,
           nStagedSize: 0,
           nShaderSize: 0,
         });
 
         // The drive bar is drawn from the folder's totals, not its rows
-        folder.nUsedSize += size;
+        folder.nUsedSize += size + dlcSize;
         folder.nAppSize += size;
       }
 

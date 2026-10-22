@@ -31,6 +31,14 @@ local CACHE_PATH = paths.DATA .. "/cache/library.json"
 ---@field art_hero string|nil Wide art URL
 ---@field purchased_at integer|nil Unix seconds the account was granted the game
 ---@field cloud_saves boolean Whether Epic keeps the game's saves
+---@field dlcs EpicDlc[] The DLC the account owns for this game
+
+---@class EpicDlc
+---@field app_name string
+---@field title string
+---@field installed boolean
+---@field install_size integer|nil Bytes on disk
+---@field purchased_at integer|nil Unix seconds the account was granted it
 
 ---@class Library
 ---@field games EpicGame[]
@@ -103,10 +111,11 @@ end
 
 ---latest_version stays on the game so this can be redone after an install without the catalog
 ---@param game table An EpicGame missing its installed fields
----@param local_game table|nil From list-installed
+---@param installed_by_name table<string, table> From list-installed
 ---@param latest_version string|nil The catalog's build, game.latest_version if nil
 ---@return EpicGame
-local function apply_installed(game, local_game, latest_version)
+local function apply_installed(game, installed_by_name, latest_version)
+  local local_game = installed_by_name[game.app_name]
   game.installed = local_game ~= nil
   game.install_path = local_game and local_game.install_path or nil
   game.install_size = local_game and local_game.install_size or nil
@@ -118,6 +127,12 @@ local function apply_installed(game, local_game, latest_version)
     and game.latest_version ~= nil
     and game.version ~= nil
     and game.version ~= game.latest_version
+
+  for _, dlc in ipairs(game.dlcs or {}) do
+    local local_dlc = installed_by_name[dlc.app_name]
+    dlc.installed = local_dlc ~= nil
+    dlc.install_size = local_dlc and local_dlc.install_size or nil
+  end
 
   return game
 end
@@ -143,6 +158,26 @@ local function is_game(entry)
   return false
 end
 
+---Legendary lists a game's DLC it owns, and some have no Windows build of their own
+---because the base game includes them
+---@param entry table One element of legendary list
+---@param granted table<string, integer> Grant dates by catalog item
+---@return EpicDlc[]
+local function owned_dlcs(entry, granted)
+  local dlcs = {}
+  for _, dlc in ipairs(entry.dlcs or {}) do
+    if type(windows_asset(dlc).build_version) == "string" then
+      table.insert(dlcs, {
+        app_name = dlc.app_name,
+        title = dlc.app_title or dlc.app_name,
+        installed = false,
+        purchased_at = granted[(dlc.metadata or {}).id or ""],
+      })
+    end
+  end
+  return dlcs
+end
+
 ---Entitlements are keyed by the namespace on the entry for most titles, and on the
 ---Windows asset for the rest
 local function namespace(entry)
@@ -154,10 +189,11 @@ local function namespace(entry)
 end
 
 ---@param entry table One element of legendary list
----@param local_game table|nil The matching element of list-installed
+---@param installed_by_name table<string, table> From list-installed
 ---@param granted table<string, integer> Grant dates by namespace
+---@param granted_items table<string, integer> Grant dates by catalog item
 ---@return EpicGame
-local function merge_game(entry, local_game, granted)
+local function merge_game(entry, installed_by_name, granted, granted_items)
   local metadata = entry.metadata or {}
   local build_version = windows_asset(entry).build_version
 
@@ -170,9 +206,14 @@ local function merge_game(entry, local_game, granted)
     art_hero = pick_art(metadata.keyImages, "hero"),
     purchased_at = granted[namespace(entry) or ""],
     cloud_saves = (((metadata.customAttributes or {}).CloudSaveFolder or {}).value or "") ~= "",
+    dlcs = owned_dlcs(entry, granted_items),
   }
 
-  return apply_installed(game, local_game, type(build_version) == "string" and build_version or nil)
+  return apply_installed(
+    game,
+    installed_by_name,
+    type(build_version) == "string" and build_version or nil
+  )
 end
 
 ---@param force boolean|nil Bypass legendary's own catalog cache
@@ -210,11 +251,12 @@ function library.refresh(force)
   end
 
   local granted = entitlements.get_granted()
+  local granted_items = entitlements.get_granted("catalogItemId")
 
   local merged = {}
   for _, entry in ipairs(owned) do
     if is_game(entry) then
-      table.insert(merged, merge_game(entry, installed_by_name[entry.app_name], granted))
+      table.insert(merged, merge_game(entry, installed_by_name, granted, granted_items))
     end
   end
 
@@ -247,7 +289,7 @@ function library.refresh_installed()
 
   local count = 0
   for _, game in ipairs(games) do
-    apply_installed(game, installed_by_name[game.app_name])
+    apply_installed(game, installed_by_name)
     if game.installed then
       count = count + 1
     end
@@ -258,6 +300,17 @@ function library.refresh_installed()
 
   log.info("Refreshed installs: " .. count .. " on disk")
   return games
+end
+
+---@param app_name string
+---@return EpicGame|nil
+function library.find(app_name)
+  for _, game in ipairs(games) do
+    if game.app_name == app_name then
+      return game
+    end
+  end
+  return nil
 end
 
 ---@ffi

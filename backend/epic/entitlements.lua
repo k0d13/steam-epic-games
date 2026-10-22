@@ -35,21 +35,19 @@ function entitlements.parse_date(value)
   return days * 86400 + tonumber(hour) * 3600 + tonumber(minute) * 60 + tonumber(second)
 end
 
----The earliest grant date per Epic namespace
+---The earliest grant date per Epic namespace, or per catalog item with "catalogItemId"
+---@param key? "namespace"|"catalogItemId"
 ---@return table<string, integer>
-function entitlements.get_granted()
+function entitlements.get_granted(key)
+  key = key or "namespace"
   local entries = cache.read(paths.legendary_config() .. "/entitlements.json", "entitlements")
 
   local granted = {}
   for _, entitlement in ipairs(entries or {}) do
-    local namespace = entitlement.namespace
+    local id = entitlement[key]
     local at = entitlements.parse_date(entitlement.grantDate)
-    if
-      type(namespace) == "string"
-      and at
-      and (not granted[namespace] or at < granted[namespace])
-    then
-      granted[namespace] = at
+    if type(id) == "string" and at and (not granted[id] or at < granted[id]) then
+      granted[id] = at
     end
   end
 
