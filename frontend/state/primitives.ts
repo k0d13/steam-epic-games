@@ -1,8 +1,7 @@
 import { useSyncExternalStore } from "react";
 
-// Steam's render path reads state synchronously and outside React, so state lives
-// in modules built from these: a signal says something changed, a value holds one
-// thing, a cache holds one thing per key, a store keeps things per key across restarts
+// Steam's render path reads state synchronously and outside React, so it lives in modules
+// built from these: a signal, a value, a cache per key, a store kept across restarts
 
 export interface Signal {
   subscribe(listener: () => void): () => void;
@@ -70,14 +69,21 @@ interface CacheOptions<V> {
   isStale?(key: string, value: V | undefined): boolean;
   // localStorage key, versioned like createStore's; saved answers are served at once after a restart
   persist?: string;
+  // Empties the backend's copy, before `clear` forgets ours
+  clearRemote?(): Promise<unknown>;
 }
 
 /**
- * Answers per key from memory, for render paths that can't wait: `get` never
- * fetches, `ensure` starts a fetch if needed and is safe to call every render.
- * Misses are remembered, and a stale answer is served until its replacement arrives.
+ * Answers per key from memory, for render paths that can't wait: `get` never fetches,
+ * `ensure` starts a fetch if needed and is safe to call every render. Misses are
+ * remembered, and a stale answer is served until its replacement arrives.
  */
-export function createCache<V>({ fetch, isStale = () => false, persist }: CacheOptions<V>) {
+export function createCache<V>({
+  fetch,
+  isStale = () => false,
+  persist,
+  clearRemote,
+}: CacheOptions<V>) {
   const signal = createSignal();
   const saved = persist ? createStore<V>(persist) : undefined;
 
@@ -163,7 +169,8 @@ export function createCache<V>({ fetch, isStale = () => false, persist }: CacheO
     },
 
     // Forgets every answer, here and saved, so the next read asks again
-    clear() {
+    async clear() {
+      await clearRemote?.();
       values.clear();
       restored.clear();
       invalidated.clear();
@@ -210,7 +217,7 @@ export function createStore<T>(key: string) {
   return {
     // A copy, since callers iterate it while removing entries
     getAll: () => ({ ...readAll() }),
-    get: (name: string): T | undefined => readAll()[name],
+    get: (name: string) => readAll()[name],
 
     set(name: string, value: T) {
       writeAll({ ...readAll(), [name]: value });

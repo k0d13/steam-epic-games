@@ -1,5 +1,4 @@
 import { ConfirmModal, DialogButton, showModal } from "millennium";
-import { type LibraryView } from "../../hooks/use-library";
 import { mainPopup } from "../../services/steam/popups";
 import { type LoadResult, loadAll } from "../../services/sync/caches";
 import { sync } from "../../services/sync/sync";
@@ -16,6 +15,7 @@ import {
   Meter,
   plural,
 } from "../ui/primitives";
+import { type LibraryView } from "./use-library";
 
 // Roughly, which is close enough to answer "is this stale?"
 function describeAge(refreshedAt: number) {

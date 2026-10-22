@@ -9,10 +9,8 @@ import {
 } from "react";
 import { EPIC_STORE, open } from "../../services/epic/store";
 
-// Splits the Store menu into a Steam Store submenu, holding Steam's own entries, and an
-// Epic Games Store one, whose entries open Epic's store in the main window browser the
-// way Steam's open its own. backend/patches.lua hands us each supernav menu as Steam
-// creates it, through `SupernavMenu`
+// Splits the Store menu into Steam Store and Epic Games Store submenus; backend/patches.lua
+// hands each supernav menu to `SupernavMenu` as Steam creates it
 
 const STEAM_STORE = "https://store.steampowered.com/";
 

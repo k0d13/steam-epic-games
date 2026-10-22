@@ -46,9 +46,8 @@ declare global {
     root_element?: Element;
   }
 
-  // Desktop library's router; Big Picture has none, and it only exists once the main
-  // window has drawn, so read it off `window` since a bare reference throws until then
-  // (`var` is what puts these on `window`'s type)
+  // Desktop library's router, absent in Big Picture and until the main window has drawn,
+  // so read it off `window` (`var` is what puts these on its type)
   // oxlint-disable-next-line no-var
   var MainWindowBrowserManager: { m_lastLocation?: { hash: string } } | undefined;
 

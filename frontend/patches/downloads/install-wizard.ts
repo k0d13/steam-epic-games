@@ -87,7 +87,7 @@ export async function open(appId: number, appName: string, folderName?: string) 
     return;
   }
 
-  const size = await backend.GetGameSize(appName);
+  const size = await backend.GetGameSize(appName, false);
   pending = { appName, folderName, request: createRequest(appId, size?.disk ?? 0, chosen) };
   publish();
 }

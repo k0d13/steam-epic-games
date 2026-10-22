@@ -1,8 +1,7 @@
-import { createSignal } from "./primitives";
+import { createSignal } from "../primitives";
 
-// Each game's cloud saves by app name, as the backend last found them, and what's
-// moving them right now. The backend decides when they conflict; Steam's dialogs,
-// through game-page/cloud, put that to the user
+// Each game's cloud saves as the backend last found them, and what's moving them now;
+// the backend decides when they conflict, and patches/game-page/cloud puts that to the user
 
 export type Direction = "upload" | "download";
 export type Activity = "checking" | Direction;
@@ -36,7 +35,7 @@ function setActivity(appName: string, activity: Activity | undefined) {
 }
 
 export async function load() {
-  // Lua sends {} for an empty list; Object.values reads both
+  // Lua sends {} for an empty list
   for (const entry of Object.values(await backend.GetCloudSaves())) {
     entries.set(entry.app_name, entry);
   }
@@ -83,9 +82,9 @@ function hold(appName: string, work: () => Promise<CloudSaves>) {
   if (held) return held;
 
   const promise = work()
-    .catch((reason: unknown): CloudSaves => {
+    .catch((reason: unknown) => {
       console.warn("Cloud save sync failed", { appName, reason });
-      const failed = {
+      const failed: CloudSaves = {
         app_name: appName,
         status: "failed",
         local_at: null,

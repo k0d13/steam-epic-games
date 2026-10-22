@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { useLibrary } from "../../hooks/use-library";
 import * as account from "../../state/account";
 import { useValue } from "../../state/primitives";
 import { type Message } from "../ui/primitives";
@@ -9,6 +8,7 @@ import { LibraryCard } from "./library-card";
 import { Maintenance } from "./maintenance";
 import { Options } from "./options";
 import { SupportCard } from "./support-card";
+import { useLibrary } from "./use-library";
 
 // One status card, then the options and maintenance; every operation reports on its
 // card's one meter, so nothing shifts as it runs

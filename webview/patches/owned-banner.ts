@@ -114,7 +114,7 @@ export async function markOwned() {
   const library = await backend.GetLibrary(false, false);
 
   const wanted = new Set(keys(title));
-  // Lua sends {} for an empty list; Object.values reads both
+  // Lua sends {} for an empty list
   const owned = Object.values(library.games).find((game) =>
     keys(game.title).some((key) => wanted.has(key)),
   );

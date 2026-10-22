@@ -1,8 +1,8 @@
 import { beforePatch, EDisplayStatus, type SteamAppOverview } from "millennium";
 import { forceFakeLocationChange } from "../../services/steam/popups";
+import * as playtime from "../../state/game/playtime";
 import * as jobs from "../../state/jobs";
 import * as library from "../../state/library";
-import * as playtime from "../../state/playtime";
 import { categoriesFor, releasedAt, storeTagsFor } from "../game-page/game-info";
 
 // Steam's overviews draw the library: tiles, filters, sort and the app page. Every

@@ -1,6 +1,6 @@
+import * as sizes from "./game/sizes";
 import * as library from "./library";
 import { createSignal } from "./primitives";
-import * as sizes from "./sizes";
 
 // The backend can't push, so this polls, but only while a job is running or queued
 
@@ -86,7 +86,7 @@ function announce(jobs: Job[]) {
   return jobs.forEach(ended.emit);
 }
 
-// Lua sends {} for an empty list; Object.values reads both
+// Lua sends {} for an empty list
 async function fetchJobs() {
   return Object.values(await backend.GetJobs());
 }

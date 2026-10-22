@@ -5,10 +5,10 @@ import * as installWizard from "./patches/downloads/install-wizard";
 import * as installs from "./patches/downloads/installs";
 import * as downloadOverview from "./patches/downloads/overview";
 import * as storage from "./patches/downloads/storage";
+import * as achievementPatches from "./patches/game-page/achievements";
 import * as activity from "./patches/game-page/activity";
 import * as cloudSaves from "./patches/game-page/cloud";
 import * as gameInfo from "./patches/game-page/game-info";
-import * as achievementProgress from "./patches/library/achievement-progress";
 import * as appDetails from "./patches/library/app-details";
 import * as overviews from "./patches/library/overviews";
 import * as freeGames from "./services/epic/free-games";
@@ -21,18 +21,17 @@ import { onGameStopped, onSessionEnded } from "./services/steam/playtime";
 import * as shortcuts from "./services/steam/shortcuts";
 import { autoSync } from "./services/sync/sync";
 import * as account from "./state/account";
-import * as achievements from "./state/achievements";
 import * as appIds from "./state/app-ids";
-import * as cloud from "./state/cloud";
-import * as info from "./state/info";
+import * as achievements from "./state/game/achievements";
+import * as cloud from "./state/game/cloud";
+import * as info from "./state/game/info";
+import * as playtime from "./state/game/playtime";
+import * as sizes from "./state/game/sizes";
 import * as jobs from "./state/jobs";
 import * as library from "./state/library";
-import * as playtime from "./state/playtime";
 import * as preferences from "./state/preferences";
-import * as sizes from "./state/sizes";
 
-// Millennium puts these on our PLUGIN_LIST slot, where backend/patches.lua has Steam's
-// own code call them
+// Steam's own code calls these through the patches in backend/patches.lua
 /** @ffi */
 export { ManageSubmenu } from "./patches/library/manage-menu";
 /** @ffi */
@@ -64,7 +63,7 @@ const PATCHES = [
   ["game info", gameInfo.register],
   ["installs", installs.register],
   ["install wizard", installWizard.register],
-  ["achievement progress", achievementProgress.register],
+  ["achievements", achievementPatches.register],
   ["activity", activity.register],
   ["cloud saves", cloudSaves.register],
   ["storage", storage.register],
@@ -105,16 +104,11 @@ function repaint() {
 
 function connect() {
   return [
-    // The store decides who's signed in: signed out, the backend's library is empty,
-    // and signed in as someone, it's theirs to fetch
+    // Signed out the backend's library is empty, so every account change fetches it again
     account.watch((status) => void library.load(status.authenticated).then(autoSync)),
-    // Signs legendary in and out with the store in Steam's browser
     epicSession.start(),
-    // A game bought or claimed there lands in Steam without a manual refresh
     orders.watch(),
-    // Epic's free games change on a fixed weekly schedule
     freeGames.watch(),
-    // Steam notifies a download finishing, and ours do too
     jobs.onEnded((job) => {
       if (job.kind === "verify") return verification.onVerified(job);
       if (job.state !== "done" || !jobs.isDownload(job)) return;
@@ -122,8 +116,7 @@ function connect() {
       if (appId !== undefined) notify("download-completed", appId);
     }),
 
-    // A new build can bring new art, achievements and size; achievements wait for
-    // something to read them, since each is a legendary run
+    // A new build can bring new art, achievements and size
     library.onUpdated((game) => {
       sizes.forget(game.app_name);
       achievements.forget(game.app_name);
@@ -133,26 +126,21 @@ function connect() {
 
     // Running installs repaint every second, as the progress bar reads off the overview
     library.subscribe(repaint),
-    // Not on the repaint, as the storage page only changes when what's installed does
     library.subscribe(storage.refresh),
-    // A shortcut's working directory follows its game being installed or removed
     library.subscribe(() => void shortcuts.align()),
     jobs.subscribe(repaint),
-    // Achievements and info land a round trip to Epic after the page asking for them drew
     achievements.subscribe(repaint),
     info.subscribe(repaint),
     playtime.subscribe(repaint),
-    // Turning game info on or off changes what every overview and page shows
     preferences.subscribe(repaint),
 
-    // A session ending is when an achievement cache is certain to be short
+    // A session ending leaves the achievement cache short
     onGameStopped((appId) => {
       const game = library.getByAppId(appId);
       if (game) void achievements.refresh(game.app_name);
     }),
-    // What the session changed goes to Epic together: its play time, kept by app name so
-    // it survives the shortcut being made again, and its saves. Only for sessions we saw
-    // start, as a game running when we loaded may not have had its saves synced first
+    // Only for sessions we saw start, as a game already running may not have had its saves
+    // synced first. Play time is kept by app name, so it survives the shortcut being remade
     onSessionEnded((appId, startedAt, endedAt) => {
       const game = library.getByAppId(appId);
       if (!game) return;
@@ -162,8 +150,8 @@ function connect() {
   ];
 }
 
-// Not awaited by the plugin: the first backend call can be a legendary download, and
-// awaiting it held up the whole client, themes included
+// Not awaited by the plugin, as the first backend call can be a legendary download
+// that would hold up the whole client, themes included
 async function load() {
   // Cache only, so every shortcut reads as installed until this resolves
   await library.load();
@@ -174,15 +162,12 @@ async function load() {
   // What we and Epic last had, then Epic's latest, which costs a round trip
   void playtime.load().then(() => playtime.load(true));
 
-  // Each game's last sync, for the play bar until the next launch syncs again
   void cloud.load();
 
-  // Lets the library home sort by completion early; last, since it follows up with a
-  // round trip per recently played game
+  // Last, as it follows up with a round trip per recently played game
   void achievements.loadSummaries();
 
-  // A cached library never shows updates, as legendary compares against the catalog it
-  // fetched; costs a round trip, so nothing waits on it
+  // A cached library never shows updates, as legendary compares against the catalog it fetched
   void library.load(true, true).then(autoSync);
 }
 

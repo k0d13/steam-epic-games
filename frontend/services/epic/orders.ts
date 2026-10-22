@@ -6,18 +6,16 @@ import { autoSync } from "../sync/sync";
 import { isEpicTab } from "./session";
 import { isEpicHost } from "./store";
 
-// Orders placed in the Epic tabs session follows are spotted two ways, since neither
-// covers every flow: a checkout page or frame closing, and the request that places the
-// order. A false alarm costs one library refresh
+// Orders are spotted by a checkout frame closing or the request that places one, as
+// neither covers every flow; a false alarm costs one library refresh
 
 // Epic takes a moment to list an order, and an order is several requests
 const AFTER_CHECKOUT_MS = 5_000;
 // A second look for an order Epic hadn't listed by the first
 const RETRY_AFTER_MS = 60_000;
 
-// Under /proxy/api/purchase/: `quick-purchase` adds a free game without checkout and
-// `confirm-order` is checkout's Place Order. Neighbours like `offer-entitlements` are
-// lookups every product page makes, so the path's last part has to match
+// Under /proxy/api/purchase/; neighbours like `offer-entitlements` are lookups every
+// product page makes, so the path's last part has to match
 const ORDER_ENDPOINT = /\/(quick-purchase|confirm-order|place-order)\/?$/i;
 
 // Telemetry fires constantly and orders nothing

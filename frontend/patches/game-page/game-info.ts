@@ -1,20 +1,12 @@
 import { searchURL } from "../../services/epic/store";
-import * as achievements from "../../state/achievements";
-import * as info from "../../state/info";
+import * as achievements from "../../state/game/achievements";
+import * as info from "../../state/game/info";
 import * as library from "../../state/library";
 import * as preferences from "../../state/preferences";
 import { hasAchievements } from "./achievements";
 
-// Steam's details page drops most sections for a shortcut:
-//
-//   e.BIsModOrShortcut() && (s = ["nonsteam", "notes", "screenshots"])
-//
-// backend/patches.lua has that line ask `ShortcutSections`, which swaps the "nonsteam"
-// placeholder for the info panel and puts "achievements" back. The panel and the button
-// that open it are guarded by the same check, so both ask `HasGameInfo` first. Beyond
-// that they're Steam's own: they read the app data store, which we fill the way Steam
-// does from the store's reply, and the overview, which overviews completes. The bar of
-// links under the play bar is empty for a shortcut too, so `ShortcutLinks` fills it
+// backend/patches.lua has Steam's shortcut checks ask `ShortcutSections`, `HasGameInfo`
+// and `ShortcutLinks`; the info panel itself is Steam's, reading data we fill the way it does
 
 interface AppOverview {
   appid: number;
@@ -101,7 +93,7 @@ export function categoriesFor(appName: string) {
 
   const details = isEnabled() ? info.get(appName) : undefined;
   if (details) {
-    // Lua sends {} for an empty list; Object.values reads both
+    // Lua sends {} for an empty list
     for (const tag of Object.values(details.tags)) {
       const category = TAG_CATEGORIES[tag];
       if (category) categories.add(category);
@@ -114,7 +106,7 @@ export function categoriesFor(appName: string) {
 // The store tags the library filters genres by
 export function storeTagsFor(appName: string) {
   if (!isEnabled()) return [];
-  // Lua sends {} for an empty list; Object.values reads both
+  // Lua sends {} for an empty list
   return Object.values(info.get(appName)?.genres ?? []).flatMap((genre) => GENRE_TAGS[genre] ?? []);
 }
 
@@ -199,6 +191,6 @@ export function ShortcutSections(overview: AppOverview, sections: string[]) {
 // The links the backend found for the game, which only has those Epic has, and Support
 export function ShortcutLinks(overview: AppOverview) {
   const game = isEnabled() ? library.getByAppId(overview.appid) : undefined;
-  // Lua sends {} for an empty list; Object.values reads both
+  // Lua sends {} for an empty list
   return game ? [...Object.values(info.get(game.app_name)?.links ?? []), SUPPORT_LINK] : [];
 }

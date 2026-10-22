@@ -1,8 +1,7 @@
 const HIDE_DOWNLOAD_ID = "epic-games-hide-download";
 
-// The header keeps the button in its shadow root, out of a page stylesheet's reach, and
-// can draw after this runs, so the style goes in there once the header turns up; webkit
-// scripts run in an isolated world, where customElements is null, so page changes it is
+// The button sits in the header's shadow root, which can draw after this runs, so the style
+// goes in once it turns up; customElements is null in the isolated world, so watch the page
 export function hideLauncherDownload() {
   function hide() {
     const root = document.querySelector("egs-navigation")?.shadowRoot;

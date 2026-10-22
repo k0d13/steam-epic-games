@@ -1,7 +1,5 @@
-// Steam's Field rows each draw as their own padded card, with toggles inset differently
-// from buttons, which reads as ragged in a panel this narrow; so the panel lays itself
-// out and keeps Steam's own buttons and toggles for the controls. Colours are Steam's
-// own variables, so they follow its theme
+// Steam's Field rows draw as padded cards, ragged in a panel this narrow, so the panel
+// lays itself out and keeps only Steam's buttons and toggles; colours are Steam's variables
 export const PANEL_CSS = `
 .epic-panel {
   display: flex;

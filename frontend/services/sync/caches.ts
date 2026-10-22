@@ -1,7 +1,7 @@
-import * as achievements from "../../state/achievements";
-import * as info from "../../state/info";
+import * as achievements from "../../state/game/achievements";
+import * as info from "../../state/game/info";
+import * as sizes from "../../state/game/sizes";
 import * as preferences from "../../state/preferences";
-import * as sizes from "../../state/sizes";
 import { begin, errorMessage, finish, step } from "./operation";
 
 export interface LoadResult {
@@ -16,10 +16,9 @@ function isRead(appName: string, withInfo: boolean) {
   return achievements.getSummary(appName) !== undefined && (!withInfo || info.get(appName));
 }
 
-// The library's filters and collections only know the games whose details have been read,
-// which happens as a page is opened; this reads the rest. The backend answers one call at
-// a time, so it goes game by game, and only the games still missing something count
-export async function loadAll(games: EpicGame[]): Promise<LoadResult | undefined> {
+// Reads the details of games not yet opened, so the library's filters and collections
+// know them; one at a time, as the backend answers one call at a time
+export async function loadAll(games: EpicGame[]) {
   const withInfo = preferences.get().gameInfo;
   const missing = games.filter((game) => !isRead(game.app_name, withInfo));
   if (!begin("load", missing.length)) return undefined;
