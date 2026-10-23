@@ -48,6 +48,8 @@ export { AchievementStore } from "./patches/game-page/achievements";
 /** @ffi */
 export { IsEpicApp } from "./patches/game-page/activity";
 /** @ffi */
+export { SteamURL } from "./patches/game-page/dlc";
+/** @ffi */
 export {
   HasGameInfo,
   IsEpicGame,

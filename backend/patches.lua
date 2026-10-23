@@ -3,11 +3,6 @@
 -- Steam update is skipped. `#{{self}}` is our PLUGIN_LIST slot, which holds the
 -- frontend entry's exports. There are no backreferences in a `find`, and a `` in a
 -- `replace` mustn't be followed by a letter or digit, which would read as a longer group name
---
--- Keep every pattern as short as it can be while still unique. Millennium writes all
--- enabled plugins' patches to the webhelper as one message, into a pipe with Windows'
--- default 4 KB buffer, before the webhelper is running to read it; past that the write
--- never returns and Steam hangs at startup without its UI. This file is about 3.9 KB of it
 
 return {
   -- Manage has no Uninstall or Cancel for shortcuts, so library/manage-menu.ts adds them to
@@ -34,6 +29,19 @@ return {
       {
         match = [[^(\{.*?Shortcut\(([\w$]+)\).*?\}\)\})(.*?)(\{[^{]*DLCPage.*)$]],
         replace = [[...(#{{self}}?.InstalledFilesPage?.(\2,\1,\4)??[\1])\3\4]],
+      },
+    },
+  },
+
+  -- "View DLC In Store" and the DLC tab's link build steam://url/StoreDlcPage/<appid>,
+  -- which game-page/dlc.ts answers for an Epic game by opening Epic's page in the client
+  {
+    file = [[sp\.js]],
+    find = [[BuildSteamURL\([\w$]+,\.\.\.[\w$]+\)\{return"steam://url/"]],
+    transforms = {
+      {
+        match = [[BuildSteamURL\(([\w$]+),\.\.\.([\w$]+)\)\{return"steam://url/"]],
+        replace = [[BuildSteamURL(\1,...\2){const epicGames=#{{self}}?.SteamURL?.(\1,\2);if(epicGames)return epicGames;return"steam://url/"]],
       },
     },
   },
