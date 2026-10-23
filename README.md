@@ -30,17 +30,17 @@
 
 ## ✨ Features
 
-| | |
-| :-- | :-- |
-| 📚 **Library** | Every Epic game you own, with full artwork and an Epic badge on the tile |
-| ⬇️ **Downloads** | Install, update, pause and uninstall with progress on the tile and the Downloads page |
-| ▶️ **Launch** | Playtime reported to Epic, "Currently playing" and the Steam overlay |
-| ☁️ **Cloud saves** | Synced before launch and after exit, with Steam's Cloud Status and conflict dialogs |
-| 🏆 **Achievements** | On the game page and Steam's achievements page |
-| 🧩 **DLC** | Installs with its game, and managed from Properties > DLC |
-| 🛠️ **Verify & repair** | Fix corrupted or missing files from Properties > Installed Files |
-| 🛒 **Store** | An Epic Games Store submenu; anything you buy or claim lands in your library |
-| 🔗 **Existing installs** | Games from the Epic launcher show as installed, not as a second download |
+|                          |                                                                                       |
+| :----------------------- | :------------------------------------------------------------------------------------ |
+| 📚 **Library**           | Every Epic game you own, with full artwork and an Epic badge on the tile              |
+| ⬇️ **Downloads**         | Install, update, pause and uninstall with progress on the tile and the Downloads page |
+| ▶️ **Launch**            | Playtime reported to Epic, "Currently playing" and the Steam overlay                  |
+| ☁️ **Cloud saves**       | Synced before launch and after exit, with Steam's Cloud Status and conflict dialogs   |
+| 🏆 **Achievements**      | On the game page and Steam's achievements page                                        |
+| 🧩 **DLC**               | Installs with its game, and managed from Properties > DLC                             |
+| 🛠️ **Verify & repair**   | Fix corrupted or missing files from Properties > Installed Files                      |
+| 🛒 **Store**             | An Epic Games Store submenu; anything you buy or claim lands in your library          |
+| 🔗 **Existing installs** | Games from the Epic launcher show as installed, not as a second download              |
 
 ## 📸 Screenshots
 
