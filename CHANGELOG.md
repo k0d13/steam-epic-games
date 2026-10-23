@@ -1,5 +1,22 @@
 # epic-games
 
+## 0.7.0
+
+### Minor Changes
+
+- 3b1f8b4: Syncs Epic cloud saves around launches, with Steam's Cloud Status,
+  dialogs and notifications. Play time is now always reported alongside
+  them.
+- 8b52d05: Shows the activity feed for every Epic game, not only those with
+  achievements.
+- 2db66d8: Notifies you when Epic's free games change each Thursday at 8:00 AM
+  Pacific, and opens them when clicked.
+- 72e4db6: Adds DLC support through Steam's native DLC section and Properties tab,
+  installing owned DLC with its game and from Epic's own data.
+- b3da35d: Verifies and repairs Epic installs from an Installed Files tab in the
+  game's properties, showing Validating on the tile and bottom bar. The
+  cancel items are dropped from Manage.
+
 ## 0.6.0
 
 ### Minor Changes
