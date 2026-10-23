@@ -1,5 +1,12 @@
 # epic-games
 
+## 0.7.1
+
+### Patch Changes
+
+- a8a7c88: Counts a game's latest achievement unlock as library activity, so games played through
+  Epic sort by when they were last played rather than when they were bought.
+
 ## 0.7.0
 
 ### Minor Changes
