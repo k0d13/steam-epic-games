@@ -4,7 +4,8 @@
 #   2. Push an empty release commit whose message is this version's changelog,
 #      then tag it and create a GitHub release with the .star attached
 #   3. Push an update branch to a fork of SteamClientHomeBrew/PluginDatabase
-#      advancing this plugin's submodule pointer to the new release commit
+#      advancing this plugin's submodule pointer to the new release commit, or
+#      adding the submodule while PluginDatabase doesn't list the plugin yet
 #   4. Leave a commit comment with a prefilled "compare" link so the maintainer
 #      can manually open the upstream PR (rather than us auto-spamming it)
 #
@@ -130,6 +131,7 @@ git checkout -B "$branch" upstream/main
 # being added to PluginDatabase and the .gitmodules URL no longer matches).
 # Otherwise look up by URL — GitHub redirects old URLs for fetch but our
 # grep can't see through the rename.
+adding=false
 if [ -n "${PLUGIN_DB_SUBMODULE_PATH:-}" ]; then
   submodule_path="$PLUGIN_DB_SUBMODULE_PATH"
 else
@@ -143,12 +145,15 @@ else
       | sed 's/\.url$//'
   )
   if [ -z "$submodule_key" ]; then
-    echo "Could not find a submodule in ${fork} pointing at ${GITHUB_REPOSITORY}." >&2
-    echo "If this repo has been renamed since being added to PluginDatabase," >&2
-    echo "set PLUGIN_DB_SUBMODULE_PATH to the submodule's path explicitly." >&2
-    exit 1
+    # Not listed yet, so the branch submits the plugin rather than updating it.
+    # If this repo was renamed after being added, PLUGIN_DB_SUBMODULE_PATH
+    # points at the existing submodule instead.
+    adding=true
+    submodule_path="plugins/${name}"
+    git submodule add "https://github.com/${GITHUB_REPOSITORY}" "$submodule_path"
+  else
+    submodule_path=$(git config -f .gitmodules "${submodule_key}.path")
   fi
-  submodule_path=$(git config -f .gitmodules "${submodule_key}.path")
 fi
 
 git submodule update --init "$submodule_path"
@@ -159,13 +164,20 @@ git submodule update --init "$submodule_path"
 git -C "$submodule_path" fetch origin "$release_sha" --depth=1
 git -C "$submodule_path" checkout --detach "$release_sha"
 
-# Guard against re-runs where the submodule is already at the target commit.
-if git diff --quiet -- "$submodule_path"; then
+if [ "$adding" = true ]; then
+  pr_title="Add \`${name}\` ${tag}"
+else
+  pr_title="Update \`${name}\` to ${tag}"
+fi
+
+# Guard against re-runs where the submodule is already at the target commit. A
+# new submodule is staged rather than modified, so it always needs its commit.
+if [ "$adding" = false ] && git diff --quiet -- "$submodule_path"; then
   echo "Submodule ${submodule_path} already at latest, no commit needed."
 else
   git -c user.name="github-actions[bot]" \
       -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
-      commit -am "Update \`${name}\` to ${tag}"
+      commit -am "$pr_title"
 fi
 
 git push -f "https://x-access-token:${PLUGIN_DB_TOKEN}@github.com/${fork}.git" "$branch"
@@ -184,7 +196,6 @@ sed \
   -e "s|REPLACE_WITH_UPDATE_SUMMARY|See full release notes: ${release_url}|g" \
   .github/plugin-db-pr-template.md > "$pr_body"
 
-pr_title="Update \`${name}\` to ${tag}"
 encoded_title=$(jq -nr --arg s "$pr_title" '$s|@uri')
 compare_url="https://github.com/${upstream}/compare/main...${fork_owner}:${branch}?quick_pull=1&title=${encoded_title}"
 
