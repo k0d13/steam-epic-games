@@ -1,4 +1,4 @@
-import { type AppDetails, callOriginal, replacePatch } from "millennium";
+import type { AppDetails } from "millennium";
 import * as cloud from "../../state/game/cloud";
 import * as info from "../../state/game/info";
 import * as playtime from "../../state/game/playtime";
@@ -11,7 +11,8 @@ import { applyCloud, checkCloud } from "../game-page/cloud";
 import { applyDlc } from "../game-page/dlc";
 
 // "Space Required" reads `bHasAnyLocalContent` and `lDiskSpaceRequiredBytes`, which shortcuts
-// get wrong; AppDetailsChanged is a non-writable mobx action, so the callback is patched
+// get wrong; backend/patches.lua has the store's AppDetailsChanged, a non-writable mobx
+// action, call `AppDetailsChanged` first
 
 // An install in progress counts as installed, so the play bar doesn't shift under the
 // cursor as progress appears
@@ -49,44 +50,20 @@ function apply(details: AppDetails) {
   else sizes.ensure(game.app_name);
 }
 
-let unpatched = false;
-
-// Every patched read starts a size and achievements fetch, each a legendary run, which
-// a scan of every shortcut would queue hundreds of ahead of everything else
-export function registerUnpatched(
-  ...args: Parameters<typeof SteamClient.Apps.RegisterForAppDetails>
-) {
-  unpatched = true;
-  try {
-    return SteamClient.Apps.RegisterForAppDetails(...args);
-  } finally {
-    unpatched = false;
-  }
+// Only the store's registrations come through here, so a scan of every shortcut that
+// registers with SteamClient itself doesn't start a size and achievements fetch, each a
+// legendary run, for hundreds of games
+export function AppDetailsChanged(details: AppDetails) {
+  checkCloud(details.unAppID);
+  apply(details);
 }
 
 export function register() {
-  // replacePatch, so our wrapper can replace the callback argument
-  const patch = replacePatch(SteamClient.Apps, "RegisterForAppDetails", (args) => {
-    const [appId, callback] = args;
-    if (!unpatched) {
-      checkCloud(appId);
-      args[1] = (details) => {
-        apply(details);
-        callback(details);
-      };
-    }
-
-    return callOriginal as never;
-  });
-
   // A size arriving is asynchronous and has no other way back into the UI, nor has a
   // sync moving on
   const unsubscribes = [sizes.subscribe(refreshAll), cloud.subscribe(refreshAll)];
 
-  return () => {
-    patch.unpatch();
-    unsubscribes.forEach((unsubscribe) => unsubscribe());
-  };
+  return () => unsubscribes.forEach((unsubscribe) => unsubscribe());
 }
 
 // What we last sent for an app, so an unchanged pass costs no re-render

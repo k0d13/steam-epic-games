@@ -46,6 +46,19 @@ return {
     },
   },
 
+  -- Every app's details reach the app data store through AppDetailsChanged, so
+  -- library/app-details.ts fixes an Epic game's before they're stored and listeners see them
+  {
+    file = [[sp\.js]],
+    find = [[AppDetailsChanged\([\w$]+\)\{this\.m_mapAppData\.has\(]],
+    transforms = {
+      {
+        match = [[AppDetailsChanged\(([\w$]+)\)\{]],
+        replace = [[AppDetailsChanged(\1){#{{self}}?.AppDetailsChanged?.(\1);]],
+      },
+    },
+  },
+
   -- The supernav menus, which store/menu.ts splits into Steam and Epic submenus when
   -- it's Store's. Steam's renderer for supernav entries is a sibling of the menu class, so
   -- it's named where the class's method can reach it, under a name no minified local shadows

@@ -1,4 +1,3 @@
-import { registerUnpatched } from "../../patches/library/app-details";
 import * as appIds from "../../state/app-ids";
 import * as library from "../../state/library";
 import * as artwork from "./artwork";
@@ -35,7 +34,7 @@ function readOurs(appId: number) {
 
     const timer = setTimeout(() => finish(undefined), DETAILS_TIMEOUT_MS);
 
-    registration = registerUnpatched(appId, (details) => {
+    registration = SteamClient.Apps.RegisterForAppDetails(appId, (details) => {
       const exe = (details.strShortcutExe ?? "").replace(/"/g, "").trim();
       const args = details.strShortcutLaunchOptions || details.strLaunchOptions || "";
       finish(LEGENDARY_EXE.test(exe) ? LAUNCH_ARGUMENTS.exec(args)?.[1] : undefined);

@@ -50,6 +50,8 @@ export { IsEpicApp } from "./patches/game-page/activity";
 /** @ffi */
 export { SteamURL } from "./patches/game-page/dlc";
 /** @ffi */
+export { AppDetailsChanged } from "./patches/library/app-details";
+/** @ffi */
 export {
   HasGameInfo,
   IsEpicGame,
