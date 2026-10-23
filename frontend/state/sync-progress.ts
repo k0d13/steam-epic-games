@@ -8,7 +8,7 @@ export interface SyncResult {
   error?: string;
 }
 
-interface SyncState {
+export interface SyncState {
   active: boolean;
   // A clean up and a load share the flag, so none starts while another runs
   operation?: "sync" | "cleanUp" | "load";

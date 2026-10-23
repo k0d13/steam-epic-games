@@ -4,7 +4,7 @@ import { type LoadResult, loadAll } from "../../services/sync/caches";
 import { sync } from "../../services/sync/sync";
 import * as preferences from "../../state/preferences";
 import { useValue } from "../../state/primitives";
-import { type SyncResult, progress } from "../../state/sync-progress";
+import { type SyncResult, type SyncState, progress } from "../../state/sync-progress";
 import {
   Actions,
   Busy,
@@ -69,6 +69,54 @@ function describeAction(syncing: boolean, synced: number, total: number) {
   return "Sync now";
 }
 
+function describeMeter(state: SyncState, synced: number, total: number) {
+  if (state.active && state.operation === "sync") {
+    const label = state.total ? "Adding to Steam" : "Checking your Steam library…";
+    return { label, done: state.done, total: state.total };
+  }
+  if (state.active && state.operation === "load") {
+    return { label: "Scanning games", done: state.done, total: state.total };
+  }
+  if (total === 0) return undefined;
+
+  return {
+    label: synced === 0 ? "Not in Steam yet" : "In your Steam library",
+    done: synced,
+    total,
+  };
+}
+
+function describeScan(withInfo: boolean) {
+  return (
+    `Reads ${withInfo ? "info and achievements" : "achievements"} from Epic` +
+    `${withInfo ? " and egdata" : ""} for the games that don't have them yet, so the ` +
+    "library's filters and collections know about every game. One game at a time, so " +
+    "it can take a long while, but you can keep using Steam meanwhile, and a game " +
+    "scanned already is skipped" +
+    (withInfo ? "." : ". Turn on Show game info first to read the rest too.")
+  );
+}
+
+function describeLast(state: SyncState) {
+  return state.active || !state.lastResult ? undefined : describeResult(state.lastResult);
+}
+
+function confirmLoad(games: EpicGame[], setMessage: (message: Message | undefined) => void) {
+  showModal(
+    <ConfirmModal
+      strTitle="Scan every game?"
+      strDescription={describeScan(preferences.get().gameInfo)}
+      strOKButtonText="Scan"
+      onOK={() => {
+        setMessage(undefined);
+        void loadAll(games).then((result) => result && setMessage(describeLoad(result)));
+      }}
+    />,
+    // Explicit because showModal's default, findSP(), throws on this build
+    mainPopup()?.window,
+  );
+}
+
 export function LibraryCard({
   name,
   view,
@@ -90,43 +138,15 @@ export function LibraryCard({
   const total = games?.length ?? 0;
   const busy = loading || state.active;
   const action = describeAction(syncing, synced, total);
+  const meter = describeMeter(state, synced, total);
 
-  const shown = error
-    ? { text: error, error: true }
-    : (message ??
-      (state.active || !state.lastResult ? undefined : describeResult(state.lastResult)));
+  const shown = error ? { text: error, error: true } : (message ?? describeLast(state));
 
   function onSync() {
     if (!games) return;
     setMessage(undefined);
     // The service owns progress and result so they survive the dialog closing
     void sync(games);
-  }
-
-  function confirmLoad() {
-    if (!games) return;
-    const withInfo = preferences.get().gameInfo;
-
-    showModal(
-      <ConfirmModal
-        strTitle="Scan every game?"
-        strDescription={
-          `Reads ${withInfo ? "info and achievements" : "achievements"} from Epic` +
-          `${withInfo ? " and egdata" : ""} for the games that don't have them yet, so the ` +
-          "library's filters and collections know about every game. One game at a time, so " +
-          "it can take a long while, but you can keep using Steam meanwhile, and a game " +
-          "scanned already is skipped" +
-          (withInfo ? "." : ". Turn on Show game info first to read the rest too.")
-        }
-        strOKButtonText="Scan"
-        onOK={() => {
-          setMessage(undefined);
-          void loadAll(games).then((result) => result && setMessage(describeLoad(result)));
-        }}
-      />,
-      // Explicit because showModal's default, findSP(), throws on this build
-      mainPopup()?.window,
-    );
   }
 
   return (
@@ -136,23 +156,7 @@ export function LibraryCard({
         title={name}
         subtitle={describeLibrary(games, refreshedAt)}
       />
-      {syncing ? (
-        <Meter
-          label={state.total ? "Adding to Steam" : "Checking your Steam library…"}
-          done={state.done}
-          total={state.total}
-        />
-      ) : scanning ? (
-        <Meter label="Scanning games" done={state.done} total={state.total} />
-      ) : (
-        total > 0 && (
-          <Meter
-            label={synced === 0 ? "Not in Steam yet" : "In your Steam library"}
-            done={synced}
-            total={total}
-          />
-        )
-      )}
+      {meter && <Meter {...meter} />}
       <MessageLine message={shown} />
       <Actions>
         <DialogButton className="epic-wide" disabled={busy || total === 0} onClick={onSync}>
@@ -161,7 +165,10 @@ export function LibraryCard({
         <DialogButton disabled={busy} onClick={refresh}>
           {loading ? <Busy>Checking</Busy> : "Refresh"}
         </DialogButton>
-        <DialogButton disabled={busy || total === 0} onClick={confirmLoad}>
+        <DialogButton
+          disabled={busy || total === 0}
+          onClick={() => games && confirmLoad(games, setMessage)}
+        >
           {scanning ? <Busy>Scanning</Busy> : "Scan games"}
         </DialogButton>
       </Actions>

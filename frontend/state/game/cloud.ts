@@ -4,7 +4,7 @@ import { createSignal } from "../primitives";
 // the backend decides when they conflict, and patches/game-page/cloud puts that to the user
 
 export type Direction = "upload" | "download";
-export type Activity = "checking" | Direction;
+type Activity = "checking" | Direction;
 
 const signal = createSignal();
 const entries = new Map<string, CloudSaves>();

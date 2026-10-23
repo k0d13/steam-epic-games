@@ -1,0 +1,20 @@
+colors: false
+output:
+  - failure
+
+pre-commit:
+  commands:
+    lint:
+      glob: "*.{js,mjs,cjs,jsx,ts,mts,cts,tsx}"
+      run: pnpm exec oxlint {staged_files}
+    format:
+      glob: "*.{js,mjs,cjs,jsx,ts,mts,cts,tsx,json,jsonc,json5,yaml,yml,toml,md}"
+      run: pnpm exec oxfmt --no-error-on-unmatched-pattern {staged_files}
+      stage_fixed: true
+    format-lua:
+      glob: "*.lua"
+      run: stylua {staged_files}
+      stage_fixed: true
+    react:
+      glob: "*.{js,jsx,ts,tsx}"
+      run: pnpm exec react-doctor --staged --no-score

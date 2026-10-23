@@ -1,8 +1,5 @@
 export const EPIC_STORE = "https://store.epicgames.com";
 
-// Where epic/session picks the account up from
-export const SIGN_IN_URL = `https://www.epicgames.com/id/login?redirectUrl=${encodeURIComponent(`${EPIC_STORE}/`)}`;
-
 export function searchURL(query: string) {
   return `${EPIC_STORE}/browse?q=${encodeURIComponent(query)}`;
 }

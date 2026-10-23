@@ -129,6 +129,18 @@ function parseUrl(url: string) {
   }
 }
 
+async function visit(targetId: string, url: URL) {
+  try {
+    const tab = await attach(targetId);
+    if (isRedirect(url)) await capture(tab);
+    else await follow(tab, url.href);
+  } catch (e) {
+    // A session dies with its page; attach afresh next time
+    console.warn("Couldn't follow an Epic tab", url.href, e);
+    tabs.delete(targetId);
+  }
+}
+
 let busy = false;
 
 async function scan() {
@@ -138,22 +150,17 @@ async function scan() {
   try {
     const { targetInfos } = await cdp.send("Target.getTargets");
     const live = new Set<string>();
+    const visits: Promise<void>[] = [];
 
     for (const target of targetInfos) {
       const url = target.type === "page" ? parseUrl(target.url) : undefined;
       if (!url || !(isStore(url) || isRedirect(url))) continue;
 
       live.add(target.targetId);
-      try {
-        const tab = await attach(target.targetId);
-        if (isRedirect(url)) await capture(tab);
-        else await follow(tab, target.url);
-      } catch (e) {
-        // A session dies with its page; attach afresh next time
-        console.warn("Couldn't follow an Epic tab", target.url, e);
-        tabs.delete(target.targetId);
-      }
+      visits.push(visit(target.targetId, url));
     }
+
+    await Promise.all(visits);
 
     for (const targetId of tabs.keys()) if (!live.has(targetId)) tabs.delete(targetId);
   } catch (e) {

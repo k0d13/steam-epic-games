@@ -207,7 +207,7 @@ export function resume(appName: string) {
 
 export async function pauseAll() {
   // The queue too, or the backend starts the next job straight away
-  for (const job of [...running(), ...queued()]) await backend.PauseJob(job.app_name);
+  await Promise.all([...running(), ...queued()].map((job) => backend.PauseJob(job.app_name)));
   await refresh();
 }
 

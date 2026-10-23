@@ -3,14 +3,18 @@
   "version": "0.7.0",
   "license": "CC-BY-NC-ND-4.0",
   "scripts": {
-    "prepare": "starlight lsp && oxfmt package.json .luarc.json tsconfig.json webview/tsconfig.json"
+    "prepare": "starlight lsp && lefthook install && oxfmt package.json .luarc.json tsconfig.json webview/tsconfig.json"
   },
   "devDependencies": {
     "@changesets/cli": "^3.0.1",
     "@steambrew/starlight": "1.1.6",
     "@types/react": "19.1.1",
+    "knip": "^6.42.1",
+    "lefthook": "^2.2.2",
     "oxfmt": "^0.65.0",
     "oxlint": "^1.80.0",
+    "react": "19.1.1",
+    "react-doctor": "^0.9.18",
     "typescript": "^5.9.3"
   },
   "packageManager": "pnpm@10.32.1"

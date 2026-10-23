@@ -1,0 +1,7 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": ["frontend/index.tsx", "webview/index.ts"],
+  "project": ["frontend/**/*.{ts,tsx}", "webview/**/*.ts"],
+  "ignoreDependencies": ["@changesets/cli"],
+  "ignoreIssues": { "frontend/state/account.ts": ["exports"] }
+}

@@ -15,14 +15,17 @@ run = [
   "lua-language-server --check backend --checklevel Warning --configpath .luarc.json --logpath .ignore/luals",
 ]
 [tasks."check:lint"]
-description = "Lint the frontend with oxlint and the backend with selene"
-run = ["oxlint", "selene backend"]
+description = "Lint the frontend with oxlint, find unused code with knip and lint the backend with selene"
+run = ["oxlint", "knip", "selene backend"]
+[tasks."check:react"]
+description = "Check the panel's React with react-doctor"
+run = "react-doctor --verbose -y --no-score"
 [tasks."check:format"]
 description = "Report formatting everywhere without writing"
 run = ["oxfmt --check", "stylua --check backend"]
 [tasks.check]
 description = "Run every check"
-depends = ["check:types", "check:lint", "check:format"]
+depends = ["check:types", "check:lint", "check:react", "check:format"]
 
 [tasks."fix:lint"]
 description = "Apply oxlint fixes to the frontend"

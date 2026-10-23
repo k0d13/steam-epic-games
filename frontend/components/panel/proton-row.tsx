@@ -20,7 +20,7 @@ export function ProtonRow({
         console.warn("GetProton failed", reason);
         setMessage({ text: "Couldn't read the Proton builds.", error: true });
       });
-  }, []);
+  }, [setMessage]);
 
   if (!choice?.supported) return null;
 

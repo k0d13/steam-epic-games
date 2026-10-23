@@ -61,6 +61,8 @@ export async function loadSummaries() {
 
 async function refreshPlayed() {
   for (const appName of summaries.keys()) {
+    // One at a time: the backend runs legendary in-process, so a batch would hold up every other call
+    // react-doctor-disable-next-line react-doctor/async-await-in-loop
     if (isStale(appName, getSummary(appName))) await refresh(appName);
   }
 }

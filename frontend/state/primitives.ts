@@ -3,7 +3,7 @@ import { useSyncExternalStore } from "react";
 // Steam's render path reads state synchronously and outside React, so it lives in modules
 // built from these: a signal, a value, a cache per key, a store kept across restarts
 
-export interface Signal {
+interface Signal {
   subscribe(listener: () => void): () => void;
 }
 

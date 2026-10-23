@@ -62,5 +62,8 @@ jobs:
       - name: Lint the frontend and backend
         run: mise run check:lint
 
+      - name: Check React
+        run: mise run check:react
+
       - name: Check formatting
         run: mise run check:format

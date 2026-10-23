@@ -12,6 +12,7 @@ on:
       - "millennium.toml"
       - "tsconfig.json"
       - ".oxfmtrc.json"
+      - "knip.json"
       - "frontend/**"
       - "webview/**"
       - "backend/**"
