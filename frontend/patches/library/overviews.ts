@@ -1,5 +1,6 @@
 import { beforePatch, EDisplayStatus, type SteamAppOverview } from "millennium";
 import { forceFakeLocationChange } from "../../services/steam/popups";
+import * as achievements from "../../state/game/achievements";
 import * as playtime from "../../state/game/playtime";
 import * as jobs from "../../state/jobs";
 import * as library from "../../state/library";
@@ -124,12 +125,14 @@ function apply(overview: SteamAppOverview) {
   }
 
   // Shortcuts have no purchase date, so every Epic game would land in "No recorded
-  // activity"; as for Steam's own apps, it's the later of last play and the grant
+  // activity"; as for Steam's own apps, it's the later of last play and the grant. Epic
+  // doesn't always know when a game was last played, so its last unlock counts too
   if (game.purchased_at) {
     app.rt_purchased_time = game.purchased_at;
     app.rt_recent_activity_time = Math.max(
       app.rt_last_time_played ?? 0,
       app.rt_recent_activity_time ?? 0,
+      achievements.getSummary(game.app_name)?.last_unlocked_at ?? 0,
       game.purchased_at,
     );
   }

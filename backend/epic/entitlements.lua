@@ -6,8 +6,9 @@ local paths = require("core.paths")
 
 local entitlements = {}
 
----Unix seconds from one of Epic's UTC dates like "2020-12-09T14:25:48.859Z", not through
----os.time which reads a date table as local time
+---Unix seconds from one of Epic's UTC dates like "2020-12-09T14:25:48.859Z", or with a
+---space for the T as achievements have, not through os.time which reads a date table as
+---local time
 ---@param value string|nil
 ---@return integer|nil seconds
 function entitlements.parse_date(value)
@@ -15,7 +16,8 @@ function entitlements.parse_date(value)
     return nil
   end
 
-  local year, month, day, hour, minute, second = value:match("^(%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)")
+  local year, month, day, hour, minute, second =
+    value:match("^(%d+)-(%d+)-(%d+)[T ](%d+):(%d+):(%d+)")
   if not year then
     return nil
   end

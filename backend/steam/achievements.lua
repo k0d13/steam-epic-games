@@ -1,6 +1,7 @@
 --# selene: allow(unused_variable)
 local cache = require("core.cache")
 local datetime = require("datetime")
+local entitlements = require("epic.entitlements")
 local legendary = require("epic.legendary")
 local log = require("core.log")
 local paths = require("core.paths")
@@ -22,6 +23,7 @@ local paths = require("core.paths")
 ---@field total integer
 ---@field unlocked integer
 ---@field fetched_at integer Unix seconds
+---@field last_unlocked_at integer|nil Unix seconds
 ---@field achievements Achievement[]
 
 ---@class AchievementSummary
@@ -29,6 +31,7 @@ local paths = require("core.paths")
 ---@field total integer
 ---@field unlocked integer
 ---@field fetched_at integer Unix seconds
+---@field last_unlocked_at integer|nil Unix seconds, for the library's recent activity
 
 local store = cache.open(paths.DATA .. "/cache/achievements.json", "achievements")
 
@@ -54,6 +57,19 @@ local function collect(entries, out)
   end
 end
 
+---@param achievements Achievement[]|nil
+---@return integer|nil
+local function last_unlocked(achievements)
+  local last
+  for _, achievement in ipairs(achievements or {}) do
+    local at = entitlements.parse_date(achievement.unlocked_at)
+    if at and (not last or at > last) then
+      last = at
+    end
+  end
+  return last
+end
+
 ---@param decoded table A `legendary achievements --json` document
 ---@return GameAchievements
 local function build(decoded)
@@ -68,6 +84,7 @@ local function build(decoded)
     total = decoded.total_achievements or #list,
     unlocked = decoded.user_unlocked or 0,
     fetched_at = datetime.unix(),
+    last_unlocked_at = last_unlocked(list),
     achievements = list,
   }
 end
@@ -124,6 +141,8 @@ function GetCachedAchievements()
       total = entry.total,
       unlocked = entry.unlocked,
       fetched_at = entry.fetched_at,
+      -- From the list, as entries cached before this field have none
+      last_unlocked_at = last_unlocked(entry.achievements),
     })
   end
 
