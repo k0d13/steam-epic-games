@@ -3,7 +3,9 @@ local fs = require("fs")
 local legendary = require("epic.legendary")
 local log = require("core.log")
 local millennium = require("millennium")
+local paths = require("core.paths")
 local shell = require("core.shell")
+local utils = require("utils")
 
 -- What the frontend can't do for a shortcut itself: it hands Steam the artwork bytes,
 -- as Lua here can't fetch or decode base64, and this tidies the grid folder afterwards
@@ -12,9 +14,16 @@ local shell = require("core.shell")
 ---@field exe string
 ---@field arguments string
 
+---Where Windows keeps conhost, which can run a console program without a window
+local function conhost()
+  local root = utils.getenv("SystemRoot")
+  return shell.native_path((root ~= "" and root or "C:/Windows") .. "/System32/conhost.exe")
+end
+
 ---@ffi
 ---Runs legendary, which waits on the game so playtime works, survives Epic moving the
----exe, and works before the game is installed
+---exe, and works before the game is installed. On Windows it goes through a headless
+---conhost, as Steam would otherwise open legendary's console window
 ---@param app_name string
 ---@return LaunchCommand|nil
 function GetLaunchCommand(app_name)
@@ -23,11 +32,17 @@ function GetLaunchCommand(app_name)
     return nil
   end
 
+  local launch = 'launch "' .. app_name .. '"'
+
   -- Steam shows the path as given, so it gets one style of separator
-  return {
-    exe = shell.native_path(binary),
-    arguments = 'launch "' .. app_name .. '"',
-  }
+  if paths.IS_WINDOWS then
+    return {
+      exe = conhost(),
+      arguments = '--headless "' .. shell.native_path(binary) .. '" ' .. launch,
+    }
+  end
+
+  return { exe = binary, arguments = launch }
 end
 
 ---The userdata folder is named by the 32-bit account id, and without one the only

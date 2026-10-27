@@ -11,9 +11,10 @@ export function steamShortcuts() {
 
 // The appid map in localStorage can be lost, which would add every game again, so
 // shortcuts are also recognised by running legendary with `launch "<app name>"`, then
-// whatever the General page added for the game
-const LEGENDARY_EXE = /(^|[\\/])legendary(\.exe)?$/i;
-const LAUNCH_ARGUMENTS = /^\s*launch\s+"([^"]+)"(?=\s|$) ?(.*)$/s;
+// whatever the General page added for the game. On Windows conhost runs it, headless
+// so Steam opens no console window, and the path to legendary comes before `launch`
+const LAUNCHER_EXE = /(^|[\\/])(legendary|conhost)(\.exe)?$/i;
+const LAUNCH_ARGUMENTS = /^\s*(?:--headless\s+"[^"]*"\s+)?launch\s+"([^"]+)"(?=\s|$) ?(.*)$/s;
 
 // What follows the app name and its space, untrimmed, as Steam's field compares it with
 // what was typed, or options that aren't ours as they are
@@ -26,28 +27,36 @@ export function extraArguments(options: string) {
 const DETAILS_TIMEOUT_MS = 3000;
 const SCAN_BATCH_SIZE = 25;
 
-function readOurs(appId: number) {
-  return new Promise<string | undefined>((resolve) => {
+function readShortcut(appId: number) {
+  return new Promise<{ exe: string; args: string } | undefined>((resolve) => {
     let registration: { unregister(): void } | undefined;
     let settled = false;
 
-    const finish = (appName: string | undefined) => {
+    const finish = (shortcut: { exe: string; args: string } | undefined) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
       // The callback can fire before Register returns, so this may still be unset
       queueMicrotask(() => registration?.unregister());
-      resolve(appName);
+      resolve(shortcut);
     };
 
     const timer = setTimeout(() => finish(undefined), DETAILS_TIMEOUT_MS);
 
     registration = SteamClient.Apps.RegisterForAppDetails(appId, (details) => {
-      const exe = (details.strShortcutExe ?? "").replace(/"/g, "").trim();
-      const args = details.strShortcutLaunchOptions || details.strLaunchOptions || "";
-      finish(LEGENDARY_EXE.test(exe) ? LAUNCH_ARGUMENTS.exec(args)?.[1] : undefined);
+      finish({
+        exe: (details.strShortcutExe ?? "").replace(/"/g, "").trim(),
+        args: details.strShortcutLaunchOptions || details.strLaunchOptions || "",
+      });
     });
   });
+}
+
+async function readOurs(appId: number) {
+  const shortcut = await readShortcut(appId);
+  return shortcut && LAUNCHER_EXE.test(shortcut.exe)
+    ? LAUNCH_ARGUMENTS.exec(shortcut.args)?.[1]
+    : undefined;
 }
 
 export async function findOurs() {
@@ -78,27 +87,42 @@ function startDir(game: EpicGame | undefined) {
   return (game?.installed && game.install_path) || "";
 }
 
-// legendary's command, the same for every game but its arguments
-let launcher: Promise<LaunchCommand | undefined> | undefined;
+// Moves a shortcut made by an older version onto the current command, keeping what the
+// user added after the app name
+async function alignLaunch(appId: number) {
+  const game = library.getByAppId(appId);
+  const launch = game && (await backend.GetLaunchCommand(game.app_name).catch(() => undefined));
+  const shortcut = launch ? await readShortcut(appId) : undefined;
+
+  if (!launch || !shortcut) {
+    alignedExes.delete(appId);
+    return;
+  }
+
+  const extra = extraArguments(shortcut.args);
+  const options = extra ? `${launch.arguments} ${extra}` : launch.arguments;
+
+  // Left alone when current, as every write has Steam save its shortcuts again
+  if (shortcut.exe !== launch.exe) {
+    // Quoted the way Steam stores it, or a space in the path splits it
+    SteamClient.Apps.SetShortcutExe(appId, `"${launch.exe}"`);
+  }
+  if (shortcut.args !== options) {
+    SteamClient.Apps.SetShortcutLaunchOptions(appId, options);
+  }
+  // A compatibility tool would run legendary under Wine, where the game silently
+  // never starts; legendary starts Proton itself where a game needs it
+  SteamClient.Apps.SpecifyCompatTool(appId, "");
+}
 
 export async function align() {
-  // Any name will do, only the arguments differ
-  launcher ??= backend
-    .GetLaunchCommand("")
-    .then((launch) => launch ?? undefined)
-    .catch(() => undefined);
-
-  const launch = await launcher;
-  if (!launch) return;
+  const pending: number[] = [];
 
   for (const appId of library.appIdsWithGames()) {
     if (!alignedExes.has(appId)) {
-      // Quoted the way Steam stores it, or a space in the path splits it
-      SteamClient.Apps.SetShortcutExe(appId, `"${launch.exe}"`);
-      // A compatibility tool would run legendary under Wine, where the game silently
-      // never starts; legendary starts Proton itself where a game needs it
-      SteamClient.Apps.SpecifyCompatTool(appId, "");
+      // Marked now, so a second align while this one waits doesn't repeat it
       alignedExes.add(appId);
+      pending.push(appId);
     }
 
     const dir = startDir(library.getByAppId(appId));
@@ -107,6 +131,8 @@ export async function align() {
     SteamClient.Apps.SetShortcutStartDir(appId, dir);
     startDirs.set(appId, dir);
   }
+
+  await Promise.all(pending.map(alignLaunch));
 }
 
 // Returns the new appid, or nothing if Steam refused
