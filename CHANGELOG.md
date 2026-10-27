@@ -1,5 +1,17 @@
 # epic-games
 
+## 0.8.0
+
+### Minor Changes
+
+- 7a41766: Show Steam's General page in an Epic game's properties instead of the Shortcut page, with launch options passed on to the game, and leave an uninstalled game's start folder empty rather than legendary's
+
+### Patch Changes
+
+- 578b081: Launch Epic games on Windows without legendary's console window, and move existing shortcuts onto the new command
+- a8a7c88: Count a game's latest achievement unlock as library activity, so games played through
+  Epic sort by when they were last played rather than when they were bought
+
 ## 0.7.0
 
 ### Minor Changes
