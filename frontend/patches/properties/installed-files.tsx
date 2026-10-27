@@ -4,9 +4,10 @@ import { badFiles, reacquiring } from "../../services/epic/verification";
 import * as jobs from "../../state/jobs";
 import * as library from "../../state/library";
 
-// Installed Files, where Steam keeps Verify, and DLC are only a Steam game's pages.
-// backend/patches.lua passes the Shortcut page and Steam's DLC page through
-// `InstalledFilesPage`, which adds ours and the DLC page after it
+// General, Installed Files, where Steam keeps Verify, and DLC are only a Steam game's
+// pages. backend/patches.lua passes the Shortcut page and Steam's General and DLC pages
+// through `PropertiesPages`, which gives an Epic game General in place of Shortcut, then
+// ours and DLC
 
 interface Page {
   title: ReactNode;
@@ -114,11 +115,11 @@ function InstalledFiles({ appId }: { appId: number }) {
   );
 }
 
-export function InstalledFilesPage(appId: number, shortcut: Page, dlc: Page) {
+export function PropertiesPages(appId: number, shortcut: Page, general: Page, dlc: Page) {
   const game = library.getByAppId(appId);
   if (!game) return [shortcut];
 
-  const pages = [shortcut];
+  const pages = [general];
   if (game.installed) {
     pages.push({
       title: text("#AppProperties_LocalFilesPage", "Installed Files"),

@@ -18,17 +18,17 @@ return {
     },
   },
 
-  -- Installed Files and DLC are only a Steam game's properties pages, so
-  -- properties/installed-files.tsx adds Installed Files after Shortcut, spread into the
-  -- push, which takes any number of items, and Steam's own DLC page, taken from the
-  -- Steam game's list further down
+  -- General, Installed Files and DLC are only a Steam game's properties pages, so
+  -- properties/installed-files.tsx swaps Shortcut for Steam's own General page and adds
+  -- Installed Files and Steam's DLC page, spread into the push, which takes any number of
+  -- items. General and DLC are taken from the Steam game's list further down
   {
     file = [[sp\.js]],
     find = [[\{[^{]*ShortcutPage".*?\{[^{]*DLCPage.*?\}\)\}]],
     transforms = {
       {
-        match = [[^(\{.*?Shortcut\(([\w$]+)\).*?\}\)\})(.*?)(\{[^{]*DLCPage.*)$]],
-        replace = [[...(#{{self}}?.InstalledFilesPage?.(\2,\1,\4)??[\1])\3\4]],
+        match = [[^(\{.*?Shortcut\(([\w$]+)\).*?\}\)\})(.*?)(\{[^{]*GeneralPage.*?\}\)\})(.*?)(\{[^{]*DLCPage.*)$]],
+        replace = [[...(#{{self}}?.PropertiesPages?.(\2,\1,\4,\6)??[\1])\3\4\5\6]],
       },
     },
   },

@@ -9,6 +9,7 @@ import * as preferences from "../../state/preferences";
 import { getAchievements } from "../game-page/achievements";
 import { applyCloud, checkCloud } from "../game-page/cloud";
 import { applyDlc } from "../game-page/dlc";
+import { applyGeneral } from "../properties/general";
 
 // "Space Required" reads `bHasAnyLocalContent` and `lDiskSpaceRequiredBytes`, which shortcuts
 // get wrong; backend/patches.lua has the store's AppDetailsChanged, a non-writable mobx
@@ -37,6 +38,7 @@ function apply(details: AppDetails) {
 
   applyCloud(details, game);
   applyDlc(details, game);
+  applyGeneral(details);
 
   if (game.installed) return;
 

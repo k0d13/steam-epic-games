@@ -12,6 +12,7 @@ import * as dlc from "./patches/game-page/dlc";
 import * as gameInfo from "./patches/game-page/game-info";
 import * as appDetails from "./patches/library/app-details";
 import * as overviews from "./patches/library/overviews";
+import * as general from "./patches/properties/general";
 import * as freeGames from "./services/epic/free-games";
 import * as orders from "./services/epic/orders";
 import * as epicSession from "./services/epic/session";
@@ -40,7 +41,7 @@ export { EpicLinkClick, IsEpicURL } from "./services/epic/store";
 /** @ffi */
 export { SupernavMenu } from "./patches/store/menu";
 /** @ffi */
-export { InstalledFilesPage } from "./patches/properties/installed-files";
+export { PropertiesPages } from "./patches/properties/installed-files";
 /** @ffi */
 export { LibraryBadge } from "./patches/library/badge";
 /** @ffi */
@@ -72,6 +73,7 @@ const PATCHES = [
   ["activity", activity.register],
   ["cloud saves", cloudSaves.register],
   ["dlc", dlc.register],
+  ["general", general.register],
   ["storage", storage.register],
   ["downloads", downloads.register],
 ] as const;

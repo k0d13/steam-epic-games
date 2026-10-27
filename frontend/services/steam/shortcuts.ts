@@ -10,9 +10,17 @@ export function steamShortcuts() {
 }
 
 // The appid map in localStorage can be lost, which would add every game again, so
-// shortcuts are also recognised by running legendary with `launch "<app name>"`
+// shortcuts are also recognised by running legendary with `launch "<app name>"`, then
+// whatever the General page added for the game
 const LEGENDARY_EXE = /(^|[\\/])legendary(\.exe)?$/i;
-const LAUNCH_ARGUMENTS = /^\s*launch\s+"([^"]+)"\s*$/;
+const LAUNCH_ARGUMENTS = /^\s*launch\s+"([^"]+)"(?=\s|$) ?(.*)$/s;
+
+// What follows the app name and its space, untrimmed, as Steam's field compares it with
+// what was typed, or options that aren't ours as they are
+export function extraArguments(options: string) {
+  const match = LAUNCH_ARGUMENTS.exec(options);
+  return match ? (match[2] ?? "") : options;
+}
 
 // Details Steam hasn't answered in this long belong to someone else's shortcut
 const DETAILS_TIMEOUT_MS = 3000;
@@ -60,10 +68,15 @@ export async function findOurs() {
   return found;
 }
 
-// A shortcut starts in legendary's folder; games reading relative paths need their own, so
-// its directory follows the install, and its exe follows legendary, which has moved before
+// A shortcut's directory is the install, for games reading relative paths and for whatever
+// reads it as the install location, so it's empty, like a Steam game's, until installed.
+// Its exe follows legendary, which has moved before
 const startDirs = new Map<number, string>();
 const alignedExes = new Set<number>();
+
+function startDir(game: EpicGame | undefined) {
+  return (game?.installed && game.install_path) || "";
+}
 
 // legendary's command, the same for every game but its arguments
 let launcher: Promise<LaunchCommand | undefined> | undefined;
@@ -88,8 +101,7 @@ export async function align() {
       alignedExes.add(appId);
     }
 
-    const game = library.getByAppId(appId);
-    const dir = (game?.installed && game.install_path) || launch.start_dir;
+    const dir = startDir(library.getByAppId(appId));
     if (startDirs.get(appId) === dir) continue;
 
     SteamClient.Apps.SetShortcutStartDir(appId, dir);
@@ -105,13 +117,8 @@ export async function create(game: EpicGame) {
     return undefined;
   }
 
-  const startDir = (game.installed && game.install_path) || launch.start_dir;
-  const appId = await SteamClient.Apps.AddShortcut(
-    game.title,
-    launch.exe,
-    startDir,
-    launch.arguments,
-  );
+  const dir = startDir(game);
+  const appId = await SteamClient.Apps.AddShortcut(game.title, launch.exe, dir, launch.arguments);
 
   if (typeof appId !== "number" || appId === 0) {
     console.warn("Steam refused to create a shortcut", { appName: game.app_name, appId });
@@ -121,8 +128,8 @@ export async function create(game: EpicGame) {
   // Some client builds name the shortcut after the executable
   SteamClient.Apps.SetShortcutName(appId, game.title);
   SteamClient.Apps.SetShortcutLaunchOptions(appId, launch.arguments);
-  SteamClient.Apps.SetShortcutStartDir(appId, startDir);
-  startDirs.set(appId, startDir);
+  SteamClient.Apps.SetShortcutStartDir(appId, dir);
+  startDirs.set(appId, dir);
   alignedExes.add(appId);
 
   appIds.setAppId(game.app_name, appId);

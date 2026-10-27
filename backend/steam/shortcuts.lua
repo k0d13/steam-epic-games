@@ -11,7 +11,6 @@ local shell = require("core.shell")
 ---@class LaunchCommand
 ---@field exe string
 ---@field arguments string
----@field start_dir string
 
 ---@ffi
 ---Runs legendary, which waits on the game so playtime works, survives Epic moving the
@@ -24,11 +23,10 @@ function GetLaunchCommand(app_name)
     return nil
   end
 
-  -- Steam shows these paths as given, so they get one style of separator
+  -- Steam shows the path as given, so it gets one style of separator
   return {
     exe = shell.native_path(binary),
     arguments = 'launch "' .. app_name .. '"',
-    start_dir = shell.native_path(fs.parent_path(binary)),
   }
 end
 
