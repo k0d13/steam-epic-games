@@ -274,6 +274,9 @@ function library.refresh(force)
   end
   proton.apply(app_names)
 
+  -- legendary's list leaves megabytes of garbage, which Lua would hold for minutes
+  collectgarbage()
+
   log.info("Refreshed library: " .. #games .. " games")
   return games
 end

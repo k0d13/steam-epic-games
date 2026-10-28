@@ -1,6 +1,7 @@
 local fs = require("fs")
 local json = require("json")
 local log = require("core.log")
+local paths = require("core.paths")
 local utils = require("utils")
 
 -- JSON caches on disk, where losing one only costs a refresh
@@ -11,6 +12,15 @@ local function widen(number)
   if number:match("^%-?%d%d%d%d%d%d%d%d%d%d+$") then
     return number .. ".0"
   end
+end
+
+-- Counted back from the quote, as copying the string out to look copies every one
+local function escaped(text, quote)
+  local count = 0
+  while text:byte(quote - count - 1) == 92 do
+    count = count + 1
+  end
+  return count % 2 == 1
 end
 
 ---Millennium's Linux decoder wraps integers at 32 bits, so a 2.5 GB size came back
@@ -28,7 +38,7 @@ local function widen_integers(text)
     end
 
     local close = text:find('"', open + 1, true)
-    while close and #text:sub(open + 1, close - 1):match("\\*$") % 2 == 1 do
+    while close and escaped(text, close) do
       close = text:find('"', close + 1, true)
     end
     close = close or #text
@@ -44,10 +54,14 @@ end
 ---@param text string|nil
 ---@return any|nil
 function cache.decode(text)
-  local trimmed = utils.trim(text or "")
-  local first, last = trimmed:sub(1, 1), trimmed:sub(-1)
-  if (first == "{" and last == "}") or (first == "[" and last == "]") then
-    return json.decode(widen_integers(trimmed))
+  if type(text) ~= "string" then
+    return nil
+  end
+
+  -- Not trimmed, as that copies a document that can run to megabytes
+  local first, last = text:match("^%s*([%[{])"), text:match("([%]}])%s*$")
+  if first and last and (first == "{") == (last == "}") then
+    return json.decode(paths.IS_WINDOWS and text or widen_integers(text))
   end
   return nil
 end

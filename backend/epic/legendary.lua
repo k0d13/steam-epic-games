@@ -69,8 +69,8 @@ function legendary.run(args)
 end
 
 -- legendary's own log lines, like "[cli] INFO: Logging in..."
-local function is_log_line(trimmed)
-  return trimmed:match("^%[[%w%-%._]+%]%s+%u+:") ~= nil
+local function is_log_line(output, position)
+  return output:find("^[ \t\r]*%[[%w%-%._]+%]%s+%u+:", position) ~= nil
 end
 
 ---The last error line in some output, not the Python traceback a crash prints
@@ -90,27 +90,32 @@ end
 ---@return any|nil decoded
 ---@return string? error
 function legendary.decode_json(output)
-  local lines = utils.split(output, "\n")
-  for index, line in ipairs(lines) do
-    local trimmed = utils.trim(line)
-    local opens = trimmed:sub(1, 1)
+  -- Walked by position, as splitting it into lines copies output that can run to megabytes
+  local position = 1
+  while position <= #output do
+    local line_end = output:find("\n", position, true) or #output + 1
+
     -- Log lines also start with "[", so they're skipped
-    if (opens == "{" or opens == "[") and not is_log_line(trimmed) then
+    if output:find("^[ \t\r]*[%[{]", position) and not is_log_line(output, position) then
       -- Stop at the next log line, as stderr shares the pipe and can follow the document
-      local last = #lines
-      for offset = index + 1, #lines do
-        if is_log_line(utils.trim(lines[offset])) then
-          last = offset - 1
+      local last = #output
+      local next_line = line_end + 1
+      while next_line <= #output do
+        if is_log_line(output, next_line) then
+          last = next_line - 1
           break
         end
+        next_line = (output:find("\n", next_line, true) or #output) + 1
       end
 
-      local decoded = cache.decode(table.concat(lines, "\n", index, last))
+      local decoded = cache.decode(output:sub(position, last))
       if decoded ~= nil then
         return decoded
       end
       return nil, "could not decode legendary output"
     end
+
+    position = line_end + 1
   end
 
   return nil, legendary.last_error(output) or utils.trim(output):sub(1, 200)
