@@ -4,7 +4,7 @@ assets = [["backend/jobs/scripts/*"]]
 [plugin]
 id = "epic-games"
 name = "Epic Games"
-version = "0.8.0"
+version = "0.8.1"
 author = "k0d13"
 description = "Browse, install and launch your Epic Games library from Steam."
 

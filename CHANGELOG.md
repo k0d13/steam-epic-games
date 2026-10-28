@@ -1,5 +1,14 @@
 # epic-games
 
+## 0.8.1
+
+### Patch Changes
+
+- 27517fe: Save game info and sizes in batches, rather than rewriting all of them each time one game's arrives
+- a19eb22: Redraw the library only when an Epic game's tile or page would change, rather than on every update
+- bf64fc7: Download Epic's full catalog at startup at most once a day, so Steam starts faster and the backend uses less memory
+- d796cbd: Decode legendary's output without copying it several times over, and free the memory a library refresh leaves behind straight away
+
 ## 0.8.0
 
 ### Minor Changes
