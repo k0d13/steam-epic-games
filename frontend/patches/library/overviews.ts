@@ -168,6 +168,28 @@ export function register() {
   }).unpatch;
 }
 
+// Everything `apply` writes, with the percent whole as Steam draws it
+function signature(overview: SteamAppOverview) {
+  const app = overview as unknown as MutableOverview;
+  const perClient = Array.isArray(app.per_client_data) ? app.per_client_data : [];
+
+  return [
+    app.minutes_playtime_forever,
+    app.rt_last_time_played,
+    app.rt_purchased_time,
+    app.rt_recent_activity_time,
+    app.rt_original_release_date,
+    app.size_on_disk,
+    [...(app.m_setStoreCategories ?? [])].join(),
+    [...(app.m_setStoreTags ?? [])].join(),
+    ...[app.local_per_client_data, ...perClient].map(
+      (data) =>
+        data &&
+        `${data.installed}:${data.display_status}:${Math.round(data.status_percentage ?? 0)}`,
+    ),
+  ].join("|");
+}
+
 // Corrects the overviews Steam already holds, by appid since `allApps` holds thousands;
 // not through OnAppOverviewChange, which throws "t is not iterable" on the store's own objects
 export function refreshAll() {
@@ -175,8 +197,13 @@ export function refreshAll() {
     .appIdsWithGames()
     .map((appId) => appStore.GetAppOverviewByAppID(appId))
     .filter((app) => app !== undefined);
-  if (apps.length === 0) return;
 
-  for (const app of apps) apply(app);
-  forceFakeLocationChange();
+  // The nudge redraws the whole page, so it waits for something it would show
+  let changed = false;
+  for (const app of apps) {
+    const before = signature(app);
+    apply(app);
+    if (signature(app) !== before) changed = true;
+  }
+  if (changed) forceFakeLocationChange();
 }
