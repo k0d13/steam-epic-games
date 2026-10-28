@@ -176,7 +176,7 @@ async function load() {
   void achievements.loadSummaries();
 
   // A cached library never shows updates, as legendary compares against the catalog it fetched
-  void library.load(true, true).then(autoSync);
+  void library.refreshOnStartup().then(autoSync);
 }
 
 export default definePlugin(async () => {

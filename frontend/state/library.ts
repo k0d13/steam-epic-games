@@ -70,6 +70,11 @@ async function read(request: Promise<Library>, failure: string) {
   return result;
 }
 
+// legendary list picks up new builds either way, but forcing it downloads every game's
+// catalog entry again, so startup only does that once a day
+const FORCE_EVERY_MS = 24 * 60 * 60 * 1000;
+const forced = createStore<number>("epic-games:forced-refresh:v1");
+
 // Two refreshes at once ran `legendary list` side by side, failing one and slowing
 // the other to minutes, so a second caller shares the first
 let refreshing: Promise<Library> | undefined;
@@ -78,10 +83,19 @@ export function load(refresh = false, force = false) {
   const failure = "Failed to load the Epic library";
   if (!refresh) return read(backend.GetLibrary(false, false), failure);
 
-  refreshing ??= read(backend.GetLibrary(true, force), failure).finally(() => {
-    refreshing = undefined;
-  });
+  refreshing ??= read(backend.GetLibrary(true, force), failure)
+    .then((result) => {
+      if (force && !result.error) forced.set("at", Date.now());
+      return result;
+    })
+    .finally(() => {
+      refreshing = undefined;
+    });
   return refreshing;
+}
+
+export function refreshOnStartup() {
+  return load(true, Date.now() - (forced.get("at") ?? 0) > FORCE_EVERY_MS);
 }
 
 // For an install or uninstall finishing, without asking Epic
