@@ -185,6 +185,8 @@ export function createCache<V>({
   };
 }
 
+const FLUSH_MS = 1000;
+
 // A localStorage record mirrored in memory; version `key` so a format change drops old entries
 export function createStore<T>(key: string) {
   let cache: Record<string, T> | undefined;
@@ -204,14 +206,26 @@ export function createStore<T>(key: string) {
     return cache;
   }
 
-  function writeAll(entries: Record<string, T>) {
-    cache = entries;
+  let flushTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function flush() {
+    if (flushTimer === undefined) return;
+    clearTimeout(flushTimer);
+    flushTimer = undefined;
 
     try {
-      localStorage.setItem(key, JSON.stringify(entries));
+      localStorage.setItem(key, JSON.stringify(cache));
     } catch (e) {
       console.warn(`Failed to write ${key}`, e);
     }
+  }
+
+  // Serialising the whole record blocks Steam's UI, so a burst of answers is written once
+  function writeAll(entries: Record<string, T>) {
+    cache = entries;
+    if (flushTimer !== undefined) return;
+    flushTimer = setTimeout(flush, FLUSH_MS);
+    window.addEventListener("beforeunload", flush, { once: true });
   }
 
   return {
@@ -220,12 +234,15 @@ export function createStore<T>(key: string) {
     get: (name: string) => readAll()[name],
 
     set(name: string, value: T) {
-      writeAll({ ...readAll(), [name]: value });
+      const entries = readAll();
+      entries[name] = value;
+      writeAll(entries);
     },
 
     remove(name: string) {
-      const { [name]: _, ...rest } = readAll();
-      writeAll(rest);
+      const entries = readAll();
+      delete entries[name];
+      writeAll(entries);
     },
 
     clear() {
