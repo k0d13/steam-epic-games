@@ -21,9 +21,8 @@ local function conhost()
 end
 
 ---@ffi
----Runs legendary, which waits on the game so playtime works, survives Epic moving the
----exe, and works before the game is installed. On Windows it goes through a headless
----conhost, as Steam would otherwise open legendary's console window
+---legendary waits on the game for play time, follows the exe if Epic moves it and works before
+---install; on Windows a headless conhost keeps its console window from opening
 ---@param app_name string
 ---@return LaunchCommand|nil
 function GetLaunchCommand(app_name)

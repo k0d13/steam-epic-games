@@ -1,13 +1,11 @@
 import { useSyncExternalStore } from "react";
 import { EPIC_STORE } from "../../services/epic/store";
+import { hashId } from "../../state/app-ids";
 import * as friendAchievements from "../../state/game/friend-achievements";
 import * as library from "../../state/library";
 
-// The activity feed and the game page's friends section only draw a friend its friend
-// store knows, and name and draw them from there. An Epic friend has no Steam account, so
-// each gets a stand-in SteamID in a range no real account uses, and backend/patches.lua
-// has the friend store, Steam's URL resolver and the friends section's data ask
-// `FriendState`, `ResolveURL` and `FriendsWhoPlay` before answering
+// The feed and friends section only draw friends the friend store knows, so each Epic friend gets a
+// stand-in SteamID no real account uses, and backend/patches.lua routes their lookups through here
 
 // The SteamID64 of account 0 in the public universe
 const ACCOUNT_ZERO = BigInt("76561197960265728");
@@ -51,10 +49,7 @@ function accountFor(epicId: string) {
   const known = byEpicId.get(epicId);
   if (known !== undefined) return known;
 
-  let hash = 0x811c9dc5;
-  for (const char of epicId) hash = Math.imul(hash ^ char.charCodeAt(0), 0x01000193);
-
-  let account = STAND_IN_FLOOR + ((hash >>> 0) % STAND_IN_SPAN);
+  let account = STAND_IN_FLOOR + (hashId(epicId) % STAND_IN_SPAN);
   while (byAccount.has(account)) account = STAND_IN_FLOOR + ((account + 1) % STAND_IN_SPAN);
 
   byEpicId.set(epicId, account);
@@ -135,9 +130,8 @@ export function ResolveURL(name: string, values: unknown[]) {
   return friend && `${EPIC_STORE}/u/${friend.epicId}`;
 }
 
-// What Steam's friends section reads for a game, by SteamID: who's in it, played it
-// recently or ever, and for how long. Epic keeps friends' play time to themselves, so it
-// has none to show, and only an Epic game gets stand-ins
+// What Steam's friends section reads for a game, by SteamID; Epic keeps friends' play time to
+// themselves, so there's none, and only an Epic game gets stand-ins
 interface FriendsWhoPlayData {
   in_game: never[];
   played_recently: never[];

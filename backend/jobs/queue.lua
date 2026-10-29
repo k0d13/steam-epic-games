@@ -8,9 +8,8 @@ local paths = require("core.paths")
 local runner = require("jobs.runner")
 local utils = require("utils")
 
--- Installs, updates, repairs, verifies, uninstalls and DLC changes, one at a time since legendary
--- allows one. Each job is a directory runner.lua's process reports into, and the queue is
--- those directories, moved along whenever the frontend polls
+-- Jobs run one at a time, as legendary allows one. Each is a directory runner.lua's process
+-- reports into, and the queue is those directories, moved along whenever the frontend polls
 
 local queue = {}
 

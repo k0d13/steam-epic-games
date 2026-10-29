@@ -5,9 +5,8 @@ import * as library from "../../state/library";
 import { listFor } from "./achievements";
 import { standIn } from "./friends";
 
-// The feed is filled from Steam's servers, which know nothing of an Epic game, so the
-// store's fetch is taken over and the unlocks added to the feed ourselves, friends' too,
-// whom ./friends makes Steam's friend store answer for
+// Steam's servers know nothing of an Epic game, so the feed's fetch is taken over and unlocks,
+// friends' too, are added ourselves; ./friends makes Steam's friend store answer for them
 
 // Steam's EUserNewsType for an unlock
 const ACHIEVEMENT_UNLOCKED = 2;
@@ -82,24 +81,20 @@ async function fill(
     );
   }
 
+  // A row looks its achievement up in the map, and a friend may hold ones we don't
   const self = store.m_CMInterface.steamid.ConvertTo64BitString();
   for (const achievement of list) {
-    if (!achievement.bAchieved || achievement.rtUnlocked === 0) continue;
     entries.set(achievement.strID, achievement);
-    add(self, achievement.strID, achievement.rtUnlocked);
+    if (achievement.bAchieved && achievement.rtUnlocked) {
+      add(self, achievement.strID, achievement.rtUnlocked);
+    }
   }
 
-  // A row looks its achievement up in the map, and a friend may hold ones we don't
-  const friends = friendAchievements.get(game.app_name)?.friends;
-  if (friends) {
-    for (const achievement of list) entries.set(achievement.strID, achievement);
-
-    // Lua sends {} for an empty list
-    for (const friend of Object.values(friends)) {
-      const actor = standIn(friend);
-      for (const unlock of Object.values(friend.unlocks)) {
-        if (entries.has(unlock.id)) add(actor, unlock.id, unlock.unlocked_at);
-      }
+  // Lua sends {} for an empty list
+  for (const friend of Object.values(friendAchievements.get(game.app_name)?.friends ?? [])) {
+    const actor = standIn(friend);
+    for (const unlock of Object.values(friend.unlocks)) {
+      if (entries.has(unlock.id)) add(actor, unlock.id, unlock.unlocked_at);
     }
   }
 
@@ -114,11 +109,6 @@ async function fill(
   }
 
   activity.SortEvents();
-}
-
-// The feed's status box asks, as a post about an Epic game can't be made
-export function IsEpicApp(appId: number) {
-  return library.getByAppId(appId) !== undefined;
 }
 
 // True takes the place of the fetch from Steam, so the feed isn't left asking servers

@@ -1,19 +1,17 @@
 import { type AppDetails, callOriginal, replacePatch } from "millennium";
 import { open, searchURL } from "../../services/epic/store";
+import { hashId } from "../../state/app-ids";
 import * as info from "../../state/game/info";
 import * as jobs from "../../state/jobs";
 import * as library from "../../state/library";
 
-// Steam draws the game page's DLC section and the properties DLC tab from `vecDLC`, and
-// its checkboxes call SetDLCEnabled; backend/patches.lua adds the tab and ShortcutSections
-// the section, both for a shortcut, and has `SteamURL` answer the links to the store
+// Steam draws the DLC section and properties tab from `vecDLC` and its checkboxes call SetDLCEnabled;
+// backend/patches.lua adds both for a shortcut and has `BuildSteamURL` answer the store links
 
 // Steam's DLC have appids of their own, which ours get from a hash of Epic's name, in the
 // range between Steam's appids and its shortcuts'
 function dlcAppId(appName: string) {
-  let hash = 0x811c9dc5;
-  for (const char of appName) hash = Math.imul(hash ^ char.charCodeAt(0), 0x01000193);
-  return 0x40000000 | (hash & 0x3fffffff);
+  return 0x40000000 | (hashId(appName) & 0x3fffffff);
 }
 
 function storeURL(game: EpicGame) {
@@ -43,7 +41,7 @@ export function applyDlc(details: AppDetails, game: EpicGame) {
 
 // Steam's "View DLC In Store" sends the window to steam://url/StoreDlcPage/<appid>, so
 // the page opens in the store here, and the window is sent nowhere
-export function SteamURL(name: string, values: unknown[]) {
+export function BuildSteamURL(name: string, values: unknown[]) {
   const game = name === "StoreDlcPage" ? library.getByAppId(Number(values[0])) : undefined;
   if (!game) return undefined;
 

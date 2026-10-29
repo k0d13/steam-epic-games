@@ -1,8 +1,8 @@
--- Edits Millennium makes to Steam's JavaScript as it serves it. `find` takes the
--- first match and `transforms` rewrite inside it; one that stops matching after a
--- Steam update is skipped. `#{{self}}` is our PLUGIN_LIST slot, which holds the
--- frontend entry's exports. There are no backreferences in a `find`, and a `` in a
--- `replace` mustn't be followed by a letter or digit, which would read as a longer group name
+-- Edits Millennium makes to Steam's JavaScript as it serves it; one whose `find` stops
+-- matching after a Steam update is skipped. `#{{self}}` is our PLUGIN_LIST slot
+--
+-- A `find` has no backreferences, and a `\1` in a `replace` followed by a letter or digit,
+-- `#{{self}}` included as it starts `window`, reads as a longer group and fails every patch
 
 return {
   -- Manage has no Uninstall or Cancel for shortcuts, so library/manage-menu.ts adds them to
@@ -18,10 +18,8 @@ return {
     },
   },
 
-  -- General, Installed Files and DLC are only a Steam game's properties pages, so
-  -- properties/installed-files.tsx swaps Shortcut for Steam's own General page and adds
-  -- Installed Files and Steam's DLC page, spread into the push, which takes any number of
-  -- items. General and DLC are taken from the Steam game's list further down
+  -- General, Installed Files and DLC are only a Steam game's pages, so properties/installed-files.tsx
+  -- swaps Shortcut for General and adds the other two; General and DLC are Steam's, from further down
   {
     file = [[sp\.js]],
     find = [[\{[^{]*ShortcutPage".*?\{[^{]*DLCPage.*?\}\)\}]],
@@ -33,15 +31,15 @@ return {
     },
   },
 
-  -- "View DLC In Store" and the DLC tab's link build steam://url/StoreDlcPage/<appid>,
-  -- which game-page/dlc.ts answers for an Epic game by opening Epic's page in the client
+  -- Steam's URLs: game-page/friends.ts sends an Epic friend's profile to Epic, and game-page/dlc.ts
+  -- answers "View DLC In Store"'s steam://url/StoreDlcPage/<appid> by opening Epic's page
   {
     file = [[sp\.js]],
-    find = [[BuildSteamURL\([\w$]+,\.\.\.[\w$]+\)\{return"steam://url/"]],
+    find = [[ResolveURL\([\w$]+,\.\.\.[\w$]+\)\{const [\w$]+=this\.m_steamUrls\[.*?BuildSteamURL\([\w$]+,\.\.\.[\w$]+\)\{return"steam://url/"]],
     transforms = {
       {
-        match = [[BuildSteamURL\(([\w$]+),\.\.\.([\w$]+)\)\{return"steam://url/"]],
-        replace = [[BuildSteamURL(\1,...\2){const epicGames=#{{self}}?.SteamURL?.(\1,\2);if(epicGames)return epicGames;return"steam://url/"]],
+        match = [[(ResolveURL|BuildSteamURL)\(([\w$]+),\.\.\.([\w$]+)\)\{]],
+        replace = [[\1(\2,...\3){const epicGames=#{{self}}?.\1?.(\2,\3);if(epicGames)return epicGames;]],
       },
     },
   },
@@ -59,9 +57,8 @@ return {
     },
   },
 
-  -- The supernav menus, which store/menu.ts splits into Steam and Epic submenus when
-  -- it's Store's. Steam's renderer for supernav entries is a sibling of the menu class, so
-  -- it's named where the class's method can reach it, under a name no minified local shadows
+  -- Supernav menus, which store/menu.ts splits into Steam and Epic submenus for Store. Steam's entry
+  -- renderer is the menu class's sibling, so it's named here under a name no minified local shadows
   {
     file = [[sp\.js]],
     find = [[const [\w$]+=[\w$]+=>\{const\{disabledItemClass:.*?\.CreateContextMenuInstance\([^}]*\}\),[^{}]*\{[^}]*\}\)]],
@@ -86,9 +83,8 @@ return {
     },
   },
 
-  -- A shortcut's details page keeps only a few sections, so game-page/game-info.ts gets to
-  -- put the info panel and Achievements back for an Epic game that has them. Anchored
-  -- on the shortcut list, since BIsModOrShortcut is asked in other places too
+  -- A shortcut's details page keeps a few sections, so game-page/game-info.ts puts back the info
+  -- panel and Achievements; anchored on the shortcut list, as BIsModOrShortcut is asked elsewhere too
   {
     file = [[sp\.js]],
     find = [["screenshots"\];.*?\)&&\([\w$]+=[\w$]+\)]],
@@ -113,9 +109,8 @@ return {
     },
   },
 
-  -- The info panel's developer, publisher and franchise names are bare anchors to
-  -- steam://openurl/, which sends any page that isn't Steam's to the system browser, so
-  -- services/epic/store.ts opens Epic's in the client instead
+  -- The info panel's developer, publisher and franchise anchors go through steam://openurl/, which
+  -- sends non-Steam pages to the system browser, so services/epic/store.ts opens Epic's in the client
   {
     file = [[sp\.js]],
     find = [[this\.GetURL\([\w$]+\.strName,.{0,80}?\.Name,href:[\w$]+,]],
@@ -127,9 +122,8 @@ return {
     },
   },
 
-  -- The info panel (cover, description, developer, release date and features) draws
-  -- a shortcut as a bare explanation, so for an Epic game with info, game-page/game-info.ts
-  -- says it isn't one, as the panel reads its shortcut state at the top of render
+  -- The info panel draws a shortcut as a bare explanation, so game-page/game-info.ts says an Epic
+  -- game with info isn't one; the panel reads its shortcut state at the top of render
   {
     file = [[sp\.js]],
     find = [[=this\.props\.overview\.BIsModOrShortcut\(\),]],
@@ -141,9 +135,8 @@ return {
     },
   },
 
-  -- A shortcut's info panel starts open, as its only content was the explanation. An
-  -- Epic game's starts as a Steam game's does, open for the games the user opened it
-  -- on, and as it arrives after the page has drawn this can't wait for HasGameInfo
+  -- A shortcut's info panel starts open, and an Epic game's should start as a Steam game's does;
+  -- its info arrives after the page has drawn, so this can't wait for HasGameInfo
   {
     file = [[sp\.js]],
     find = [[bShowGameInfo:[\w$]+\.overview\.BIsModOrShortcut\(\)\|\|]],
@@ -167,9 +160,8 @@ return {
     },
   },
 
-  -- The play bar's Cloud Status, and the status row that's its narrow form, which both
-  -- bail for a shortcut before reading the details; game-page/cloud.ts fills those in for
-  -- an Epic game whose saves it syncs, and leaves them saying there's no cloud otherwise
+  -- The play bar's Cloud Status and its narrow status row bail for a shortcut before reading the
+  -- details, so game-page/cloud.ts fills them in for an Epic game whose saves it syncs
   {
     file = [[sp\.js]],
     find = [[\|\|[\w$]+\.BIsModOrShortcut\(\)\)return null;.*?\.details\.eCloudStatus.*?\.details\.eCloudStatus]],
@@ -194,9 +186,8 @@ return {
     },
   },
 
-  -- The feed's "Say something about this game" box posts a status to friends, which can't
-  -- say it's about an Epic game, as Steam's servers have no such app, so an Epic game's
-  -- feed has no box
+  -- The feed's status box posts about the app to friends, and Steam's servers have no Epic game,
+  -- so an Epic game's feed has no box
   {
     file = [[sp\.js]],
     find = [[render\(\)\{const\{appid:[\w$]+,showTextBox:[\w$]+\}=this\.props,]],
@@ -208,9 +199,8 @@ return {
     },
   },
 
-  -- Steam's artwork component, which draws every icon and capsule, so library/badge.ts
-  -- can put the Epic mark in the container first. Its app, appid and asset type are
-  -- read at the top of render, so the match carries everything up to the container
+  -- Steam's artwork component, for every icon and capsule, so library/badge.ts can add the Epic mark;
+  -- app, appid and asset type are read at the top of render, so the match runs up to the container
   {
     file = [[sp\.js]],
     find = [[render\(\)\{let\{app:.*?\("div",\{className:[\w$]+,children:\[]],
@@ -222,9 +212,8 @@ return {
     },
   },
 
-  -- The feed draws a friend's row from the friend store's answer for their account, and
-  -- hides it unless they're a friend. game-page/friends.ts gives an Epic friend's
-  -- stand-in account their name, a default avatar and a place among the friends
+  -- The feed draws a friend's row from the friend store and hides non-friends, so
+  -- game-page/friends.ts gives an Epic friend's stand-in a name, a default avatar and friendship
   {
     file = [[sp\.js]],
     find = [[GetFriendState\([\w$]+\)\{const [\w$]+=typeof [\w$]+=="number"\?[\w$]+:[\w$]+\.GetAccountID\(\),[\w$]+=this\.m_FriendsUIFriendStore\.GetPlayer\([\w$]+\);return [^}]*\}]],
@@ -232,19 +221,6 @@ return {
       {
         match = [[return ([\w$]+)\.is_ready\?[\w$]+:this\.m_mapPlayerCache\.get\(([\w$]+)\)\|\|[\w$]+\}$]],
         replace = [[return (#{{self}}?.FriendState??((a,b)=>b))(\2,\1.is_ready?\1:this.m_mapPlayerCache.get(\2)||\1)}]],
-      },
-    },
-  },
-
-  -- A friend's name and avatar open their Steam profile, which a stand-in doesn't have,
-  -- so game-page/friends.ts sends them to their Epic profile
-  {
-    file = [[sp\.js]],
-    find = [[ResolveURL\([\w$]+,\.\.\.[\w$]+\)\{const [\w$]+=this\.m_steamUrls\[]],
-    transforms = {
-      {
-        match = [[ResolveURL\(([\w$]+),\.\.\.([\w$]+)\)\{]],
-        replace = [[ResolveURL(\1,...\2){const epicGames=#{{self}}?.ResolveURL?.(\1,\2);if(epicGames)return epicGames;]],
       },
     },
   },
@@ -279,21 +255,11 @@ return {
   -- game doesn't have, so the section drops the link for one
   {
     file = [[sp\.js]],
-    find = [[[\w$]+=\(0,[\w$]+\.[\w$]+\)\("CommunityFriendsThatPlay",[\w$]+\),]],
+    find = [["CommunityFriendsThatPlay",[\w$]+\),.*?primaryAction:\{action:[\w$]+,label:\(0,[\w$]+\.[\w$]+\)\("#AppDetails_Friends_ViewAll"\)\}]],
     transforms = {
       {
-        match = [[^([\w$]+=\(0,[\w$]+\.[\w$]+\)\("CommunityFriendsThatPlay",([\w$]+)\)),$]],
-        replace = [[\1,epicGamesFriends=#{{self}}?.IsEpicApp?.(\2),]],
-      },
-    },
-  },
-  {
-    file = [[sp\.js]],
-    find = [[primaryAction:\{action:[\w$]+,label:\(0,[\w$]+\.we\)\("#AppDetails_Friends_ViewAll"\)\}]],
-    transforms = {
-      {
-        match = [[primaryAction:(\{action:[\w$]+,label:\(0,[\w$]+\.we\)\("#AppDetails_Friends_ViewAll"\)\})]],
-        replace = [[primaryAction:epicGamesFriends?void 0:\1]],
+        match = [[^("CommunityFriendsThatPlay",([\w$]+)\),.*?primaryAction):]],
+        replace = [[\1:#{{self}}?.IsEpicApp?.(\2)?void 0:]],
       },
     },
   },

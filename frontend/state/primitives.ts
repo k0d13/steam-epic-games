@@ -66,7 +66,7 @@ export function poll(run: () => void, ms: number) {
 interface CacheOptions<V> {
   // `refresh` asks the backend to look past its own cache too, nothing back is a miss
   fetch(key: string, refresh: boolean): Promise<V | null | undefined>;
-  isStale?(key: string, value: V | undefined): boolean;
+  isStale?(key: string, value: V): boolean;
   // localStorage key, versioned like createStore's; saved answers are served at once after a restart
   persist?: string;
   // Empties the backend's copy, before `clear` forgets ours
@@ -150,9 +150,11 @@ export function createCache<V>({
 
       const held = values.get(key);
       const settled = values.has(key) && !invalidated.has(key) && !restored.has(key);
-      if (settled && (held === null || !isStale(key, held))) return;
+      if (settled && (held == null || !isStale(key, held))) return;
 
-      const refresh = invalidated.has(key) || isStale(key, held ?? undefined);
+      // A first read takes the backend's copy, however old, so there's something to show
+      // while a stale one is asked for again
+      const refresh = invalidated.has(key) || (!!held && isStale(key, held));
       void load(key, refresh).catch((reason: unknown) => {
         console.warn("Cache fetch failed", { key, reason });
       });

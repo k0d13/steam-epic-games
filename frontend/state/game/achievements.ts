@@ -15,23 +15,22 @@ type Counts = Pick<AchievementSummary, "total" | "unlocked" | "fetched_at">;
 // reads every game as it draws and must never start a fetch
 const summaries = new Map<string, AchievementSummary>();
 
-function isStale(appName: string, entry: Counts | undefined) {
-  entry ??= summaries.get(appName);
+// Games with none never get any
+function playedSince(appName: string, entry: Counts) {
+  return entry.total > 0 && getLastPlayed(appName) > entry.fetched_at;
+}
 
-  // Games with none never get any
-  if (!entry || entry.total === 0) return false;
-
-  // Steam's own rule only sees Steam launches, the age check catches the Epic launcher's
-  if (getLastPlayed(appName) > entry.fetched_at) return true;
-
-  return Date.now() - entry.fetched_at * 1000 > STALE_AFTER_MS;
+// Steam's own rule only sees Steam launches, the age check catches the Epic launcher's
+function isStale(appName: string, entry: Counts) {
+  if (entry.total === 0) return false;
+  return playedSince(appName, entry) || Date.now() - entry.fetched_at * 1000 > STALE_AFTER_MS;
 }
 
 const cache = createCache<GameAchievements>({
   fetch: (appName, refresh) => backend.GetAchievements(appName, refresh),
   isStale,
   async clearRemote() {
-    await backend.ClearAchievements();
+    await backend.ClearCache("achievements");
     summaries.clear();
   },
 });
@@ -59,10 +58,11 @@ export async function loadSummaries() {
   setTimeout(() => void refreshPlayed(), STARTUP_GRACE_MS);
 }
 
+// Only games played since they were read, as age alone would re-read every game each start
 async function refreshPlayed() {
-  for (const appName of summaries.keys()) {
+  for (const [appName, summary] of summaries) {
     // One at a time: the backend runs legendary in-process, so a batch would hold up every other call
     // react-doctor-disable-next-line react-doctor/async-await-in-loop
-    if (isStale(appName, getSummary(appName))) await refresh(appName);
+    if (playedSince(appName, summary)) await refresh(appName);
   }
 }

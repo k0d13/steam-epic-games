@@ -178,16 +178,6 @@ local function owned_dlcs(entry, granted)
   return dlcs
 end
 
----Entitlements are keyed by the namespace on the entry for most titles, and on the
----Windows asset for the rest
-local function namespace(entry)
-  local from_metadata = (entry.metadata or {}).namespace
-  if type(from_metadata) == "string" then
-    return from_metadata
-  end
-  return windows_asset(entry).namespace
-end
-
 ---@param entry table One element of legendary list
 ---@param installed_by_name table<string, table> From list-installed
 ---@param granted table<string, integer> Grant dates by namespace
@@ -204,7 +194,7 @@ local function merge_game(entry, installed_by_name, granted, granted_items)
     folder_name = ((metadata.customAttributes or {}).FolderName or {}).value,
     art_portrait = pick_art(metadata.keyImages, "portrait"),
     art_hero = pick_art(metadata.keyImages, "hero"),
-    purchased_at = granted[namespace(entry) or ""],
+    purchased_at = granted[legendary.namespace(entry) or ""],
     cloud_saves = (((metadata.customAttributes or {}).CloudSaveFolder or {}).value or "") ~= "",
     dlcs = owned_dlcs(entry, granted_items),
   }

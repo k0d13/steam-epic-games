@@ -1,10 +1,9 @@
 #!/bin/sh
-# The runner for one legendary job on Linux. runner.lua fills in the {braced}
-# names. Started under setsid, so killing the negative PID takes legendary down
-# too. awk keeps POSIX: no capture groups, so a progress line is split on its
-# punctuation instead, and the directory comes in through ENVIRON because `-v`
-# would read its backslashes as escapes. tr makes lines of the carriage-return-ended
-# verification progress, which mawk can't split.
+# One legendary job on Linux, with {braced} names filled by runner.lua. Under setsid, so the
+# negative PID takes legendary down too.
+#
+# awk stays POSIX, splitting progress on punctuation and taking the directory through ENVIRON as
+# -v reads backslashes as escapes; tr splits verify's carriage returns, which mawk can't.
 
 DIR={dir}
 EXE={exe}

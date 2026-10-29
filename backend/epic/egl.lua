@@ -13,9 +13,8 @@ local egl = {}
 -- The manifests at the last sync, so a refresh with nothing new skips a legendary run
 local synced
 
----Import what egl-sync can resolve, import-only so we never export into the launcher's
----library, and only where the launcher can be, as elsewhere legendary asks for its Wine
----prefix on stdin
+---Import only, so we never export into the launcher's library, and only where the launcher can
+---be, as elsewhere legendary asks for its Wine prefix on stdin
 function egl.sync()
   local path = paths.egl_manifests()
   if not path or not fs.is_directory(path) then

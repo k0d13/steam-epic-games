@@ -5,9 +5,8 @@ local legendary = require("epic.legendary")
 local log = require("core.log")
 local paths = require("core.paths")
 
--- Steam's "Space Required", cached with no way to tell it's stale, so the frontend drops
--- a game's size when a job touches it. egdata has the size of every build it has seen,
--- which costs one small request; legendary's manifest fetch is the fallback
+-- Steam's "Space Required" can't tell it's stale, so the frontend drops a size when a job touches
+-- the game. egdata knows every build's size for one request; legendary's manifest is the fallback
 
 ---@class GameSize
 ---@field disk integer Bytes the installed game occupies
@@ -45,10 +44,8 @@ end
 ---@param app_name string
 ---@return GameSize|nil
 local function from_egdata(app_name)
-  -- legendary's own copy of the catalog entry, whose id is the catalog item
-  local entry =
-    cache.read(paths.legendary_config() .. "/metadata/" .. app_name .. ".json", "catalog")
-  local item_id = type(entry) == "table" and type(entry.metadata) == "table" and entry.metadata.id
+  local entry = legendary.catalog(app_name)
+  local item_id = entry and entry.metadata.id
   if type(item_id) ~= "string" then
     return nil
   end
@@ -81,12 +78,6 @@ local function from_legendary(app_name)
     disk = manifest.disk_size,
     download = manifest.download_size or manifest.disk_size,
   }
-end
-
----@ffi
----Forgets every game's size, so the next read looks it up again
-function ClearGameSizes()
-  store.clear()
 end
 
 ---@ffi

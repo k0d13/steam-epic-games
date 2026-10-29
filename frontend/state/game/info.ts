@@ -5,7 +5,7 @@ import { createCache } from "../primitives";
 const cache = createCache<GameInfo>({
   persist: "epic-games:info:v7",
   fetch: (appName, refresh) => backend.GetGameInfo(appName, refresh),
-  clearRemote: () => backend.ClearGameInfo(),
+  clearRemote: () => backend.ClearCache("info"),
 });
 
 export const subscribe = cache.subscribe;

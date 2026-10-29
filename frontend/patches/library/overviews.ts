@@ -124,9 +124,8 @@ function apply(overview: SteamAppOverview) {
     app.rt_last_time_played = Math.max(app.rt_last_time_played ?? 0, played.last_played ?? 0);
   }
 
-  // Shortcuts have no purchase date, so every Epic game would land in "No recorded
-  // activity"; as for Steam's own apps, it's the later of last play and the grant. Epic
-  // doesn't always know when a game was last played, so its last unlock counts too
+  // Without a purchase date every Epic game lands in "No recorded activity", so as for Steam's apps
+  // it's the latest of last play and the grant, and the last unlock as Epic misses some plays
   if (game.purchased_at) {
     app.rt_purchased_time = game.purchased_at;
     app.rt_recent_activity_time = Math.max(

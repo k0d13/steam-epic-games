@@ -170,9 +170,14 @@ export function HasGameInfo(overview: AppOverview) {
   return isAvailable(overview.appid);
 }
 
+// For Steam's parts that can't say anything about an Epic game, like the feed's status box
+export function IsEpicApp(appId: number) {
+  return library.getByAppId(appId) !== undefined;
+}
+
 // Asked as the page is built, before info is known, to start the panel closed like a Steam game's
 export function IsEpicGame(overview: AppOverview) {
-  return isEnabled() && library.getByAppId(overview.appid) !== undefined;
+  return isEnabled() && IsEpicApp(overview.appid);
 }
 
 export function ShortcutSections(overview: AppOverview, sections: string[]) {

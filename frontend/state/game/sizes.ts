@@ -3,7 +3,7 @@ import { createCache } from "../primitives";
 const cache = createCache<GameSize>({
   persist: "epic-games:sizes:v1",
   fetch: (appName, refresh) => backend.GetGameSize(appName, refresh),
-  clearRemote: () => backend.ClearGameSizes(),
+  clearRemote: () => backend.ClearCache("sizes"),
 });
 
 export const subscribe = cache.subscribe;

@@ -4,8 +4,7 @@ description: Setup the mise toolchain (Node.js, PNPM, Lua tools) and install dep
 runs:
   using: "composite"
   steps:
-    # Versions come from mise.toml, so CI and a dev machine run the same
-    # binaries — Node and PNPM as well as stylua, selene and lua-language-server.
+    # Versions come from mise.toml, so CI and a dev machine run the same binaries
     - uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3
       with:
         cache: true

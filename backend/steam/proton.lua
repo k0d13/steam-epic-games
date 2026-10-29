@@ -7,12 +7,11 @@ local millennium = require("millennium")
 local paths = require("core.paths")
 local utils = require("utils")
 
--- Linux only: which Proton runs Epic games. Shortcuts launch legendary the same way on
--- both platforms, and Proton is set in legendary's own config.ini, which it reads on
--- every launch, so changing it touches no shortcut
+-- Linux only. Proton is set in legendary's config.ini, read on every launch, so changing it
+-- touches no shortcut
 --
--- [default] gets the wrapper, and each game gets an [<app>.env] section with a prefix of
--- its own, so one game's fixes or crash can't break another's
+-- [default] gets the wrapper and each game an [<app>.env] section with its own prefix, so one
+-- game's fixes or crash can't break another's
 
 local proton = {}
 

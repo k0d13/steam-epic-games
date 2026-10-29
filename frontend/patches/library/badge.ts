@@ -9,9 +9,8 @@ import {
 import * as library from "../../state/library";
 import { isEpicPersona } from "../game-page/friends";
 
-// An Epic mark on library artwork; backend/patches.lua has Steam's artwork component,
-// which draws every icon and capsule, ask `LibraryBadge` for one, and its avatar
-// component `FriendBadge` for an Epic friend's
+// An Epic mark on library artwork and Epic friends' avatars; backend/patches.lua has Steam's
+// artwork and avatar components ask `LibraryBadge` and `FriendBadge`
 
 const BADGE = {
   // Share of the icon's width; Steam draws icons at around 24px

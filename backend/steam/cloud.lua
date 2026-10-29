@@ -7,9 +7,8 @@ local log = require("core.log")
 local paths = require("core.paths")
 local proton = require("steam.proton")
 
--- Epic's cloud saves. legendary moves them, but only ever toward whichever side has the
--- newer files, so the launcher's conflict check is ours: we note when each game last
--- synced, and saves changed since on both sides are a conflict for Steam's dialog
+-- legendary moves saves only toward the newer side, so the conflict check is ours: saves changed
+-- on both sides since a game last synced are a conflict for Steam's dialog
 
 ---@class CloudSaves
 ---@field app_name string

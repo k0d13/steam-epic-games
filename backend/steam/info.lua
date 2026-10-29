@@ -9,10 +9,8 @@ local log = require("core.log")
 local paths = require("core.paths")
 local utils = require("utils")
 
--- What Steam's game info panel shows for an Epic game. egdata.app, which tracks Epic's
--- store, has a page for each game's sandbox (its namespace), so a game is matched by
--- namespace, never by name. The store's own content API is asked only whether the game
--- has an FAQ. Games egdata doesn't list keep what legendary's catalog has
+-- What Steam's info panel shows, from egdata by namespace and legendary's catalog for games it
+-- doesn't list; Epic's content API is asked only whether there's an FAQ
 
 ---@class GameLink
 ---@field label string
@@ -224,12 +222,6 @@ local function build(metadata)
 end
 
 ---@ffi
----Forgets every game's info, so the next read asks again
-function ClearGameInfo()
-  store.clear()
-end
-
----@ffi
 ---A miss costs a few requests to egdata and Epic, and is cached for weeks
 ---@param app_name string
 ---@param refresh? boolean Ask Epic again even if it's cached
@@ -251,10 +243,8 @@ function GetGameInfo(app_name, refresh)
     return cached
   end
 
-  -- legendary's own copy of the catalog entry
-  local entry =
-    cache.read(paths.legendary_config() .. "/metadata/" .. app_name .. ".json", "catalog")
-  if type(entry) ~= "table" or type(entry.metadata) ~= "table" then
+  local entry = legendary.catalog(app_name)
+  if not entry then
     log.warn("No catalog entry for " .. app_name)
     return cached
   end

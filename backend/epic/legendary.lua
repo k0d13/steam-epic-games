@@ -1,6 +1,7 @@
 local cache = require("core.cache")
 local fs = require("fs")
 local log = require("core.log")
+local paths = require("core.paths")
 local shell = require("core.shell")
 local utils = require("utils")
 local vendor = require("epic.vendor")
@@ -34,6 +35,27 @@ function legendary.is_app_name(name)
   return type(name) == "string"
     and name:match("^[%w%-_.]+$") ~= nil
     and name:find("..", 1, true) == nil
+end
+
+---legendary's own copy of a game's catalog entry
+---@param app_name string
+---@return table|nil entry
+function legendary.catalog(app_name)
+  local entry =
+    cache.read(paths.legendary_config() .. "/metadata/" .. app_name .. ".json", "catalog")
+  return type(entry) == "table" and type(entry.metadata) == "table" and entry or nil
+end
+
+---A catalog entry's sandbox, on the entry for most titles and on the Windows asset for the rest
+---@param entry table
+---@return string|nil
+function legendary.namespace(entry)
+  local namespace = type(entry.metadata) == "table" and entry.metadata.namespace
+  local asset = type(entry.asset_infos) == "table" and entry.asset_infos.Windows
+  if type(namespace) ~= "string" and type(asset) == "table" then
+    namespace = asset.namespace
+  end
+  return type(namespace) == "string" and namespace or nil
 end
 
 local function subcommand(args)

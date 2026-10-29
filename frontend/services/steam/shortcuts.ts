@@ -9,10 +9,8 @@ export function steamShortcuts() {
   return appStore.allApps.map((app) => app.appid).filter(appIds.isShortcut);
 }
 
-// The appid map in localStorage can be lost, which would add every game again, so
-// shortcuts are also recognised by running legendary with `launch "<app name>"`, then
-// whatever the General page added for the game. On Windows conhost runs it, headless
-// so Steam opens no console window, and the path to legendary comes before `launch`
+// The appid map in localStorage can be lost, so shortcuts are also recognised by their command:
+// legendary's path (behind conhost on Windows), `launch "<app name>"`, then the General page's options
 const LAUNCHER_EXE = /(^|[\\/])(legendary|conhost)(\.exe)?$/i;
 const LAUNCH_ARGUMENTS = /^\s*(?:--headless\s+"[^"]*"\s+)?launch\s+"([^"]+)"(?=\s|$) ?(.*)$/s;
 
@@ -77,9 +75,8 @@ export async function findOurs() {
   return found;
 }
 
-// A shortcut's directory is the install, for games reading relative paths and for whatever
-// reads it as the install location, so it's empty, like a Steam game's, until installed.
-// Its exe follows legendary, which has moved before
+// The directory is the install, for games reading relative paths and anything reading the install
+// location, so it's empty until installed, like a Steam game's; the exe follows legendary's moves
 const startDirs = new Map<number, string>();
 const alignedExes = new Set<number>();
 

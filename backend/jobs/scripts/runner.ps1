@@ -1,6 +1,5 @@
-# The runner for one legendary job on Windows. runner.lua fills in the {braced}
-# names. legendary runs in a pipeline so `taskkill /T` on this PID takes it down
-# too, and progress and errors get files of their own so reads never scan the log.
+# One legendary job on Windows, with {braced} names filled by runner.lua. legendary runs in a
+# pipeline so `taskkill /T` takes it down too, and progress and errors get files so reads skip the log.
 
 $Dir = {dir}
 $Exe = {exe}
@@ -21,9 +20,8 @@ $Log.AutoFlush = $true
 
 $percent = 0; $done = 0; $total = 0; $eta = ''; $elapsed = ''; $speed = 0
 
-# A blank line takes the default at a prompt -y doesn't cover, like the selective
-# download one Fortnite gets. Stdin closes after it, so another prompt fails the
-# job instead of hanging it.
+# A blank line takes the default at a prompt -y doesn't cover, like Fortnite's selective download,
+# and stdin closes after it, so another prompt fails the job instead of hanging it.
 @('') | & $Exe @Arguments 2>&1 | ForEach-Object {
   # Verification progress ends in a carriage return, so one line may hold several
   foreach ($line in ([string]$_ -split "`r")) {

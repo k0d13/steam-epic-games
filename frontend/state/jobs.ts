@@ -166,25 +166,25 @@ export async function update(appName: string) {
 }
 
 export async function uninstall(appName: string) {
-  return track(appName, await backend.StartUninstall(appName));
+  return track(appName, await backend.StartJob(appName, "uninstall"));
 }
 
 export async function installDlc(appName: string, dlcName: string) {
-  return track(appName, await backend.StartDlcInstall(appName, dlcName));
+  return track(appName, await backend.StartDlc(appName, dlcName, false));
 }
 
 export async function uninstallDlc(appName: string, dlcName: string) {
-  return track(appName, await backend.StartDlcUninstall(appName, dlcName));
+  return track(appName, await backend.StartDlc(appName, dlcName, true));
 }
 
 // Fails when any file is wrong, with the counts in the job's error
 export async function verify(appName: string) {
-  return track(appName, await backend.StartVerify(appName));
+  return track(appName, await backend.StartJob(appName, "verify"));
 }
 
 // Re-downloads what a verify found wrong; only for an installed game
 export async function repair(appName: string) {
-  return track(appName, await backend.StartRepair(appName));
+  return track(appName, await backend.StartJob(appName, "repair"));
 }
 
 // An update re-run as an install could reinstall from scratch if legendary rejects the

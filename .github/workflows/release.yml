@@ -1,9 +1,6 @@
 name: Release
 
-# Everything that happens once a change is on main. Pull requests live in
-# `pull-request.yml`, and the gate both share lives in `quality.yml`. A manual
-# dispatch runs that gate and stops there — releasing is driven by what lands on
-# main, never by hand.
+# A manual dispatch only runs the gate, as releases come from what lands on main
 on:
   push:
     branches: [main]
@@ -27,7 +24,7 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  # Never cancel on main — it could interrupt a release part way through.
+  # Cancelling could stop a release part way through
   cancel-in-progress: false
 
 jobs:
@@ -67,26 +64,20 @@ jobs:
           publish-script: bash .github/scripts/release-publish.sh
           pr-title: "Pending Releases"
           commit-message: "Update changelog and release"
-          # Our publish script creates the GitHub release (with the plugin .star
-          # attached); the action's own release-creation step would 409 on the
-          # tag we already published.
+          # The publish script makes the release and tag, and the action's own would 409
           create-github-releases: false
-          # Same reason: the script pushes the tag itself, before the action gets
-          # a chance to.
           push-git-tags: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PLUGIN_DB_TOKEN: ${{ secrets.PLUGIN_DB_TOKEN }}
-          # Optional: only needed if this repo has been renamed since being
-          # added to PluginDatabase as a submodule (URL-based lookup will miss).
+          # Only for a rename since this was added to PluginDatabase
           PLUGIN_DB_SUBMODULE_PATH: ${{ vars.PLUGIN_DB_SUBMODULE_PATH }}
 
   snapshot:
     name: Releasing Snapshot
     needs: [process]
     runs-on: ubuntu-latest
-    # Betas exist to preview changes waiting on a release, so this fires when the
-    # push had changesets left pending rather than a version PR to publish.
+    # A beta of changesets still pending, when there was no version PR to publish
     if: ${{ needs.process.outputs.published == 'false' }}
     permissions:
       contents: write

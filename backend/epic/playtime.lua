@@ -1,41 +1,22 @@
 local api = require("epic.api")
-local cache = require("core.cache")
 local datetime = require("datetime")
 local json = require("json")
 local log = require("core.log")
 
--- Epic's own play time record, which only launchers that report sessions add to: the
--- Epic Games Launcher does, legendary doesn't, so we report Steam's sessions ourselves.
--- Neither endpoint is documented; both are the ones the launcher uses
+-- Epic's play time record, which legendary doesn't report to as the launcher does, so we report
+-- Steam's sessions ourselves; both endpoints are the launcher's own, and undocumented
 
 local PLAYTIME_URL =
   "https://library-service.live.use1a.on.epicgames.com/library/api/public/playtime/account/"
 
 local playtime = {}
 
----@param method string
----@param body string|nil
-local function request(method, body)
-  local account_id = api.account_id()
-  if not account_id then
-    return nil
-  end
-
-  return api.request(PLAYTIME_URL .. account_id .. (method == "GET" and "/all" or ""), {
-    method = method,
-    data = body,
-  })
-end
-
 ---Seconds played per app name, as Epic has them
 ---@return table<string, integer>|nil
 function playtime.totals()
-  local response = request("GET")
-  local decoded = response and response.status == 200 and cache.decode(response.body) or nil
+  local account_id = api.account_id()
+  local decoded = account_id and api.json(PLAYTIME_URL .. account_id .. "/all")
   if type(decoded) ~= "table" then
-    if response then
-      log.warn("Epic's play time answered " .. response.status)
-    end
     return nil
   end
 
@@ -60,15 +41,17 @@ end
 ---@param ended_at integer Unix seconds
 ---@return boolean done False to try again later
 function playtime.report(machine_id, app_name, started_at, ended_at)
-  local response = request(
-    "PUT",
-    json.encode({
-      machineId = machine_id,
-      artifactId = app_name,
-      startTime = iso(started_at),
-      endTime = iso(ended_at),
+  local account_id = api.account_id()
+  local response = account_id
+    and api.request(PLAYTIME_URL .. account_id, {
+      method = "PUT",
+      data = json.encode({
+        machineId = machine_id,
+        artifactId = app_name,
+        startTime = iso(started_at),
+        endTime = iso(ended_at),
+      }),
     })
-  )
   if not response then
     return false
   end

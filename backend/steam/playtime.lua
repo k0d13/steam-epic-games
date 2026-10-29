@@ -6,10 +6,8 @@ local log = require("core.log")
 local paths = require("core.paths")
 local utils = require("utils")
 
--- Steam keeps a shortcut's play time under its appid, which a new shortcut doesn't
--- inherit, so a reinstall starts every game at zero. We keep our own record by app
--- name, outside the cache folder as it can't be rebuilt, and show the larger of it and
--- Epic's
+-- A new shortcut starts Steam's play time at zero, so we keep a record by app name, outside the
+-- cache folder as it can't be rebuilt, and show the larger of it and Epic's
 
 ---@class Playtime
 ---@field app_name string

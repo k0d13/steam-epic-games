@@ -1,19 +1,9 @@
 #!/usr/bin/env bash
-# Publish a snapshot (pre-release) build.
-#
-# Fires when push-to-main has pending changesets that aren't yet merged via
-# the "Pending Release" PR. Generates a beta version from those changesets,
-# rebuilds, and uploads the .star to a GitHub pre-release so users can grab
-# preview builds. Does NOT push tags, commits, or open a DB PR.
-#
-# Idempotent: snapshot versions include a timestamp + commit SHA so re-runs
-# produce a distinct release rather than colliding with the previous snapshot.
+# A beta pre-release of the changesets still pending on main, and nothing else: no tag
+# push, commit or database branch. The version carries a timestamp and SHA, so re-runs never collide
 set -euo pipefail
 
-# --- Guard: bail if there are no changesets to consume ----------------------
-
-# changesets/action also reports `published: false` when there are no
-# changesets at all. Without this check we'd re-tag the current stable version.
+# changesets/action reports `published: false` with no changesets too, which would re-tag the stable version
 shopt -s nullglob
 pending=(.changeset/*.md)
 shopt -u nullglob
@@ -26,27 +16,19 @@ if [ "$pending_count" -eq 0 ]; then
   exit 0
 fi
 
-# --- Bump to a snapshot version ---------------------------------------------
-
 pnpm exec changeset version --snapshot beta
 
 snapshot_version=$(jq -r .version package.json)
 name=$(sed -n 's/^id = "\(.*\)"/\1/p' millennium.toml)
 
-# --- Mirror version into millennium.toml ------------------------------------
-
-# Done before the build, since starlight bakes the version into the .star.
+# Before the build, since starlight bakes the version into the .star
 sed -i "s/^version = \".*\"/version = \"${snapshot_version}\"/" millennium.toml
-
-# --- Build ------------------------------------------------------------------
 
 mise run build
 
 tag="v${snapshot_version}"
 asset="${name}-${snapshot_version}.star"
 cp ".millennium/${name}.star" "$asset"
-
-# --- GitHub pre-release -----------------------------------------------------
 
 gh release create "$tag" "$asset" \
   --title "$tag" \

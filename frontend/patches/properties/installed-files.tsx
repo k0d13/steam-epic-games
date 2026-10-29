@@ -4,10 +4,8 @@ import { badFiles, reacquiring } from "../../services/epic/verification";
 import * as jobs from "../../state/jobs";
 import * as library from "../../state/library";
 
-// General, Installed Files, where Steam keeps Verify, and DLC are only a Steam game's
-// pages. backend/patches.lua passes the Shortcut page and Steam's General and DLC pages
-// through `PropertiesPages`, which gives an Epic game General in place of Shortcut, then
-// ours and DLC
+// General, Installed Files (where Steam keeps Verify) and DLC are Steam-only pages; backend/patches.lua
+// passes them through `PropertiesPages`, which gives an Epic game General for Shortcut, ours and DLC
 
 interface Page {
   title: ReactNode;

@@ -11,9 +11,8 @@ import { applyCloud, checkCloud } from "../game-page/cloud";
 import { applyDlc } from "../game-page/dlc";
 import { applyGeneral } from "../properties/general";
 
-// "Space Required" reads `bHasAnyLocalContent` and `lDiskSpaceRequiredBytes`, which shortcuts
-// get wrong; backend/patches.lua has the store's AppDetailsChanged, a non-writable mobx
-// action, call `AppDetailsChanged` first
+// "Space Required" reads `bHasAnyLocalContent` and `lDiskSpaceRequiredBytes`, which shortcuts get
+// wrong; backend/patches.lua has the store's non-writable AppDetailsChanged call ours first
 
 // An install in progress counts as installed, so the play bar doesn't shift under the
 // cursor as progress appears
@@ -52,9 +51,8 @@ function apply(details: AppDetails) {
   else sizes.ensure(game.app_name);
 }
 
-// Only the store's registrations come through here, so a scan of every shortcut that
-// registers with SteamClient itself doesn't start a size and achievements fetch, each a
-// legendary run, for hundreds of games
+// Only the store's registrations, so a scan registering every shortcut doesn't start a legendary
+// run for size and achievements on hundreds of games
 export function AppDetailsChanged(details: AppDetails) {
   checkCloud(details.unAppID);
   apply(details);

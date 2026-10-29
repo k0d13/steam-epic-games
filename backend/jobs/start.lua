@@ -80,9 +80,8 @@ function StartInstall(app_name, base_path, game_folder, with_dlcs)
 end
 
 ---@ffi
----Refuses a game that isn't installed rather than quietly installing it. Not
----`--update-only`, which legendary also applies to each owned DLC and exits on the first
----one that isn't installed
+---Refuses a game that isn't installed. Not `--update-only`, which legendary applies to each owned
+---DLC too, exiting on the first one that isn't installed
 ---@param app_name string
 ---@param with_dlcs? boolean
 ---@return Job|nil
@@ -100,30 +99,29 @@ function StartUpdate(app_name, with_dlcs)
   return start_job(app_name, "update", args)
 end
 
----@ffi
----Fails the job when any file is wrong, as legendary exits 0 either way
----@param app_name string
----@return Job|nil
-function StartVerify(app_name)
-  return start_job(app_name, "verify", { "-y", "verify", app_name })
-end
+-- A verify fails the job on any bad file though legendary exits 0, and a repair's caller checks the
+-- game is installed or legendary installs it. An uninstall keeps the shortcut, the plugin's point
+local JOB_ARGS = {
+  verify = { "verify" },
+  repair = { "install", "--repair" },
+  uninstall = { "uninstall" },
+}
 
 ---@ffi
----Verifies, then downloads what failed. The caller checks the game is installed, as
----legendary would install a game it doesn't have
 ---@param app_name string
+---@param kind string "verify", "repair" or "uninstall"
 ---@return Job|nil
-function StartRepair(app_name)
-  return start_job(app_name, "repair", { "-y", "install", app_name, "--repair" })
-end
-
----@ffi
----The Steam shortcut is left alone, as keeping uninstalled games in the library is the
----point of the plugin
----@param app_name string
----@return Job|nil
-function StartUninstall(app_name)
-  return start_job(app_name, "uninstall", { "-y", "uninstall", app_name })
+function StartJob(app_name, kind)
+  local args = JOB_ARGS[kind]
+  if not args then
+    log.warn("Refused an unknown job " .. tostring(kind))
+    return nil
+  end
+  local command = { "-y", args[1], app_name }
+  for index = 2, #args do
+    table.insert(command, args[index])
+  end
+  return start_job(app_name, kind, command)
 end
 
 ---The DLC's job is kept under its game, which is what the frontend looks jobs up by
@@ -148,23 +146,13 @@ end
 ---Legendary refuses DLC whose game isn't installed
 ---@param app_name string The game
 ---@param dlc_name string
+---@param uninstall? boolean
 ---@return Job|nil
-function StartDlcInstall(app_name, dlc_name)
+function StartDlc(app_name, dlc_name, uninstall)
   if not find_dlc(app_name, dlc_name) then
     log.warn("Refused DLC " .. tostring(dlc_name) .. " for " .. tostring(app_name))
     return nil
   end
-  return start_job(app_name, "dlc", { "-y", "install", dlc_name }, dlc_name)
-end
-
----@ffi
----@param app_name string The game
----@param dlc_name string
----@return Job|nil
-function StartDlcUninstall(app_name, dlc_name)
-  if not find_dlc(app_name, dlc_name) then
-    log.warn("Refused removing DLC " .. tostring(dlc_name) .. " for " .. tostring(app_name))
-    return nil
-  end
-  return start_job(app_name, "dlc", { "-y", "uninstall", dlc_name }, dlc_name)
+  local verb = uninstall and "uninstall" or "install"
+  return start_job(app_name, "dlc", { "-y", verb, dlc_name }, dlc_name)
 end

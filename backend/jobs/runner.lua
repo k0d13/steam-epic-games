@@ -5,9 +5,8 @@ local paths = require("core.paths")
 local shell = require("core.shell")
 local utils = require("utils")
 
--- shell.run would block the Lua state for a whole download, so a job's command runs in
--- a detached PowerShell (a /bin/sh script on Linux) that reports through small files in
--- its directory
+-- shell.run would block the Lua state for a whole download, so a job runs in a detached
+-- PowerShell or /bin/sh script that reports through small files in its directory
 
 local runner = {}
 
@@ -134,9 +133,8 @@ function runner.is_running(dir, pid, spawned_at)
   return shell.is_locked(lock)
 end
 
----Kills a runner and legendary under it: /T takes the tree down on Windows, /F because
----legendary ignores anything gentler mid-download, and on Linux the runner leads its own
----process group so the negative PID does the same
+---Kills a runner and legendary under it: /T takes the tree and /F as legendary ignores anything
+---gentler mid-download, and on Linux the runner leads its own process group
 ---@param pid integer
 function runner.kill(pid)
   if paths.IS_WINDOWS then

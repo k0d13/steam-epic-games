@@ -5,13 +5,12 @@ local datetime = require("datetime")
 local entitlements = require("epic.entitlements")
 local friends = require("epic.friends")
 local json = require("json")
+local legendary = require("epic.legendary")
 local log = require("core.log")
 local paths = require("core.paths")
 
--- Which friends have played a game and what they've unlocked. Epic's store shows a
--- friend's achievements on their profile, which is a different query from the one
--- legendary asks for our own: it takes the game's product id, where a sandbox gets
--- nothing back for another account
+-- Friends' plays and unlocks come from the query Epic's store uses for profiles, by product id,
+-- as legendary's query by sandbox gets nothing back for another account
 
 local GRAPHQL_URL = "https://launcher.store.epicgames.com/graphql"
 local GRAPHQL_HEADERS = {
@@ -54,24 +53,6 @@ local function graphql(query, variables)
     data = json.encode({ query = query, variables = variables }),
     headers = GRAPHQL_HEADERS,
   })
-end
-
----The game's sandbox, from the catalog entry legendary keeps
----@param app_name string
----@return string|nil
-local function sandbox_of(app_name)
-  local path = paths.legendary_config() .. "/metadata/" .. app_name .. ".json"
-  local entry = cache.read(path, "metadata")
-  if not entry then
-    return nil
-  end
-
-  local from_metadata = object(entry.metadata).namespace
-  if type(from_metadata) == "string" then
-    return from_metadata
-  end
-  local from_asset = object(object(entry.asset_infos).Windows).namespace
-  return type(from_asset) == "string" and from_asset or nil
 end
 
 ---@param sandbox string
@@ -166,16 +147,17 @@ end
 ---@param refresh? boolean Ask Epic again even if it's cached
 ---@return FriendAchievements|nil
 function GetFriendAchievements(app_name, refresh)
-  if not api.account_id() then
-    return nil
-  end
-
   local cached = store.get()
   if cached[app_name] and not refresh then
     return cached[app_name]
   end
 
-  local sandbox = sandbox_of(app_name)
+  if not api.account_id() then
+    return nil
+  end
+
+  local entry = legendary.catalog(app_name)
+  local sandbox = entry and legendary.namespace(entry)
   if not sandbox then
     return nil
   end

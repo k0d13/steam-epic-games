@@ -1,8 +1,7 @@
 local fetch = require("core.fetch")
 
--- egdata.app tracks Epic's store and publishes what it sees. Games are filed by sandbox
--- (the catalog's namespace) and by catalog item, which are the ids legendary's catalog
--- entries carry, so nothing is matched by name
+-- egdata.app tracks Epic's store. Games are filed by sandbox (the catalog's namespace) and catalog
+-- item, the ids legendary's catalog entries carry, so nothing is matched by name
 
 local egdata = {}
 

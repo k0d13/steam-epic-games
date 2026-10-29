@@ -90,12 +90,6 @@ local function build(decoded)
 end
 
 ---@ffi
----Forgets every game's achievements, so the next read asks Epic again
-function ClearAchievements()
-  store.clear()
-end
-
----@ffi
 ---A miss costs a round trip to Epic
 ---@param app_name string
 ---@param refresh? boolean Ask Epic again even if it's cached

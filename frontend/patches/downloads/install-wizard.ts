@@ -7,9 +7,8 @@ import * as jobs from "../../state/jobs";
 // The state the wizard's own configuration page is drawn for
 const SHOW_CONFIG = 7;
 
-// Epic games go inside a chosen Steam library folder, laid out like `steamapps/common`
-// but kept out of it since everything in there is Steam's to manage, and a game sold on
-// both stores can share a folder name. Joined with the folder's own separator
+// Inside a chosen Steam library, laid out like `steamapps/common` but not in it, as that's Steam's
+// to manage and a game sold on both stores can share a folder name
 function installDirectory(folderPath: string) {
   const separator = folderPath.includes("\\") ? "\\" : "/";
   return [folderPath, "epicapps", "common"].join(separator);

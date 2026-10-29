@@ -1,3 +1,4 @@
+--# selene: allow(unused_variable)
 local fs = require("fs")
 local json = require("json")
 local log = require("core.log")
@@ -7,6 +8,9 @@ local utils = require("utils")
 -- JSON caches on disk, where losing one only costs a refresh
 
 local cache = {}
+
+-- What ClearCache can empty, by label, which leaves records that aren't caches alone
+local clearable = {}
 
 local function widen(number)
   if number:match("^%-?%d%d%d%d%d%d%d%d%d%d+$") then
@@ -132,7 +136,19 @@ function cache.open(path, label)
     return store.save()
   end
 
+  if path:find(paths.DATA .. "/cache/", 1, true) == 1 then
+    clearable[label] = store
+  end
   return store
+end
+
+---@ffi
+---Forgets everything in one cache, like "achievements", so the next reads ask again
+---@param label string
+function ClearCache(label)
+  if clearable[label] then
+    clearable[label].clear()
+  end
 end
 
 return cache

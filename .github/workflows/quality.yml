@@ -1,14 +1,10 @@
 name: Quality
 
-# The shared gate: build the plugin, type check, lint. Nothing triggers this on
-# its own — it has no opinion about when it should run, only about what passing
-# means — so every caller decides that for itself and gets the same answer.
 on:
   workflow_call:
 
-# Proving the plugin needs to read it and nothing more. Stated here rather than
-# left to the repository default, because these jobs run branch code and a token
-# that could push to main would be a token that could reach the release pipeline.
+# Not the repository default, as these jobs run branch code and a token that can push
+# to main can reach the release pipeline
 permissions:
   contents: read
 
@@ -26,8 +22,7 @@ jobs:
       - name: Build plugin
         run: mise run build
 
-      # The release jobs consume this rather than rebuilding, so what ships is
-      # the exact tree that passed the gate.
+      # Released as is, so what ships is what passed
       - name: Upload dist artifacts
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
