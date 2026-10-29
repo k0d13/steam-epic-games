@@ -1,11 +1,8 @@
-local account = require("epic.account")
+local api = require("epic.api")
 local cache = require("core.cache")
 local datetime = require("datetime")
-local entitlements = require("epic.entitlements")
-local http = require("http")
 local json = require("json")
 local log = require("core.log")
-local paths = require("core.paths")
 
 -- Epic's own play time record, which only launchers that report sessions add to: the
 -- Epic Games Launcher does, legendary doesn't, so we report Steam's sessions ourselves.
@@ -14,73 +11,20 @@ local paths = require("core.paths")
 local PLAYTIME_URL =
   "https://library-service.live.use1a.on.epicgames.com/library/api/public/playtime/account/"
 
--- A token this close to expiring is refreshed first, so a request can't outlive it
-local EXPIRY_MARGIN = 5 * 60
-
 local playtime = {}
-
----legendary's session, which it refreshes itself; we only read it
----@return table|nil user
-local function session()
-  local user = cache.read(paths.legendary_config() .. "/user.json", "session")
-  if type(user) ~= "table" or type(user.access_token) ~= "string" then
-    return nil
-  end
-  return user
-end
-
----A usable session, refreshed through legendary when it's about to expire
----@param force boolean|nil Refresh even if it looks valid, after Epic turned it down
----@return table|nil user
-local function signed_in(force)
-  local user = session()
-  if not user then
-    return nil
-  end
-
-  local expires_at = entitlements.parse_date(user.expires_at)
-  if force or not expires_at or expires_at - datetime.unix() < EXPIRY_MARGIN then
-    -- legendary's status logs in first, which refreshes the stored session
-    account.status(true)
-    user = session()
-  end
-
-  return user
-end
 
 ---@param method string
 ---@param body string|nil
 local function request(method, body)
-  local response
-  for attempt = 1, 2 do
-    local user = signed_in(attempt == 2)
-    if not user then
-      return nil
-    end
-
-    local url = PLAYTIME_URL .. user.account_id .. (method == "GET" and "/all" or "")
-    local err
-    response, err = http.request(url, {
-      method = method,
-      data = body,
-      headers = {
-        Authorization = "bearer " .. user.access_token,
-        ["Content-Type"] = "application/json",
-      },
-      timeout = 10,
-    })
-    if not response then
-      log.warn("Could not reach Epic's play time: " .. tostring(err))
-      return nil
-    end
-
-    -- Revoked or expired early, so it's worth one refresh
-    if response.status ~= 401 then
-      break
-    end
+  local account_id = api.account_id()
+  if not account_id then
+    return nil
   end
 
-  return response
+  return api.request(PLAYTIME_URL .. account_id .. (method == "GET" and "/all" or ""), {
+    method = method,
+    data = body,
+  })
 end
 
 ---Seconds played per app name, as Epic has them
