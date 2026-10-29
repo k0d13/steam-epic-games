@@ -51,6 +51,10 @@ function navigate(sessionId: string, url: string) {
   return cdp.send("Page.navigate", { url }, sessionId);
 }
 
+function detach(sessionId: string) {
+  return cdp.send("Target.detachFromTarget", { sessionId }).catch(() => {});
+}
+
 async function attach(targetId: string) {
   const known = tabs.get(targetId);
   if (known) return known;
@@ -162,7 +166,12 @@ async function scan() {
 
     await Promise.all(visits);
 
-    for (const targetId of tabs.keys()) if (!live.has(targetId)) tabs.delete(targetId);
+    // Epic's sign in page runs a bot check that a debugger left attached can fail
+    for (const [targetId, { sessionId }] of tabs) {
+      if (live.has(targetId)) continue;
+      tabs.delete(targetId);
+      void detach(sessionId);
+    }
   } catch (e) {
     console.warn("Couldn't list Steam's browser tabs", e);
   } finally {
@@ -175,9 +184,7 @@ export function start() {
 
   return () => {
     stop();
-    for (const { sessionId } of tabs.values()) {
-      void cdp.send("Target.detachFromTarget", { sessionId }).catch(() => {});
-    }
+    for (const { sessionId } of tabs.values()) void detach(sessionId);
     tabs.clear();
   };
 }
