@@ -129,7 +129,8 @@ const GETTERS: Record<string, (ours: AppAchievement[]) => unknown> = {
 // a spinner rather than "no stats" until the repaint brings the answer
 export function AchievementStore(method: string, appId: number) {
   const build = GETTERS[method];
-  const game = library.getByAppId(appId);
+  // Not every caller passes a number, and a string misses the lookup
+  const game = library.getByAppId(Number(appId));
   if (!build || !game) return undefined;
 
   const ours = listFor(game.app_name);

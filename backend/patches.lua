@@ -297,4 +297,17 @@ return {
       },
     },
   },
+
+  -- A friend's unlock in the feed hovers with when you unlocked it too, read from your
+  -- achievements for the row's app, which for an Epic game's row Steam has none of
+  {
+    file = [[sp\.js]],
+    find = [[for\(let [\w$]+ of Object\.values\([\w$]+\.data\.achieved\)\)]],
+    transforms = {
+      {
+        match = [[Object\.values\(([\w$]+)\.data\.achieved\)]],
+        replace = [[Object.values(\1.data?.achieved??{})]],
+      },
+    },
+  },
 }

@@ -1,10 +1,13 @@
 import { callOriginal, replacePatch } from "millennium";
 import * as achievements from "../../state/game/achievements";
+import * as friendAchievements from "../../state/game/friend-achievements";
 import * as library from "../../state/library";
 import { listFor } from "./achievements";
+import { standIn } from "./friends";
 
 // The feed is filled from Steam's servers, which know nothing of an Epic game, so the
-// store's fetch is taken over and the unlocks added to the feed ourselves
+// store's fetch is taken over and the unlocks added to the feed ourselves, friends' too,
+// whom ./friends makes Steam's friend store answer for
 
 // Steam's EUserNewsType for an unlock
 const ACHIEVEMENT_UNLOCKED = 2;
@@ -57,32 +60,47 @@ async function fill(
     activity.m_AchievementMap.set(appId, entries);
   }
 
-  let done = added.get(activity);
-  if (!done) {
-    done = new Set();
-    added.set(activity, done);
-  }
+  const done = added.get(activity) ?? new Set<string>();
+  added.set(activity, done);
 
-  const actor = store.m_CMInterface.steamid.ConvertTo64BitString();
   const pending: Promise<void>[] = [];
 
-  for (const achievement of list) {
-    if (!achievement.bAchieved || achievement.rtUnlocked === 0 || done.has(achievement.strID)) {
-      continue;
-    }
-    done.add(achievement.strID);
-    entries.set(achievement.strID, achievement);
+  function add(actor: string, strID: string, unlockedAt: number) {
+    const key = `${actor}:${strID}`;
+    if (done.has(key)) return;
+    done.add(key);
 
     pending.push(
       activity.AddUserNewsEvent({
         eventtype: () => ACHIEVEMENT_UNLOCKED,
-        eventtime: () => achievement.rtUnlocked,
+        eventtime: () => unlockedAt,
         gameid: () => String(appId),
         steamid_actor: () => actor,
-        achievement_names: () => [achievement.strID],
+        achievement_names: () => [strID],
         toObject: () => ({}),
       }),
     );
+  }
+
+  const self = store.m_CMInterface.steamid.ConvertTo64BitString();
+  for (const achievement of list) {
+    if (!achievement.bAchieved || achievement.rtUnlocked === 0) continue;
+    entries.set(achievement.strID, achievement);
+    add(self, achievement.strID, achievement.rtUnlocked);
+  }
+
+  // A row looks its achievement up in the map, and a friend may hold ones we don't
+  const friends = friendAchievements.get(game.app_name)?.friends;
+  if (friends) {
+    for (const achievement of list) entries.set(achievement.strID, achievement);
+
+    // Lua sends {} for an empty list
+    for (const friend of Object.values(friends)) {
+      const actor = standIn(friend);
+      for (const unlock of Object.values(friend.unlocks)) {
+        if (entries.has(unlock.id)) add(actor, unlock.id, unlock.unlocked_at);
+      }
+    }
   }
 
   await Promise.all(pending);
@@ -115,6 +133,7 @@ function takeOver(store: ActivityStore, activity: Activity, appId: number) {
   const feed = { store, activity };
   feeds.set(appId, feed);
   achievements.ensure(game.app_name);
+  friendAchievements.ensure(game.app_name);
   void fill(appId, feed);
   return true;
 }
@@ -138,12 +157,13 @@ export function register() {
       return callOriginal as unknown as Promise<void>;
     },
   );
-  const unsubscribe = achievements.subscribe(() => {
+  const refill = () => {
     for (const [appId, feed] of feeds) void fill(appId, feed);
-  });
+  };
+  const unsubscribes = [achievements.subscribe(refill), friendAchievements.subscribe(refill)];
 
   return () => {
     patch.unpatch();
-    unsubscribe();
+    unsubscribes.forEach((unsubscribe) => unsubscribe());
   };
 }

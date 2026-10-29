@@ -62,7 +62,7 @@ function accountFor(epicId: string) {
 }
 
 // The SteamID64 the feed attributes a friend's rows to
-function standIn(friend: { id: string; name: string; color?: string | null }) {
+export function standIn(friend: { id: string; name: string; color?: string | null }) {
   const account = accountFor(friend.id);
   const avatar = letterAvatar(friend.name, friend.color);
   let entry = byAccount.get(account);
