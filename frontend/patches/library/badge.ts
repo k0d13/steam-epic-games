@@ -1,8 +1,17 @@
-import { createElement, useCallback, useRef, useSyncExternalStore } from "react";
+import {
+  createElement,
+  Fragment,
+  type ReactNode,
+  useCallback,
+  useRef,
+  useSyncExternalStore,
+} from "react";
 import * as library from "../../state/library";
+import { isEpicPersona } from "../game-page/friends";
 
 // An Epic mark on library artwork; backend/patches.lua has Steam's artwork component,
-// which draws every icon and capsule, ask `LibraryBadge` for one
+// which draws every icon and capsule, ask `LibraryBadge` for one, and its avatar
+// component `FriendBadge` for an Epic friend's
 
 const BADGE = {
   // Share of the icon's width; Steam draws icons at around 24px
@@ -44,28 +53,26 @@ const PLACEMENT = {
 } as const;
 
 // Its own component, so a sync redraws the badge without Steam redrawing the art
-function Badge({ appId, kind }: { appId: number; kind: Kind }) {
-  const epic = useSyncExternalStore(
-    library.subscribe,
-    () => library.getByAppId(appId) !== undefined,
-  );
-
-  // Icons clip to round their corners, which would cut off our overhang
+function Mark({ kind }: { kind: Kind }) {
+  // Icons clip to round their corners, which would cut off our overhang, and an avatar's
+  // holder isn't always the box the badge is placed against
   const container = useRef<HTMLElement | null>(null);
-  const unclip = useCallback((badge: HTMLElement | null) => {
+  const fit = useCallback((badge: HTMLElement | null) => {
     if (badge?.parentElement) {
       container.current = badge.parentElement;
       container.current.style.overflow = "visible";
+      if (getComputedStyle(container.current).position === "static") {
+        container.current.style.position = "relative";
+      }
     } else {
       container.current?.style.removeProperty("overflow");
+      container.current?.style.removeProperty("position");
       container.current = null;
     }
   }, []);
 
-  if (!epic) return null;
-
   return createElement("div", {
-    ref: kind === "icon" ? unclip : undefined,
+    ref: kind === "icon" ? fit : undefined,
     style: {
       ...PLACEMENT[kind],
       position: "absolute",
@@ -78,8 +85,23 @@ function Badge({ appId, kind }: { appId: number; kind: Kind }) {
   });
 }
 
+function Badge({ appId, kind }: { appId: number; kind: Kind }) {
+  const epic = useSyncExternalStore(
+    library.subscribe,
+    () => library.getByAppId(appId) !== undefined,
+  );
+
+  return epic ? createElement(Mark, { kind }) : null;
+}
+
 export function LibraryBadge(appId: number | undefined, assetType: number) {
   const kind = KINDS[assetType];
   if (appId === undefined || !kind) return null;
   return createElement(Badge, { appId, kind });
+}
+
+// An avatar's children, with the mark added when the persona is an Epic friend's
+export function FriendBadge(persona: object | undefined, children: ReactNode) {
+  if (!isEpicPersona(persona)) return children;
+  return createElement(Fragment, null, children, createElement(Mark, { kind: "icon" }));
 }

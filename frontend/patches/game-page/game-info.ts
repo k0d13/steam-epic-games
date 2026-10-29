@@ -185,7 +185,8 @@ export function ShortcutSections(overview: AppOverview, sections: string[]) {
     : [...sections];
   if (hasAchievements(game.app_name)) result.push("achievements");
   if (game.dlcs.length > 0) result.push("dlc");
-  result.push("activity");
+  // Draws nothing until game-page/friends.ts has a friend who plays
+  result.push("friends", "activity");
   return result;
 }
 

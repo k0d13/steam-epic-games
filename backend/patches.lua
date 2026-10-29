@@ -221,4 +221,80 @@ return {
       },
     },
   },
+
+  -- The feed draws a friend's row from the friend store's answer for their account, and
+  -- hides it unless they're a friend. game-page/friends.ts gives an Epic friend's
+  -- stand-in account their name, a default avatar and a place among the friends
+  {
+    file = [[sp\.js]],
+    find = [[GetFriendState\([\w$]+\)\{const [\w$]+=typeof [\w$]+=="number"\?[\w$]+:[\w$]+\.GetAccountID\(\),[\w$]+=this\.m_FriendsUIFriendStore\.GetPlayer\([\w$]+\);return [^}]*\}]],
+    transforms = {
+      {
+        match = [[return ([\w$]+)\.is_ready\?[\w$]+:this\.m_mapPlayerCache\.get\(([\w$]+)\)\|\|[\w$]+\}$]],
+        replace = [[return (#{{self}}?.FriendState??((a,b)=>b))(\2,\1.is_ready?\1:this.m_mapPlayerCache.get(\2)||\1)}]],
+      },
+    },
+  },
+
+  -- A friend's name and avatar open their Steam profile, which a stand-in doesn't have,
+  -- so game-page/friends.ts sends them to their Epic profile
+  {
+    file = [[sp\.js]],
+    find = [[ResolveURL\([\w$]+,\.\.\.[\w$]+\)\{const [\w$]+=this\.m_steamUrls\[]],
+    transforms = {
+      {
+        match = [[ResolveURL\(([\w$]+),\.\.\.([\w$]+)\)\{]],
+        replace = [[ResolveURL(\1,...\2){const epicGames=#{{self}}?.ResolveURL?.(\1,\2);if(epicGames)return epicGames;]],
+      },
+    },
+  },
+
+  -- Steam's avatar component, which every friend's picture goes through, so
+  -- library/badge.ts can add the Epic mark to a stand-in's persona
+  {
+    file = [[sp\.js]],
+    find = [[strAvatarURL:[\w$]+,size:[\w$]+,className:\(0,[\w$]+\.[\w$]+\)\(\(0,[\w$]+\.[\w$]+\)\([\w$]+\),[\w$]+\),\.\.\.[\w$]+\}]],
+    transforms = {
+      {
+        match = [[\(\(0,([\w$]+\.[\w$]+)\)\(([\w$]+)\),([\w$]+)\),\.\.\.([\w$]+)\}$]],
+        replace = [[((0,\1)(\2),\3),...\4,children:(#{{self}}?.FriendBadge??((a,b)=>b))(\2,this.props.children)}]],
+      },
+    },
+  },
+
+  -- The game page's friends section reads who plays an app from Steam's CM, which has
+  -- none for an Epic game, so game-page/friends.ts answers with Epic friends who do
+  {
+    file = [[sp\.js]],
+    find = [[const\{data:[\w$]+\}=\(0,[\w$]+\.[\w$]+\)\([\w$]+,\{staleTime:36e5\}\);]],
+    transforms = {
+      {
+        match = [[^const\{data:([\w$]+)\}=(\(0,[\w$]+\.[\w$]+\)\(([\w$]+),\{staleTime:36e5\}\));$]],
+        replace = [[const \1=(#{{self}}?.FriendsWhoPlay??((a,b)=>b))(\3,\2.data);]],
+      },
+    },
+  },
+
+  -- "View all friends who play" opens Steam's community page for the app, which an Epic
+  -- game doesn't have, so the section drops the link for one
+  {
+    file = [[sp\.js]],
+    find = [[[\w$]+=\(0,[\w$]+\.[\w$]+\)\("CommunityFriendsThatPlay",[\w$]+\),]],
+    transforms = {
+      {
+        match = [[^([\w$]+=\(0,[\w$]+\.[\w$]+\)\("CommunityFriendsThatPlay",([\w$]+)\)),$]],
+        replace = [[\1,epicGamesFriends=#{{self}}?.IsEpicApp?.(\2),]],
+      },
+    },
+  },
+  {
+    file = [[sp\.js]],
+    find = [[primaryAction:\{action:[\w$]+,label:\(0,[\w$]+\.we\)\("#AppDetails_Friends_ViewAll"\)\}]],
+    transforms = {
+      {
+        match = [[primaryAction:(\{action:[\w$]+,label:\(0,[\w$]+\.we\)\("#AppDetails_Friends_ViewAll"\)\})]],
+        replace = [[primaryAction:epicGamesFriends?void 0:\1]],
+      },
+    },
+  },
 }
