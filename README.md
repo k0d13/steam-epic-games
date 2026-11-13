@@ -67,12 +67,41 @@
 
 You need **Steam** with [**Millennium**](https://steambrew.app/), on Windows or Linux. Nothing else: [Legendary](https://github.com/derrod/legendary) is downloaded for you on first run.
 
-1. **Sign in.** In Steam, open **Store > Epic Games Store** and sign in to Epic.
-2. **Open the panel.** Pick **Epic Games** from Millennium's plugin list.
-3. **Add to Steam.** Press the button and let it run.
+> [!IMPORTANT]
+> You must be on **Millennium v3.6.3-beta.1 or higher**.
+
+1. **Install.** Download the `.star` file from the [latest release](https://github.com/k0d13/steam-epic-games/releases/latest) and move it into Millennium's plugins folder, then restart Steam and enable **Epic Games** in Millennium's plugin list.
+   - Windows: `C:\Program Files (x86)\Steam\millennium\plugins`
+   - Linux: `~/.local/share/Steam/millennium/plugins`
+2. **Sign in.** In Steam, open **Store > Epic Games Store** and sign in to Epic.
+3. **Open the panel.** Pick **Epic Games** from Millennium's plugin list.
+4. **Add to Steam.** Press the button and let it run.
 
 > [!TIP]
 > The first sync takes a few minutes on a big library. After that, only changes are picked up.
+
+## 🩺 Troubleshooting
+
+Everything the plugin stores lives in its data folder, inside your Steam folder:
+
+- Windows: `C:\Program Files (x86)\Steam\millennium\data\epic-games`
+- Linux: `~/.local/share/Steam/millennium/data/epic-games`
+
+`plugin.log` in that folder records what the plugin did and any errors. Attach it when you [open an issue](https://github.com/k0d13/steam-epic-games/issues/new).
+
+<details>
+<summary><b>Signing in fails with <code>network-error</code> after the captcha</b></summary>
+
+Epic can reject email and password sign-ins from Steam's browser, depending on your account or region ([#19](https://github.com/k0d13/steam-epic-games/issues/19)). Sign in with Steam, Google or another provider instead. If your Epic account only has a password, link one of those to it first in your [Epic account settings](https://www.epicgames.com/account/connections).
+
+</details>
+
+<details>
+<summary><b>The plugin doesn't show up or won't load</b></summary>
+
+Check you're on Millennium v3.6.3-beta.1 or higher, that the `.star` file is directly inside the plugins folder, and that **Epic Games** is enabled in Millennium's plugin list. Restart Steam after any change.
+
+</details>
 
 ## 💖 Support
 

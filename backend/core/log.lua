@@ -18,8 +18,18 @@ local lines = {}
 for line in (utils.read_file(PATH) or ""):gmatch("[^\n]+") do
   table.insert(lines, line)
 end
-while #lines > MAX_LINES do
-  table.remove(lines, 1)
+local function trim()
+  local kept = {}
+  for index = #lines - MAX_LINES + 1, #lines do
+    table.insert(kept, lines[index])
+  end
+  lines = kept
+  utils.write_file(PATH, table.concat(lines, "\n") .. "\n")
+end
+
+-- Also trimmed at load, or quiet sessions would keep appending to an oversized file
+if #lines > MAX_LINES then
+  trim()
 end
 
 local function write(level, message)
@@ -28,12 +38,7 @@ local function write(level, message)
 
   -- Trimmed in batches, since a trim rewrites the whole file
   if #lines > MAX_LINES * 2 then
-    local kept = {}
-    for index = #lines - MAX_LINES + 1, #lines do
-      table.insert(kept, lines[index])
-    end
-    lines = kept
-    utils.write_file(PATH, table.concat(lines, "\n") .. "\n")
+    trim()
   else
     utils.append_file(PATH, line .. "\n")
   end
