@@ -1,5 +1,20 @@
 # epic-games
 
+## 0.9.0
+
+### Minor Changes
+
+- 7b4dc96: Show Epic friends' achievement unlocks in an Epic game's activity feed
+- 5141a80: Show Epic friends who have played an Epic game in its friends section, with letter avatars like Epic's
+
+### Patch Changes
+
+- 93b3384: Run legendary's status, library refresh and download in the background, so a slow connection or virus scan no longer stalls Steam and every other Millennium plugin
+- 73a8508: Detach from Epic's store tab once it leaves the store, so Epic's sign in check doesn't see a debugger
+- e528a8d: Show an Epic game's cached achievements and friends straight away and refresh them in the background, and re-read only games played since at startup rather than every game
+- 1ff91cb: Keep plugin.log under 1000 lines, it kept growing when Steam was restarted often
+- 0c49a7e: Fix Epic games showing a console icon in the library list after Steam stopped accepting custom icon artwork
+
 ## 0.8.1
 
 ### Patch Changes
