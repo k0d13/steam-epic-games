@@ -79,11 +79,24 @@ const forced = createStore<number>("epic-games:forced-refresh:v1");
 // the other to minutes, so a second caller shares the first
 let refreshing: Promise<Library> | undefined;
 
+const REFRESH_POLL_MS = 1000;
+
+// The backend refreshes in the background and answers at once, so it's asked until it's done
+async function settle(request: Promise<Library>) {
+  let result = await request;
+  while (result.refreshing) {
+    await new Promise((resolve) => setTimeout(resolve, REFRESH_POLL_MS));
+    // react-doctor-disable-next-line react-doctor/async-await-in-loop
+    result = await backend.GetLibrary(false, false);
+  }
+  return result;
+}
+
 export function load(refresh = false, force = false) {
   const failure = "Failed to load the Epic library";
   if (!refresh) return read(backend.GetLibrary(false, false), failure);
 
-  refreshing ??= read(backend.GetLibrary(true, force), failure)
+  refreshing ??= read(settle(backend.GetLibrary(true, force)), failure)
     .then((result) => {
       if (force && !result.error) forced.set("at", Date.now());
       return result;

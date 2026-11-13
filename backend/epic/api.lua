@@ -33,10 +33,17 @@ local function signed_in(force)
   end
 
   local expires_at = entitlements.parse_date(user.expires_at)
-  if force or not expires_at or expires_at - datetime.unix() < EXPIRY_MARGIN then
-    -- legendary's status logs in first, which refreshes the stored session
+  local remaining = expires_at and expires_at - datetime.unix() or 0
+  if force or remaining < EXPIRY_MARGIN then
+    -- legendary's status logs in first, which refreshes the stored session. It runs in the
+    -- background, so until it lands a session that has run out goes unanswered
     account.status(true)
     user = session()
+    expires_at = user and entitlements.parse_date(user.expires_at)
+    remaining = expires_at and expires_at - datetime.unix() or 0
+    if force or remaining <= 0 then
+      return nil
+    end
   end
 
   return user

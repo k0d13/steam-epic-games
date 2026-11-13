@@ -18,14 +18,15 @@ local binary_path = nil
 ---the game's exe
 ---@return string|nil path
 ---@return string? error
+---@return boolean? downloading
 function legendary.get_binary()
   if binary_path and fs.is_file(binary_path) then
     return binary_path
   end
 
-  local path, err = vendor.ensure()
+  local path, err, downloading = vendor.ensure()
   binary_path = path
-  return path, err
+  return path, err, downloading
 end
 
 ---App names end up in paths, config sections and command lines
@@ -88,6 +89,68 @@ function legendary.run(args)
   end
 
   return output, status
+end
+
+-- When each background batch started, for the log
+---@type table<string, integer>
+local started_at = {}
+
+---Runs legendary once per argument list, one after another in a detached process, so
+---a slow Epic or a virus scan of legendary never holds the Lua state
+---@param name string
+---@param commands string[][] Unquoted
+---@return boolean started False while one by this name runs, or without a binary
+---@return string? error
+---@return boolean? downloading
+function legendary.start(name, commands)
+  local binary, err, downloading = legendary.get_binary()
+  if not binary then
+    return false, err, downloading
+  end
+
+  local batch = {}
+  for index, args in ipairs(commands) do
+    batch[index] = { exe = binary, args = args }
+  end
+
+  local started
+  started, err = shell.start(name, batch)
+  if started then
+    started_at[name] = utils.time_ms()
+  elseif err then
+    log.error("Could not start " .. name .. ": " .. err)
+  end
+  return started, err
+end
+
+---@param name string
+---@return boolean
+function legendary.is_running(name)
+  return shell.is_running(name)
+end
+
+---Each command's output, in the order legendary.start was given them, once the last has
+---exited; nil until then
+---@param name string
+---@return string[]|nil outputs
+---@return integer[] codes
+function legendary.collect(name)
+  local results = shell.collect(name)
+  if not results then
+    return nil, {}
+  end
+
+  local outputs = {}
+  local codes = {}
+  for index, result in ipairs(results) do
+    outputs[index] = result.output
+    codes[index] = result.code
+  end
+
+  local elapsed = utils.time_ms() - (started_at[name] or utils.time_ms())
+  log.info("Ran " .. name .. " in " .. elapsed .. "ms, exited " .. table.concat(codes, ", "))
+  started_at[name] = nil
+  return outputs, codes
 end
 
 -- legendary's own log lines, like "[cli] INFO: Logging in..."

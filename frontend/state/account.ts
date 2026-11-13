@@ -19,6 +19,21 @@ function same(a: EpicStatus | undefined, b: EpicStatus) {
   );
 }
 
+// Once the backend has read the account, which also refreshes Epic's session for its requests
+export function ready() {
+  return new Promise<EpicStatus>((resolve) => {
+    const current = status.get();
+    if (current) return resolve(current);
+
+    const unsubscribe = status.subscribe(() => {
+      const next = status.get();
+      if (!next) return;
+      unsubscribe();
+      resolve(next);
+    });
+  });
+}
+
 // `onChange` hears the account changing, signing in or out included, not the first read
 export function watch(onChange: (status: EpicStatus) => void) {
   let stopped = false;
@@ -31,6 +46,9 @@ export function watch(onChange: (status: EpicStatus) => void) {
       console.warn("GetStatus failed", reason);
       return;
     }
+
+    // Still downloading legendary or asking it, which reads as connecting until it answers
+    if (next.pending) return;
 
     const previous = status.get();
     if (stopped || same(previous, next)) return;

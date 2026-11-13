@@ -4,6 +4,7 @@ local library = require("steam.library")
 local log = require("core.log")
 local millennium = require("millennium")
 local paths = require("core.paths")
+local shell = require("core.shell")
 
 -- These only define ffi functions, so nothing else requires them
 require("jobs.start")
@@ -21,6 +22,7 @@ local function on_load()
   -- Left behind by versions that ran commands through a PowerShell daemon, and pcall'd
   -- because one still running from before a reload holds its lock file
   pcall(fs.remove_all, paths.DATA .. "/daemon")
+  shell.clean_up()
 
   -- Cache only, so the first GetLibrary is answered from disk
   library.load()
@@ -30,14 +32,10 @@ local function on_load()
 end
 
 local function on_frontend_loaded()
-  -- Downloads legendary if missing, so startup pays for it and not the first action
-  local status = account.status()
-  log.info(
-    "Frontend loaded. legendary available="
-      .. tostring(status.available)
-      .. " authenticated="
-      .. tostring(status.authenticated)
-  )
+  -- Starts the download of legendary if it's missing, and reading the account, without waiting
+  -- on either, as Millennium holds every plugin's calls while one of ours is busy
+  account.status()
+  log.info("Frontend loaded")
 end
 
 local function on_unload()

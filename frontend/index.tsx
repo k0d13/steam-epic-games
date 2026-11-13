@@ -168,8 +168,11 @@ async function load() {
   // Installs are detached and outlive a Steam restart, so resume polling them
   await jobs.refresh();
 
-  // What we and Epic last had, then Epic's latest, which costs a round trip
-  void playtime.load().then(() => playtime.load(true));
+  // What we and Epic last had, then Epic's latest, which costs a round trip and needs a session
+  void playtime
+    .load()
+    .then(account.ready)
+    .then(() => playtime.load(true));
 
   void cloud.load();
 

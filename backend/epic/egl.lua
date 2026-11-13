@@ -13,12 +13,15 @@ local egl = {}
 -- The manifests at the last sync, so a refresh with nothing new skips a legendary run
 local synced
 
----Import only, so we never export into the launcher's library, and only where the launcher can
----be, as elsewhere legendary asks for its Wine prefix on stdin
-function egl.sync()
+---The arguments for an egl-sync, import only so we never export into the launcher's library,
+---and only where the launcher can be, as elsewhere legendary asks for its Wine prefix on stdin;
+---nil if nothing changed since the last
+---@return string[]|nil args
+---@return string|nil signature For egl.synced
+function egl.sync_args()
   local path = paths.egl_manifests()
   if not path or not fs.is_directory(path) then
-    return
+    return nil
   end
 
   local names = {}
@@ -30,10 +33,16 @@ function egl.sync()
   table.sort(names)
   local signature = table.concat(names, "\n")
   if signature == synced then
-    return
+    return nil
   end
 
-  local output, code = legendary.run({ "-y", "egl-sync", "--import-only", "--one-shot" })
+  return { "-y", "egl-sync", "--import-only", "--one-shot" }, signature
+end
+
+---@param signature string From egl.sync_args
+---@param output string
+---@param code integer
+function egl.synced(signature, output, code)
   log.info("Epic Games Launcher sync: " .. utils.trim(output))
   if code == 0 then
     synced = signature

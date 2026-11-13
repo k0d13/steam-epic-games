@@ -43,7 +43,8 @@ local CACHE_PATH = paths.DATA .. "/cache/library.json"
 ---@class Library
 ---@field games EpicGame[]
 ---@field refreshed_at integer Unix seconds of the last read from Epic, 0 if never
----@field error string|nil Why the refresh asked for didn't happen
+---@field refreshing boolean A refresh is waiting or running
+---@field error string|nil Why the last refresh asked for didn't happen
 
 ---@type EpicGame[]
 local games = {}
@@ -206,35 +207,39 @@ local function merge_game(entry, installed_by_name, granted, granted_items)
   )
 end
 
----@param force boolean|nil Bypass legendary's own catalog cache
----@return EpicGame[]|nil games
----@return string? error
-function library.refresh(force)
-  -- Without this a missing binary reads as an empty library
-  local binary, binary_error = legendary.get_binary()
-  if not binary then
-    return nil, binary_error
+local REFRESH = "library"
+
+-- A refresh asked for and not yet started, as it waits for the account's status
+---@type { force: boolean }|nil
+local wanted = nil
+
+-- Where each command's output lands in the running refresh
+---@type { sync: integer|nil, signature: string|nil, list: integer, installed: integer }|nil
+local layout = nil
+
+---@type string|nil
+local refresh_error = nil
+
+---@param outputs string[]
+---@param codes integer[]
+---@return string|nil error
+local function finish(outputs, codes)
+  local current = layout
+  layout = nil
+  if not current then
+    return "The library refresh lost track of its commands"
   end
 
-  -- Signed out, legendary list fails with a Python traceback, so don't ask
-  if not account.status().authenticated then
-    return nil, "Not signed in to Epic."
+  if current.sync and current.signature then
+    egl.synced(current.signature, outputs[current.sync], codes[current.sync])
   end
 
-  local list_args = { "list", "--json" }
-  if force then
-    table.insert(list_args, "--force-refresh")
-  end
-
-  -- First, so launcher installs show up in list-installed
-  egl.sync()
-
-  local owned, err = legendary.decode_json(legendary.run(list_args))
+  local owned, err = legendary.decode_json(outputs[current.list])
   if type(owned) ~= "table" then
-    return nil, err or "legendary returned no library"
+    return err or "legendary returned no library"
   end
 
-  local installed_by_name = index_installed(legendary.run(LIST_INSTALLED)) or {}
+  local installed_by_name = index_installed(outputs[current.installed]) or {}
   if egl.import_skipped(owned, installed_by_name) then
     -- The list only picks the imports up once they have happened
     installed_by_name = index_installed(legendary.run(LIST_INSTALLED)) or installed_by_name
@@ -268,10 +273,58 @@ function library.refresh(force)
   collectgarbage()
 
   log.info("Refreshed library: " .. #games .. " games")
-  return games
+  return nil
 end
 
----Only what's on disk, for after an install, as new catalog entries need library.refresh
+---Picks up a finished refresh, and starts the one asked for once the status is known
+---@param status EpicStatus
+local function advance(status)
+  local outputs, codes = legendary.collect(REFRESH)
+  if outputs then
+    refresh_error = finish(outputs, codes)
+  end
+
+  if not wanted or legendary.is_running(REFRESH) or status.pending then
+    return
+  end
+
+  local force = wanted.force
+  wanted = nil
+
+  -- Signed out, legendary list fails with a Python traceback, and the library is empty anyway
+  if not status.authenticated then
+    return
+  end
+
+  local list_args = { "list", "--json" }
+  if force then
+    table.insert(list_args, "--force-refresh")
+  end
+
+  -- First, so launcher installs show up in list-installed
+  local commands = {}
+  local sync_args, signature = egl.sync_args()
+  if sync_args then
+    table.insert(commands, sync_args)
+  end
+  table.insert(commands, list_args)
+  table.insert(commands, LIST_INSTALLED)
+
+  local started, err = legendary.start(REFRESH, commands)
+  if not started then
+    refresh_error = err or "Could not start the library refresh"
+    return
+  end
+
+  layout = {
+    sync = sync_args and 1 or nil,
+    signature = signature,
+    list = #commands - 1,
+    installed = #commands,
+  }
+end
+
+---Only what's on disk, for after an install, as new catalog entries need a full refresh
 ---@return EpicGame[]|nil games
 ---@return string? error
 function library.refresh_installed()
@@ -308,26 +361,33 @@ end
 
 ---@ffi
 ---Never refreshes on its own, since a cold list takes seconds, and force also bypasses
----legendary's catalog cache to pick up new purchases
+---legendary's catalog cache to pick up new purchases. A refresh runs in the background, so
+---the frontend asks again until refreshing is false
 ---@param refresh? boolean
 ---@param force? boolean
 ---@return Library
 function GetLibrary(refresh, force)
-  -- The store decides who's signed in, and a signed out library is an empty one
-  if not account.status().authenticated then
-    if #games > 0 then
-      games, refreshed_at = {}, 0
-      save()
-    end
-    return { games = games, refreshed_at = refreshed_at }
+  local status = account.status()
+
+  if refresh then
+    wanted = { force = force == true or (wanted ~= nil and wanted.force) }
+    refresh_error = nil
   end
 
-  local err
-  if refresh then
-    local _
-    _, err = library.refresh(force == true)
+  -- The store decides who's signed in, and a signed out library is an empty one; a legendary
+  -- that isn't answering keeps it
+  if status.available and not status.authenticated and #games > 0 then
+    games, refreshed_at = {}, 0
+    save()
   end
-  return { games = games, refreshed_at = refreshed_at, error = err }
+
+  advance(status)
+  return {
+    games = games,
+    refreshed_at = refreshed_at,
+    refreshing = wanted ~= nil or legendary.is_running(REFRESH),
+    error = refresh_error,
+  }
 end
 
 ---@ffi
@@ -335,7 +395,12 @@ end
 ---@return Library
 function GetInstalled()
   local _, err = library.refresh_installed()
-  return { games = games, refreshed_at = refreshed_at, error = err }
+  return {
+    games = games,
+    refreshed_at = refreshed_at,
+    refreshing = legendary.is_running(REFRESH),
+    error = err,
+  }
 end
 
 return library

@@ -14,7 +14,6 @@ local runner = {}
 local FILES = {
   lock = "runner.lock",
   script = paths.IS_WINDOWS and "runner.ps1" or "runner.sh",
-  launcher = "runner.vbs",
   pid = "runner.pid",
   meta = "job.json",
   log = "log.txt",
@@ -64,8 +63,7 @@ local function render(dir, exe, args)
   end))
 end
 
----Starts a hidden, detached runner: utils.exec waits for the command to finish, so
----Windows goes through wscript and Linux backgrounds it with &
+---Starts a hidden, detached runner
 ---@param dir string
 ---@param exe string The program the runner owns
 ---@param args string[]
@@ -82,23 +80,10 @@ function runner.spawn(dir, exe, args)
     return false, "Could not write the job script: " .. tostring(err)
   end
 
-  local launcher_path = runner.file(dir, "launcher")
-  if paths.IS_WINDOWS then
-    ok, err = utils.write_file(launcher_path, shell.vbs_launcher(script_path))
-    if not ok then
-      return false, "Could not write the job launcher: " .. tostring(err)
-    end
-  end
-
   -- Before the launch, or a read in between sees it queued and starts a second runner
   utils.write_file(runner.file(dir, "spawned"), tostring(datetime.unix()))
 
-  if paths.IS_WINDOWS then
-    shell.run("wscript", { shell.native_path(launcher_path) })
-  else
-    utils.exec("setsid sh " .. shell.sh_quote(script_path) .. " </dev/null >/dev/null 2>&1 &")
-  end
-  return true
+  return shell.detach(script_path)
 end
 
 ---Polled every second, so it tests the lock the runner holds unshared rather than

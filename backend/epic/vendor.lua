@@ -1,3 +1,4 @@
+local datetime = require("datetime")
 local fs = require("fs")
 local log = require("core.log")
 local paths = require("core.paths")
@@ -59,76 +60,98 @@ local function digest(path)
   return nil
 end
 
----@param destination string
----@return boolean ok
-local function fetch(destination)
-  local target = shell.native_path(destination)
+local DOWNLOAD = "legendary-download"
+local DOWNLOADING = "Downloading legendary"
 
-  local output, code = shell.run(
-    paths.IS_WINDOWS and "curl.exe" or "curl",
-    { "-fsSL", "--retry", "2", "-o", target, URL }
-  )
-  if fs.is_file(destination) then
-    return true
-  end
-  log.warn("curl exited " .. code .. ": " .. output)
+-- A failed download isn't retried on every status poll
+local RETRY_SECONDS = 60
+local failed_at = 0
+local failure
 
-  -- Not every distro ships curl, and Ubuntu's desktop image has wget instead
+-- Timed out, as a stalled connection would otherwise hold the download forever, and each
+-- fallback skips itself if the one before produced the file
+local function download_commands(target)
+  local curl = {
+    exe = paths.IS_WINDOWS and "curl.exe" or "curl",
+    args = {
+      "-fsSL",
+      "--connect-timeout",
+      "15",
+      "--max-time",
+      "300",
+      "--retry",
+      "2",
+      "-o",
+      target,
+      URL,
+    },
+  }
+
   if not paths.IS_WINDOWS then
-    output, code = shell.run("wget", { "-q", "-O", target, URL })
-    if code == 0 and fs.is_file(destination) then
-      return true
-    end
-    log.warn("wget exited " .. code .. ": " .. output)
-    return false
+    return {
+      curl,
+      {
+        exe = "sh",
+        args = {
+          "-c",
+          "[ -f "
+            .. shell.sh_quote(target)
+            .. " ] || wget -q -T 15 -O "
+            .. shell.sh_quote(target)
+            .. " "
+            .. URL,
+        },
+      },
+    }
   end
 
-  log.info("curl did not produce a file, falling back to PowerShell")
-  shell.run("powershell", {
-    "-NoProfile",
-    "-ExecutionPolicy",
-    "Bypass",
-    "-Command",
-    "$ProgressPreference='SilentlyContinue'; Invoke-WebRequest -UseBasicParsing -Uri "
-      .. shell.ps_quote(URL)
-      .. " -OutFile "
-      .. shell.ps_quote(target),
-  })
-
-  return fs.is_file(destination)
+  return {
+    curl,
+    {
+      exe = "powershell",
+      args = {
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        "if (!(Test-Path -LiteralPath "
+          .. shell.ps_quote(target)
+          .. ")) { $ProgressPreference='SilentlyContinue'; Invoke-WebRequest -UseBasicParsing -TimeoutSec 300 -Uri "
+          .. shell.ps_quote(URL)
+          .. " -OutFile "
+          .. shell.ps_quote(target)
+          .. " }",
+      },
+    },
+  }
 end
 
----Downloaded once per version, and blocks as nothing works without it
+---@param message string
+---@return nil
+---@return string
+local function fail(message)
+  failed_at = datetime.unix()
+  failure = message
+  return nil, message
+end
+
+---@param partial string
+---@param results { output: string, code: integer }[]
 ---@return string|nil path
 ---@return string? error
-function vendor.ensure()
-  if fs.is_file(PATH) then
-    if digest(PATH) == SHA256 then
-      return PATH
+local function finish(partial, results)
+  if not fs.is_file(partial) then
+    for _, result in ipairs(results) do
+      log.warn("Download step exited " .. result.code .. ": " .. utils.trim(result.output))
     end
-    log.warn("Vendored legendary does not match the pin, refetching")
-    fs.remove(PATH)
-  end
-
-  fs.create_directories(DIR)
-
-  -- A temporary name, so an interrupted download never passes for the binary
-  local partial = PATH .. ".part"
-  if fs.is_file(partial) then
-    fs.remove(partial)
-  end
-
-  log.info("Fetching legendary " .. VERSION .. " from " .. URL)
-  local started = utils.time_ms()
-  if not fetch(partial) then
-    return nil, "Could not download legendary. Check your connection and try again."
+    return fail("Could not download legendary. Check your connection and try again.")
   end
 
   local actual = digest(partial)
   if actual ~= SHA256 then
     fs.remove(partial)
     log.error("Checksum mismatch: expected " .. SHA256 .. ", got " .. tostring(actual))
-    return nil, "The downloaded legendary did not match its checksum, so it was discarded."
+    return fail("The downloaded legendary did not match its checksum, so it was discarded.")
   end
 
   if not paths.IS_WINDOWS then
@@ -137,19 +160,58 @@ function vendor.ensure()
 
   if not fs.rename(partial, PATH) then
     fs.remove(partial)
-    return nil, "Could not move the downloaded legendary into " .. PATH
+    return fail("Could not move the downloaded legendary into " .. PATH)
   end
 
-  log.info(
-    "Vendored legendary "
-      .. VERSION
-      .. " to "
-      .. PATH
-      .. " in "
-      .. (utils.time_ms() - started)
-      .. "ms"
-  )
+  log.info("Vendored legendary " .. VERSION .. " to " .. PATH)
   return PATH
+end
+
+---For a retry the user asked for, which shouldn't wait out RETRY_SECONDS
+function vendor.retry()
+  failure = nil
+end
+
+---Downloaded once per version, in the background as nothing may hold the Lua state that long
+---@return string|nil path
+---@return string? error
+---@return boolean? downloading True while the download runs, when error says so
+function vendor.ensure()
+  -- A temporary name, so an interrupted download never passes for the binary
+  local partial = PATH .. ".part"
+
+  local results = shell.collect(DOWNLOAD)
+  if results then
+    return finish(partial, results)
+  end
+  if shell.is_running(DOWNLOAD) then
+    return nil, DOWNLOADING, true
+  end
+
+  if fs.is_file(PATH) then
+    if digest(PATH) == SHA256 then
+      return PATH
+    end
+    log.warn("Vendored legendary does not match the pin, refetching")
+    fs.remove(PATH)
+  end
+
+  if failure and datetime.unix() - failed_at < RETRY_SECONDS then
+    return nil, failure
+  end
+
+  fs.create_directories(DIR)
+  if fs.is_file(partial) then
+    fs.remove(partial)
+  end
+
+  log.info("Fetching legendary " .. VERSION .. " from " .. URL)
+  local started, err = shell.start(DOWNLOAD, download_commands(shell.native_path(partial)))
+  if not started then
+    return fail("Could not start downloading legendary: " .. tostring(err))
+  end
+  failure = nil
+  return nil, DOWNLOADING, true
 end
 
 return vendor
