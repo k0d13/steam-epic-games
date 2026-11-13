@@ -7,8 +7,8 @@ local paths = require("core.paths")
 local shell = require("core.shell")
 local utils = require("utils")
 
--- What the frontend can't do for a shortcut itself: it hands Steam the artwork bytes,
--- as Lua here can't fetch or decode base64, and this tidies the grid folder afterwards
+-- What the frontend can't do for a shortcut itself: the icon file, and tidying the grid
+-- folder Steam leaves behind
 
 ---@class LaunchCommand
 ---@field exe string
@@ -78,16 +78,17 @@ local function grid_path(account_id)
   return path
 end
 
--- ico is for SteamGridDB's icons, and not jpg as <app_id>.jpg is the header image
+-- ico is for SteamGridDB's icons, cleared too as a stale one would win over ours
 local ICON_EXTENSIONS = { "png", "ico" }
 
 ---@ffi
----SetCustomArtworkForApp writes <app_id>.<ext> but shortcuts read <app_id>_icon.<ext>,
----and it's moved rather than copied or the leftover competes with the .jpg header
+---Shortcuts read <app_id>_icon.<ext>; written here as Steam's SetCustomArtworkForApp
+---no longer takes Icon artwork
 ---@param app_id integer|string
----@param account_id? integer|string
+---@param account_id integer|string
+---@param base64 string The PNG
 ---@return string|nil path Where the icon ended up
-function PlaceIcon(app_id, account_id)
+function PlaceIcon(app_id, account_id, base64)
   local path, err = grid_path(account_id)
   if not path then
     log.warn("Could not place the icon for " .. tostring(app_id) .. ": " .. tostring(err))
@@ -95,22 +96,6 @@ function PlaceIcon(app_id, account_id)
   end
 
   local id = tostring(app_id)
-
-  local source, extension
-  for _, candidate in ipairs(ICON_EXTENSIONS) do
-    local file = path .. "/" .. id .. "." .. candidate
-    if fs.is_file(file) then
-      source, extension = file, candidate
-      break
-    end
-  end
-
-  if not source then
-    log.warn("Steam wrote no icon for " .. id .. " in " .. path)
-    return nil
-  end
-
-  -- Every extension, as a stale icon would win and rename won't overwrite on Windows
   for _, candidate in ipairs(ICON_EXTENSIONS) do
     local existing = path .. "/" .. id .. "_icon." .. candidate
     if fs.is_file(existing) then
@@ -118,9 +103,13 @@ function PlaceIcon(app_id, account_id)
     end
   end
 
-  local target = path .. "/" .. id .. "_icon." .. extension
-  if not fs.rename(source, target) then
-    log.warn("Could not rename " .. source)
+  local png = utils.base64_decode(base64)
+  local target = path .. "/" .. id .. "_icon.png"
+  utils.write_file(target, png)
+
+  -- A text mode write would turn the PNG's line endings into CRLF
+  if fs.file_size(target) ~= #png then
+    log.warn("Could not write the icon for " .. id .. " to " .. target)
     return nil
   end
 

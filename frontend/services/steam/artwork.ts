@@ -5,7 +5,7 @@ import { createStore } from "../../state/primitives";
 // and SetCustomArtworkForApp wants base64 anyway
 
 // Bump the version to re-apply everything, e.g. after adding an asset type
-const done = createStore<true>("epic-games:artwork-done:v1");
+const done = createStore<true>("epic-games:artwork-done:v2");
 
 export function isDone(appName: string) {
   return done.get(appName) === true;
@@ -88,24 +88,22 @@ async function cropToIcon(url: string) {
   }
 }
 
-// Epic ships no icons, so one is cropped from box art; Steam writes Icon artwork as
-// `<appid>.png` but shortcuts read `<appid>_icon.png`, so the backend renames it
+// Epic ships no icons, so one is cropped from box art and the backend writes it, as
+// SetCustomArtworkForApp no longer takes Icon artwork
 async function applyIcon(appId: number, game: EpicGame) {
   const source = game.art_portrait ?? game.art_hero;
   if (!source) return false;
 
   try {
     const base64 = await cropToIcon(source);
-    await SteamClient.Apps.SetCustomArtworkForApp(appId, base64, "png", ELibraryAssetType.Icon);
-
     // As strings: Millennium can wrap numbers past 2^31, and shortcut ids are
-    const path = await backend.PlaceIcon(String(appId), String(accountId() ?? ""));
+    const path = await backend.PlaceIcon(String(appId), String(accountId() ?? ""), base64);
     if (!path) return false;
 
     SteamClient.Apps.SetShortcutIcon(appId, path);
     return true;
   } catch (e) {
-    console.debug("Failed to apply an icon", { appName: game.app_name, error: e });
+    console.debug("Failed to apply an icon", { appName: game.app_name, error: String(e) });
     return false;
   }
 }
@@ -120,7 +118,6 @@ export async function apply(appId: number, game: EpicGame) {
     [game.art_hero, ELibraryAssetType.Header],
   ];
 
-  // First: the icon is written as `<appid>.png`, which would clobber a PNG header
   let applied = (await applyIcon(appId, game)) ? 1 : 0;
 
   for (const [url, assetType] of assets) {
